@@ -47,10 +47,15 @@ endif
     # Do build-in for Makefile checking
      export CONFIG_WLAN_DRV_BUILD_IN=y
 
+    ifeq ($(CONFIG_MTK_COMBO), y)
+        ccflags-y += -D CFG_CONNADP_BUILD_IN
+    endif
+
     ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
         $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])
         MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
         $(info MTK_PLATFORM_ID is [${MTK_PLATFORM_ID}])
+        endif
          ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6833"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC3_0
             export CONNAC_VER=2_0
@@ -89,11 +94,14 @@ endif
          else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
              export _MTK_BT_CHIP=MTK_CONSYS_MT6877
          endif
+         
+         
          ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893" "CONSYS_6877"))
              export CFG_BUILD_CONNAC2=true
          else
              export CFG_BUILD_CONNAC2=false
          endif
+         
          FM_6631_CHIPS := 6758 6759 6771 6775 6765 6761 3967 6797 6768 6785 8168
          FM_6635_CHIPS := 6779 6885 6873 6893 6877
          ifneq ($(filter $(FM_6631_CHIPS), $(MTK_PLATFORM_ID)),)
@@ -101,7 +109,7 @@ endif
          else ifneq ($(filter $(FM_6635_CHIPS), $(MTK_PLATFORM_ID)),)
              FM_CHIP := mt6635
          endif
-        FM_CHIP := mt6635
+
          export CFG_FM_CHIP_ID=$(MTK_PLATFORM_ID)
          export CFG_FM_CHIP=$(FM_CHIP)
          
