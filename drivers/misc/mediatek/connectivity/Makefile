@@ -51,9 +51,13 @@ endif
         $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])
         MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
         $(info MTK_PLATFORM_ID is [${MTK_PLATFORM_ID}])
-
+         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6833"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC3_0
             export CONNAC_VER=2_0
+        else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6779" "CONSYS_6873" "CONSYS_6853"))
+            export MTK_COMBO_CHIP=SOC2_2X2
+            PATH_TO_WMT_DRV      = vendor/mediatek/kernel_modules/connectivity/common
+            export CONNAC_VER=1_0
         endif
 
         export MTK_PLATFORM_WMT=$(MTK_PLATFORM)
@@ -65,14 +69,38 @@ endif
         export WLAN_CHIP_ID=$(MTK_PLATFORM_ID)
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
-        export WIFI_IP_SET=1
+        WLAN_IP_SET_3_SERIES := 6779 6873 6853
+        ifneq ($(filter $(WLAN_IP_SET_3_SERIES), $(WLAN_CHIP_ID)),)
+            $(info WIFI_IP_SET is 3)
+            export WIFI_IP_SET=3
+        else
+            $(info WIFI_IP_SET is 1)
+            export WIFI_IP_SET=1
+        endif
 
         # Do build-in for xxx.c checking
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
 
-        export _MTK_BT_CHIP=MTK_CONSYS_MT6885
-        export CFG_BUILD_CONNAC2=true
+         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885"))
+             export _MTK_BT_CHIP=MTK_CONSYS_MT6885
+         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6893"))
+             export _MTK_BT_CHIP=MTK_CONSYS_MT6893
+         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
+             export _MTK_BT_CHIP=MTK_CONSYS_MT6877
+         endif
+         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893" "CONSYS_6877"))
+             export CFG_BUILD_CONNAC2=true
+         else
+             export CFG_BUILD_CONNAC2=false
+         endif
+         FM_6631_CHIPS := 6758 6759 6771 6775 6765 6761 3967 6797 6768 6785 8168
+         FM_6635_CHIPS := 6779 6885 6873 6893 6877
+         ifneq ($(filter $(FM_6631_CHIPS), $(MTK_PLATFORM_ID)),)
+             FM_CHIP := mt6631
+         else ifneq ($(filter $(FM_6635_CHIPS), $(MTK_PLATFORM_ID)),)
+             FM_CHIP := mt6635
+         endif
         FM_CHIP := mt6635
          export CFG_FM_CHIP_ID=$(MTK_PLATFORM_ID)
          export CFG_FM_CHIP=$(FM_CHIP)
