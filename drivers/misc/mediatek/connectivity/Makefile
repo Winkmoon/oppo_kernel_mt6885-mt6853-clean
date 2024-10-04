@@ -45,11 +45,8 @@ endif
 
 
     # Do build-in for Makefile checking
-     export CONFIG_WLAN_DRV_BUILD_IN=y
+    # export CONFIG_WLAN_DRV_BUILD_IN=y
 
-    ifeq ($(CONFIG_MTK_COMBO), y)
-        ccflags-y += -D CFG_CONNADP_BUILD_IN
-    endif
 
         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
