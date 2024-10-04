@@ -5851,7 +5851,7 @@ int32_t mtk_cfg80211_process_str_cmd(IN struct wiphy *wiphy,
 #if (CFG_BUILT_IN_DRIVER == 1)
 /* in kernel-x.x/net/wireless/reg.c */
 #else
-bool is_world_regdom(const char *alpha2)
+extern bool is_world_regdom(const char *alpha2)
 {
 	if (!alpha2)
 		return false;
