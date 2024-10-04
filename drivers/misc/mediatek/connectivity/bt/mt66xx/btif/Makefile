@@ -29,7 +29,8 @@ else
     ccflags-y += -D FW_LOG_DEFAULT_ON=1
 endif
 
-CONNAC20_CHIPID=$(subst MTK_CONSYS_MT,,$(_MTK_BT_CHIP))
+export BT_PLATFORM=6885
+export CONNAC20_CHIPID=6885
 ccflags-y += -D CONNAC20_CHIPID=$(BT_PLATFORM)
 $(info $(LOG_TAG) BT_PLATFORM = $(BT_PLATFORM))
 $(info $(LOG_TAG) srctree = $(srctree))
