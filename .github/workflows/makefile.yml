@@ -41,12 +41,6 @@ jobs:
         git clone -q --depth=1 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-6443078 -b 10.0 clang-aosp
     
 
-    - name: 下载内核模块源码
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/2481849298/android_kernel_modules_mt6885-mt6853.git vendor
-        mkdir vnd
-        cp -r vendor vnd/
         
               
     - name: 下载内核源码
