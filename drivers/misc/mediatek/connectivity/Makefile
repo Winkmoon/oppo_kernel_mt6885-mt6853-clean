@@ -54,19 +54,19 @@ endif
 
         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
-            PATH_TO_WMT_DRV      = conninfra
+            PATH_TO_WMT_DRV      = conninfra/
             export CONNAC_VER=2_0
         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC3_0
-            PATH_TO_WMT_DRV      = conninfra
+            PATH_TO_WMT_DRV      = conninfra/
             export CONNAC_VER=2_0
         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6833"))
             export MTK_COMBO_CHIP=SOC2_1X1
-            PATH_TO_WMT_DRV      = common
+            PATH_TO_WMT_DRV      = common/
             export CONNAC_VER=1_0
         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6779" "CONSYS_6873" "CONSYS_6853"))
             export MTK_COMBO_CHIP=SOC2_2X2
-            PATH_TO_WMT_DRV      = common
+            PATH_TO_WMT_DRV      = common/
             export CONNAC_VER=1_0
         else
             export MTK_COMBO_CHIP=CONNAC
@@ -76,8 +76,8 @@ endif
         export MTK_PLATFORM_WMT=$(MTK_PLATFORM)
         export TARGET_BOARD_PLATFORM_WMT=$(patsubst CONSYS_%,mt%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
 
-        PATH_TO_WLAN_CHR_DRV = wlan/adaptor
-        PATH_TO_WLAN_DRV     = wlan/core/gen4m
+        PATH_TO_WLAN_CHR_DRV = wlan/adaptor/
+        PATH_TO_WLAN_DRV     = wlan/core/gen4m/
         
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
@@ -110,16 +110,16 @@ endif
 
         # For BT built-in mode start @{
          ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885"))
-             PATH_TO_BT_DRV       = bt/mt66xx/btif
+             PATH_TO_BT_DRV       = bt/mt66xx/btif/
              export _MTK_BT_CHIP=MTK_CONSYS_MT6885
          else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6893"))
-             PATH_TO_BT_DRV       = bt/mt66xx/btif
+             PATH_TO_BT_DRV       = bt/mt66xx/btif/
              export _MTK_BT_CHIP=MTK_CONSYS_MT6893
          else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
-             PATH_TO_BT_DRV       = bt/mt66xx/btif
+             PATH_TO_BT_DRV       = bt/mt66xx/btif/
              export _MTK_BT_CHIP=MTK_CONSYS_MT6877
          else
-             PATH_TO_BT_DRV       = bt/mt66xx/wmt
+             PATH_TO_BT_DRV       = bt/mt66xx/wmt/
          endif
          obj-y += $(PATH_TO_BT_DRV)
         # @} For BT built-in mode end
