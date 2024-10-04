@@ -47,6 +47,7 @@ endif
     # Do build-in for Makefile checking
     # export CONFIG_WLAN_DRV_BUILD_IN=y
 
+
         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
             PATH_TO_WMT_DRV      = conninfra/
@@ -99,10 +100,8 @@ endif
         endif
 
         # Do build-in for xxx.c checking
-    ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
-    endif
         
 
         # For BT built-in mode start @{
@@ -143,7 +142,6 @@ endif
 
         # For GPS built-in mode start @{
         obj-y += gps/
-
 # Otherwise we were called directly from the command line;
 # invoke the kernel build system.
 else
