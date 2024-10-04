@@ -83,10 +83,10 @@ ccflags-y += -I$(CONNFEM_SRC)/include
 ccflags-y += -I$(WMT_SRC)/debug_utility
 ccflags-y += -I$(BTIF_SRC)/common/inc
 
-ccflags-y += -I$(src)/core/include
+ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/conninfra/core/include
 ccflags-y += -I$(src)/connsys/connac_2_0
-ccflags-y += -I$(src)/../include
-ccflags-y += -I$(src)/../include/btif
+ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/bt/mt66xx/include
+ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/bt/mt66xx/include/btif
 
 # ---------------------------------------------------
 # Objects List

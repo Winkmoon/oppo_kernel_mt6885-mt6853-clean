@@ -53,7 +53,7 @@ obj-y += $(MODULE_NAME).o
 
 ###############################################################################
 
-KO_CODE_PATH := $(if $(filter /%,$(src)),,$(srctree)/)$(src)
+KO_CODE_PATH := $(srctree)/drivers/misc/mediatek/connectivity/fmradio
 $(info [fm_drv:Kbuild] src = $(src))
 $(info [fm_drv:Kbuild] KO_CODE_PATH = $(KO_CODE_PATH))
 
@@ -155,10 +155,8 @@ ifeq ($(CFG_BUILD_CONNAC2), true)
     $(FM_CHIP)-objs += plat/conn_infra.o
 else
     WMT_SRC_FOLDER := $(srctree)/drivers/misc/mediatek/connectivity/common
-    WMT_INCLUDE_PATH := common_main
-
-    ccflags-y += -I$(WMT_SRC_FOLDER)/$(WMT_INCLUDE_PATH)/include \
-                 -I$(WMT_SRC_FOLDER)/$(WMT_INCLUDE_PATH)/linux/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common/common_main/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common/common_main/linux/include
     ccflags-y += -DCFG_FM_CONNAC2=0
     $(FM_CHIP)-objs += plat/legacy_wmt.o
 endif
