@@ -205,8 +205,7 @@ CONFIG_MTK_WIFI_CONNAC2X=y
 CONFIG_MTK_WIFI_11AX_SUPPORT=y
 #ifdef OPLUS_BUG_STABILITY
 #LiangXiao@CONNECTIVITY.WIFI.CONNECTION.BASIC, 2021/11/23, Close 6GHz Support
-#CONFIG_MTK_WIFI_6G_SUPPORT=y
-#endif  /* OPLUS_BUG_STABILITY */
+CONFIG_MTK_WIFI_6G_SUPPORT=y
 CONFIG_MTK_WIFI_TWT_SUPPORT=y
 CONFIG_MTK_WIFI_TWT_STA_DIRECT_TEARDOWN=y
 CONFIG_NUM_OF_WFDMA_RX_RING=2
@@ -931,12 +930,7 @@ OPLUS_WFD_OBJS += oplus_wfd/wlan_oplus_wfd.o
 # ---------------------------------------------------
 SERVICE_DIR  := wlan_service/
 
-ifneq ($(findstring wlan_service,$(MTK_WLAN_SERVICE_PATH)),)
 MTK_WLAN_SERVICE=yes
-SERVICE_DIR  := $(MTK_WLAN_SERVICE_PATH)
-$(info SERVICE_DIR is [{$(MTK_WLAN_SERVICE_PATH)}])
-endif
-
 ifeq ($(MTK_WLAN_SERVICE), yes)
 ccflags-y += -DCONFIG_WLAN_SERVICE=1
 ccflags-y += -DCONFIG_TEST_ENGINE_OFFLOAD=1
@@ -952,7 +946,6 @@ SERVICE_OBJS := $(SERVICE_DIR)agent/agent.o \
                 $(SERVICE_DIR)glue/osal/gen4m/net_adaption_gen4m.o \
                 $(SERVICE_DIR)glue/hal/gen4m/operation_gen4m.o
 $(MODULE_NAME)-objs  += $(SERVICE_OBJS)
-$(info $$MTK_WLAN_SERVICE is [{$(SERVICE_OBJS)}])
 else
 ccflags-y += -DCONFIG_WLAN_SERVICE=0
 ccflags-y += -DCONFIG_TEST_ENGINE_OFFLOAD=0
