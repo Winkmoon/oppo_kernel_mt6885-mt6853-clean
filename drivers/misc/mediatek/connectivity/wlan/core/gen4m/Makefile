@@ -2,7 +2,7 @@ ccflags-y :=
 ifeq ($(CONFIG_MTK_PLATFORM),)
 CONFIG_MTK_PLATFORM := mt$(WLAN_CHIP_ID)
 endif
-MTK_PLATFORM := $(subst $(quote),,$(CONFIG_MTK_PLATFORM))
+MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 
 # ---------------------------------------------------
 # OS option
@@ -24,10 +24,6 @@ ccflags-y += -DCFG_VIRTUAL_OS
 ccflags-y += -DCFG_REMIND_IMPLEMENT
 endif
 
-ifndef TOP
-    TOP := $(srctree)/..
-endif
-$(info os option: $(os))
 # ---------------------------------------------------
 # ALPS Setting
 # ---------------------------------------------------
@@ -52,9 +48,6 @@ ifeq ($(MTK_COMBO_CHIP),)
 MTK_COMBO_CHIP = MT6632
 endif
 
-$(info $$MTK_PLATFORM is [${MTK_PLATFORM}])
-$(info $$WLAN_CHIP_ID is [${WLAN_CHIP_ID}])
-$(info $$MTK_COMBO_CHIP is [${MTK_COMBO_CHIP}])
 
 ifneq ($(CONFIG_MTK_EMI),)
 ccflags-y += -DCONFIG_WLAN_MTK_EMI=1
@@ -73,17 +66,14 @@ ccflags-y += -DWLAN_INCLUDE_PROC
 ccflags-y += -DCFG_SUPPORT_AGPS_ASSIST=0
 ccflags-y += -DCFG_SUPPORT_TSF_USING_BOOTTIME=1
 ccflags-y += -DARP_MONITER_ENABLE=1
-ccflags-y += -Werror $(call cc-disable-warning, unused-but-set-variable)
+ccflags-y += -Werror
 #ccflags-y:=$(filter-out -U$(WLAN_CHIP_ID),$(ccflags-y))
 #ccflags-y += -DLINUX -D$(WLAN_CHIP_ID)
 #workaround: also needed for none LINUX system
 # because some of common part code is surrounded with this flag
 ccflags-y += -DLINUX
 
-#ifdef OPLUS_BUG_STABILITY
-#LiuMing@CONNECTIVITY.WIFI.CONNECTION.CONNECT, 20121/11/1, add for wlan common bug fix (replace OPLUS_BUG_STABILITY)
-ccflags-y += -DOPLUS_WLAN_BUG_STABILITY=1
-#endif  /* OPLUS_BUG_STABILITY */
+
 
 ifneq ($(filter MT6632,$(MTK_COMBO_CHIP)),)
 ccflags-y:=$(filter-out -UMT6632,$(ccflags-y))
@@ -170,17 +160,6 @@ else
     ccflags-y += -DCFG_SUPPORT_SET_IPV6_NETWORK=0
 endif
 
-ifneq ($(filter 6855, $(WLAN_CHIP_ID)),)
-    ccflags-y += -DCFG_SUPPORT_MDDP_AOR=1
-else
-    ccflags-y += -DCFG_SUPPORT_MDDP_AOR=0
-endif
-
-ifneq ($(filter 6879, $(WLAN_CHIP_ID)),)
-    ccflags-y += -DCFG_TRI_TX_RING=1
-else
-    ccflags-y += -DCFG_TRI_TX_RING=0
-endif
 
 ifneq ($(findstring 5_0,$(MTK_COMBO_CHIP)),)
 ccflags-y:=$(filter-out -USOC5_0,$(ccflags-y))
@@ -203,8 +182,6 @@ ccflags-y:=$(filter-out -USOC7_0,$(ccflags-y))
 ccflags-y += -DSOC7_0
 CONFIG_MTK_WIFI_CONNAC2X=y
 CONFIG_MTK_WIFI_11AX_SUPPORT=y
-#ifdef OPLUS_BUG_STABILITY
-#LiangXiao@CONNECTIVITY.WIFI.CONNECTION.BASIC, 2021/11/23, Close 6GHz Support
 CONFIG_MTK_WIFI_6G_SUPPORT=y
 CONFIG_MTK_WIFI_TWT_SUPPORT=y
 CONFIG_MTK_WIFI_TWT_STA_DIRECT_TEARDOWN=y
@@ -224,6 +201,13 @@ ccflags-y += -DCFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH=1
 ccflags-y += -DCFG_ROM_PATCH_NO_SEM_CTRL=1
 ccflags-y += -DCONFIG_MTK_WIFI_HE160
 ccflags-y += -DCFG_SUPPORT_BW160
+
+ifneq ($(TARGET_BUILD_VARIANT),user)
+CONFIG_MTK_WIFI_NAN=y
+
+CONFIG_MTK_WIFI_SNIFFER_RADIOTAP=y
+endif
+
 endif
 
 ifeq ($(CONFIG_MTK_WIFI_CONNINFRA_SUPPORT), y)
@@ -434,13 +418,11 @@ endif
 
 ifneq ($(CFG_CFG80211_VERSION),)
 VERSION_STR = $(subst \",,$(subst ., , $(subst -, ,$(subst v,,$(CFG_CFG80211_VERSION)))))
-$(info VERSION_STR=$(VERSION_STR))
 X = $(firstword $(VERSION_STR))
 Y = $(word 2 ,$(VERSION_STR))
 Z = $(word 3 ,$(VERSION_STR))
 VERSION := $(shell echo "$$(( $X * 65536 + $Y * 256 + $Z))" )
 ccflags-y += -DCFG_CFG80211_VERSION=$(VERSION)
-$(info DCFG_CFG80211_VERSION=$(VERSION))
 endif
 
 ccflags-y += -DCFG_SUPPORT_PASSPOINT=1
@@ -558,6 +540,7 @@ obj-$(CONFIG_MTK_COMBO_WIFI) += $(MODULE_NAME).o
 #obj-y += $(MODULE_NAME).o
 endif
 
+
 obj-y += $(MODULE_NAME).o
 ccflags-y += -DCONFIG_WLAN_DRV_BUILD_IN=1
 
@@ -572,11 +555,6 @@ else
 ccflags-y += -DCFG_SUPPORT_PKT_OFLD=0
 endif
 
-#ifdef OPLUS_FEATURE_WIFI_SMARTGEAR
-#LiFenfen@CONNECTIVITY.WIFI.HARDWARE.POWER.SMARTGEAR.1641437 , 2021/11/01
-ifeq ($(OPLUS_FEATURE_WIFI_SMARTGEAR), yes)
-ccflags-y += -DCFG_SUPPORT_SMART_GEAR=1
-endif
 #endif /* OPLUS_FEATURE_WIFI_SMARTGEAR */
 # ---------------------------------------------------
 # Directory List
@@ -905,18 +883,9 @@ SYSDVT_OBJS += $(SYSDVT_DIR)dvt_dmashdl.o
 endif
 endif
 
-#ifdef OPLUS_FEATURE_WIFI_OPLUSWFD
-#//XiaZijian@CONNECTIVITY.WIFI.BASIC.26106 2021/03/18 , add for oplus wfd
-ifeq ($(CONFIG_OPLUS_FEATURE_WIFI_OPLUSWFD), m)
-ccflags-y += -DOPLUS_FEATURE_WIFI_OPLUSWFD=1
-else ifeq ($(CONFIG_OPLUS_FEATURE_WIFI_OPLUSWFD), y)
-ccflags-y += -DOPLUS_FEATURE_WIFI_OPLUSWFD=1
-else ifeq ($(CONFIG_OPLUS_FEATURE_WIFI_OPLUSWFD), n)
-ccflags-y += -UOPLUS_FEATURE_WIFI_OPLUSWFD
-endif
 
-OPLUS_WFD_OBJS += oplus_wfd/wlan_oplus_wfd.o
-#endif /* OPLUS_FEATURE_WIFI_OPLUSWFD */
+
+
 
 # ---------------------------------------------------
 # Service git List
@@ -931,7 +900,6 @@ ccflags-y += -I$(src)/$(SERVICE_DIR)include
 ccflags-y += -I$(src)/$(SERVICE_DIR)service/include
 ccflags-y += -I$(src)/$(SERVICE_DIR)glue/osal/include
 ccflags-y += -I$(src)/$(SERVICE_DIR)glue/hal/include
-$(info $$CCFLAG is [{$(ccflags-y)}])
 SERVICE_OBJS := $(SERVICE_DIR)agent/agent.o \
                 $(SERVICE_DIR)service/service_test.o \
                 $(SERVICE_DIR)service/test_engine.o \
@@ -954,20 +922,7 @@ $(MODULE_NAME)-objs  += $(SYSDVT_OBJS)
 $(MODULE_NAME)-objs  += $(NAN_OBJS)
 $(MODULE_NAME)-objs  += $(NAN_SEC_OBJS)
 
-#ifdef OPLUS_FEATURE_WIFI_OPLUSWFD
-#//XiaZijian@CONNECTIVITY.WIFI.BASIC.26106 2021/03/18 , add for oplus wfd
-$(MODULE_NAME)-objs  += $(OPLUS_WFD_OBJS)
-#endif /* OPLUS_FEATURE_WIFI_OPLUSWFD */
 
 ifneq ($(findstring UT_TEST_MODE,$(MTK_COMBO_CHIP)),)
 include $(src)/test/ut.make
 endif
-
-#ifdef OPLUS_BUG_STABILITY
-#Chenguohua@CONNECTIVITY.WIFI.BASIC, 2022/02/11, Power Limit for diff wifi standard
-ifeq ($(WLAN_CHIP_ID), 6781)
-ccflags-y += -DCFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING=1
-else
-ccflags-y += -DCFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING=0
-endif
-#endif  /* OPLUS_BUG_STABILITY */
