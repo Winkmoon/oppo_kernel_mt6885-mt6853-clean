@@ -67,8 +67,9 @@ endif
 
 CFILES += btmtk_main.c btmtk_fw_log.c
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/ -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/
-
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include
+ccfiags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx
++
 $(MOD_NAME)-objs := $(CFILES:.c=.o)
 
 obj-y += $(MOD_NAME).o
