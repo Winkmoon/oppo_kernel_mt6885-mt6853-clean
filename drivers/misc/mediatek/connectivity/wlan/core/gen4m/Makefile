@@ -19,7 +19,7 @@ ccflags-y += -Wno-format
 ccflags-y += -Wno-parentheses
 
 ifeq ($(os), none)
-ccflags-y += -I/usr/include/
+ccflags-y += -I/usr/include
 ccflags-y += -DCFG_VIRTUAL_OS
 ccflags-y += -DCFG_REMIND_IMPLEMENT
 endif
@@ -496,20 +496,20 @@ endif
 ifeq ($(CFG_SUPPORT_WIFI_SYSDVT), 1)
 ccflags-y += -I$(src)/include/dvt
 endif
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/performance/include/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/performance/include
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/emi/$(MTK_PLATFORM)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/emi/submodule
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/include/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/power_throttling/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/include
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/power_throttling
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common
-ccflags-y += -I$(srctree)/drivers/devfreq/
+ccflags-y += -I$(srctree)/drivers/devfreq
 ccflags-y += -I$(srctree)/net
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/connfem/include/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/connfem/include
 
 ifneq ($(CONFIG_MTK_MDDP_SUPPORT),)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mddp/include/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/mddp/include
 ccflags-y += -DCFG_MTK_MDDP_SUPPORT=1
 else
 ccflags-y += -DCFG_MTK_MDDP_SUPPORT=0

@@ -102,7 +102,7 @@ extern MTK_WCN_BOOL g_pwr_off_flag;
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
-#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 
 typedef enum _ENUM_WMTDRV_TYPE_T {
 	WMTDRV_TYPE_BT = 0,
@@ -362,7 +362,7 @@ extern wmt_wlan_is_wifi_drv_own_cb mtk_wcn_wlan_is_wifi_drv_own;
 /*subsystem function ctrl APIs*/
 extern MTK_WCN_BOOL mtk_wcn_wmt_assert(ENUM_WMTDRV_TYPE_T type, UINT32 reason);
 
-#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 
 extern MTK_WCN_BOOL mtk_wcn_wmt_func_off(ENUM_WMTDRV_TYPE_T type);
 
@@ -424,7 +424,7 @@ extern VOID mtk_wcn_wmt_func_ctrl_for_plat(UINT32 on, ENUM_WMTDRV_TYPE_T type);
 
 extern INT32 mtk_wcn_wmt_system_state_reset(VOID);
 extern MTK_WCN_BOOL mtk_wcn_set_connsys_power_off_flag(MTK_WCN_BOOL value);
-#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 extern VOID mtk_wcn_wmt_exp_init(VOID);
 extern VOID mtk_wcn_wmt_exp_deinit(VOID);
 #endif
