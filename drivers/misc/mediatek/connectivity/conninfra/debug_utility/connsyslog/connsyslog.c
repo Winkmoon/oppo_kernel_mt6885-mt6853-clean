@@ -13,15 +13,12 @@
 #include <linux/ratelimit.h>
 #include <linux/alarmtimer.h>
 #include <linux/suspend.h>
-#include <linux/rtc.h>
 
-#include "osal.h"
 #include "connsyslog.h"
 #include "connsyslog_emi.h"
+#include "connsyslog_hw_config.h"
 #include "ring.h"
 #include "ring_emi.h"
-#include "fw_log_wifi_mcu.h"
-#include "fw_log_bt_mcu.h"
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -62,7 +59,6 @@ struct connlog_offset {
 	unsigned int emi_write;
 	unsigned int emi_buf;
 	unsigned int emi_guard_pattern_offset;
-	unsigned int emi_idx;
 };
 
 struct connlog_buffer {
@@ -86,17 +82,15 @@ struct connlog_dev {
 	spinlock_t irq_lock;
 	unsigned long flags;
 	unsigned int irq_counter;
-	OSAL_TIMER workTimer;
+	struct timer_list workTimer;
 	struct work_struct logDataWorker;
 	void *log_data;
 	char log_line[LOG_MAX_LEN];
 	struct connlog_event_cb callback;
-	unsigned int block_num;
-	unsigned int block_type[CONN_EMI_BLOCK_TYPE_END];
 };
 
 static char *type_to_title[CONN_DEBUG_TYPE_END] = {
-	"wifi_fw", "bt_fw", "wifi_mcu", "bt_mcu"
+	"wifi_fw", "bt_fw"
 };
 
 static struct connlog_dev* gLogDev[CONN_DEBUG_TYPE_END];
@@ -112,17 +106,12 @@ static phys_addr_t gPhyEmiBase;
 /* alarm timer for suspend */
 struct connlog_alarm gLogAlarm;
 
-const struct connlog_emi_config* g_connsyslog_config = NULL;
-
-static struct connlog_offset emi_offset_table[CONN_DEBUG_TYPE_END];
-static bool is_mcu_block_existed = false;
-
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
 static void connlog_do_schedule_work(struct connlog_dev* handler, bool count);
-static void work_timer_handler(timer_handler_arg data);
+static void work_timer_handler(unsigned long data);
 static void connlog_event_set(struct connlog_dev* handler);
 static struct connlog_dev* connlog_subsys_init(
 	int conn_type,
@@ -139,13 +128,10 @@ static void connlog_dump_emi(struct connlog_dev* handler, int offset, int size);
 ********************************************************************************
 */
 
-const struct connlog_emi_config* get_connsyslog_platform_config(int conn_type)
+struct connlog_emi_config* __weak get_connsyslog_platform_config(int conn_type)
 {
-	if (conn_type < 0 || conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_err("Incorrect type: %d\n", conn_type);
-		return NULL;
-	}
-	return &g_connsyslog_config[conn_type];
+	pr_err("Miss platform ops !!\n");
+	return NULL;
 }
 
 void *connlog_cache_allocate(size_t size)
@@ -203,7 +189,7 @@ static void connlog_set_ring_ready(struct connlog_dev* handler)
 	const char ready_str[] = "EMIFWLOG";
 
 	memcpy_toio(handler->virAddrEmiLogBase + CONNLOG_READY_PATTERN_BASE,
-			ready_str, CONNLOG_READY_PATTERN_BASE_SIZE);
+		    ready_str, CONNLOG_READY_PATTERN_BASE_SIZE);
 }
 
 static unsigned int connlog_cal_log_size(unsigned int emi_size)
@@ -224,60 +210,42 @@ static unsigned int connlog_cal_log_size(unsigned int emi_size)
 static int connlog_emi_init(struct connlog_dev* handler, phys_addr_t emiaddr, unsigned int emi_size)
 {
 	int conn_type = handler->conn_type;
+	unsigned int cal_log_size = connlog_cal_log_size(
+		emi_size - CONNLOG_EMI_BASE_OFFSET - CONNLOG_EMI_END_PATTERN_SIZE);
 
-	if (conn_type < 0 || conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, conn_type);
-		return -1;
-	}
-
-	if (emiaddr == 0) {
+	if (emiaddr == 0 || cal_log_size == 0) {
 		pr_err("[%s] consys emi memory address invalid emi_addr=%p emi_size=%d\n",
 			type_to_title[conn_type], emiaddr, emi_size);
 		return -1;
 	}
+	pr_info("input size = %d cal_size = %d\n", emi_size, cal_log_size);
 
 	handler->phyAddrEmiBase = emiaddr;
 	handler->emi_size = emi_size;
-
-	if (conn_type == CONN_DEBUG_TYPE_BT_MCU) {
-		handler->virAddrEmiLogBase = gLogDev[CONN_DEBUG_TYPE_BT]->virAddrEmiLogBase;
-	} else if (conn_type == CONN_DEBUG_TYPE_WIFI_MCU) {
-		handler->virAddrEmiLogBase = gLogDev[CONN_DEBUG_TYPE_WIFI]->virAddrEmiLogBase;
-	} else {
-		handler->virAddrEmiLogBase = ioremap(handler->phyAddrEmiBase, emi_size);
-	}
-
-	handler->log_offset.emi_base_offset = emi_offset_table[conn_type].emi_base_offset; // start of each subheader
-	handler->log_offset.emi_size = emi_offset_table[conn_type].emi_size;
-	handler->log_offset.emi_read = emi_offset_table[conn_type].emi_read;
-	handler->log_offset.emi_write = emi_offset_table[conn_type].emi_write;
-	handler->log_offset.emi_buf = emi_offset_table[conn_type].emi_buf;
-	handler->log_offset.emi_guard_pattern_offset =
-		emi_offset_table[conn_type].emi_guard_pattern_offset;
-	handler->log_offset.emi_idx = emi_offset_table[conn_type].emi_idx;
+	handler->virAddrEmiLogBase = ioremap_nocache(handler->phyAddrEmiBase, emi_size);
+	handler->log_offset.emi_base_offset = CONNLOG_EMI_BASE_OFFSET;
+	handler->log_offset.emi_size = cal_log_size;
+	handler->log_offset.emi_read = CONNLOG_EMI_READ;
+	handler->log_offset.emi_write = CONNLOG_EMI_WRITE;
+	handler->log_offset.emi_buf = CONNLOG_EMI_BUF;
+	handler->log_offset.emi_guard_pattern_offset = handler->log_offset.emi_buf + handler->log_offset.emi_size;
 
 	if (handler->virAddrEmiLogBase) {
-		pr_info("[%s] EMI mapping OK virtual(0x%p) (0x%x) physical(0x%x) size=%d\n",
+		pr_info("[%s] EMI mapping OK virtual(0x%p) physical(0x%x) size=%d\n",
 			type_to_title[conn_type],
-			handler->virAddrEmiLogBase,
 			handler->virAddrEmiLogBase,
 			(unsigned int)handler->phyAddrEmiBase,
 			handler->emi_size);
-
-		if (conn_type == CONN_DEBUG_TYPE_WIFI || conn_type == CONN_DEBUG_TYPE_BT) {
-			memset_io(handler->virAddrEmiLogBase, 0xff, handler->emi_size);
-			/* Set state to resume initially */
-			EMI_WRITE32(handler->virAddrEmiLogBase + 32, 1);
-		}
-
-		/* Clean control block as 0; subheader */
-		memset_io(handler->virAddrEmiLogBase + handler->log_offset.emi_read, 0x0, CONNLOG_EMI_32_BYTE_ALIGNED);
-		/* Setup header */
-		EMI_WRITE32(handler->virAddrEmiLogBase + (handler->log_offset.emi_idx * 8), handler->log_offset.emi_base_offset);
-		EMI_WRITE32(handler->virAddrEmiLogBase + (handler->log_offset.emi_idx * 8) + 4, handler->log_offset.emi_size);
-
+		/* Clean it  */
+		memset_io(handler->virAddrEmiLogBase, 0xff, handler->emi_size);
+		/* Clean control block as 0 */
+		memset_io(handler->virAddrEmiLogBase + CONNLOG_EMI_BASE_OFFSET, 0x0, CONNLOG_EMI_32_BYTE_ALIGNED);
+		/* Setup henader */
+		EMI_WRITE32(handler->virAddrEmiLogBase + 0, handler->log_offset.emi_base_offset);
+		EMI_WRITE32(handler->virAddrEmiLogBase + 4, handler->log_offset.emi_size);
 		/* Setup end pattern */
-		memcpy_toio(handler->virAddrEmiLogBase + handler->log_offset.emi_guard_pattern_offset,
+		memcpy_toio(
+			handler->virAddrEmiLogBase + handler->log_offset.emi_guard_pattern_offset,
 			CONNLOG_EMI_END_PATTERN, CONNLOG_EMI_END_PATTERN_SIZE);
 	} else {
 		pr_err("[%s] EMI mapping fail\n", type_to_title[conn_type]);
@@ -299,14 +267,12 @@ static int connlog_emi_init(struct connlog_dev* handler, phys_addr_t emiaddr, un
 *****************************************************************************/
 static void connlog_emi_deinit(struct connlog_dev* handler)
 {
-	if (handler->virAddrEmiLogBase)
-		iounmap(handler->virAddrEmiLogBase);
+	iounmap(handler->virAddrEmiLogBase);
 }
 
 static int connlog_buffer_init(struct connlog_dev* handler)
 {
 	void *pBuffer = NULL;
-	unsigned int cache_size = 0;
 
 	/* Init ring emi */
 	ring_emi_init(
@@ -318,19 +284,17 @@ static int connlog_buffer_init(struct connlog_dev* handler)
 
 	/* init ring cache */
 	/* TODO: use emi size. Need confirm */
-	cache_size = handler->log_offset.emi_size * 2;
-	pBuffer = connlog_cache_allocate(cache_size);
-
+	pBuffer = connlog_cache_allocate(handler->emi_size);
 	if (pBuffer == NULL) {
 		pr_info("[%s] allocate cache fail.", __func__);
 		return -ENOMEM;
 	}
 
 	handler->log_buffer.cache_base = pBuffer;
-	memset(handler->log_buffer.cache_base, 0, cache_size);
+	memset(handler->log_buffer.cache_base, 0, handler->emi_size);
 	ring_init(
 		handler->log_buffer.cache_base,
-		cache_size,
+		handler->log_offset.emi_size,
 		0,
 		0,
 		&handler->log_buffer.ring_cache);
@@ -341,13 +305,6 @@ static int connlog_buffer_init(struct connlog_dev* handler)
 static int connlog_ring_buffer_init(struct connlog_dev* handler)
 {
 	void *pBuffer = NULL;
-	unsigned int cache_size = 0;
-
-	if (handler->conn_type < 0 || handler->conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s invalid conn_type %d\n", __func__, handler->conn_type);
-		return -1;
-	}
-
 	if (!handler->virAddrEmiLogBase) {
 		pr_err("[%s] consys emi memory address phyAddrEmiBase invalid\n",
 			type_to_title[handler->conn_type]);
@@ -355,24 +312,13 @@ static int connlog_ring_buffer_init(struct connlog_dev* handler)
 	}
 	connlog_buffer_init(handler);
 	/* TODO: use emi size. Need confirm */
-	cache_size = handler->log_offset.emi_size * 2;
-	pBuffer = connlog_cache_allocate(cache_size);
-
+	pBuffer = connlog_cache_allocate(handler->emi_size);
 	if (pBuffer == NULL) {
-		pr_notice("[%s] allocate ring buffer fail\n", __func__);
+		pr_info("[%s] allocate ring buffer fail.", __func__);
 		return -ENOMEM;
 	}
 	handler->log_data = pBuffer;
-
-	if (is_mcu_block_existed) {
-		// Make sure mcu ring buffer also init before
-		// setting ring ready flag in emi header
-		if (handler->conn_type >= CONN_DEBUG_TYPE_WIFI_MCU)
-			connlog_set_ring_ready(handler);
-	} else {
-		connlog_set_ring_ready(handler);
-	}
-
+	connlog_set_ring_ready(handler);
 	return 0;
 }
 
@@ -409,13 +355,9 @@ static void connlog_ring_buffer_deinit(struct connlog_dev* handler)
 * RETURNS
 *  void
 *****************************************************************************/
-static void work_timer_handler(timer_handler_arg arg)
+static void work_timer_handler(unsigned long data)
 {
-	unsigned long data;
-	struct connlog_dev* handler;
-
-	GET_HANDLER_DATA(arg, data);
-	handler = (struct connlog_dev*)data;
+	struct connlog_dev* handler = (struct connlog_dev*)data;
 	connlog_do_schedule_work(handler, false);
 }
 
@@ -439,10 +381,7 @@ void connsys_log_dump_buf(const char *title, const char *buf, ssize_t sz)
 	i = 0;
 	line[LOG_LINE_SIZE-1] = 0;
 	while (sz--) {
-		if (snprintf(line + i*3, 3, "%02x", *buf) < 0) {
-			pr_notice("%s snprint failed\n", __func__);
-			return;
-		}
+		snprintf(line + i*3, 3, "%02x", *buf);
 		line[i*3 + 2] = ' ';
 
 		if (IS_VISIBLE_CHAR(*buf))
@@ -480,8 +419,7 @@ void connlog_dump_emi(struct connlog_dev* handler, int offset, int size)
 {
 	char title[100];
 	memset(title, 0, 100);
-	if (sprintf(title, "%s(%p)", "emi", handler->virAddrEmiLogBase + offset) < 0)
-		pr_notice("%s snprintf failed\n", __func__);
+	sprintf(title, "%s(%p)", "emi", handler->virAddrEmiLogBase + offset);
 	connsys_log_dump_buf(title, handler->virAddrEmiLogBase + offset, size);
 }
 
@@ -500,11 +438,6 @@ static bool connlog_ring_emi_check(struct connlog_dev* handler)
 	struct ring_emi *ring_emi = &handler->log_buffer.ring_emi;
 	char line[CONNLOG_EMI_END_PATTERN_SIZE + 1];
 
-	if (handler->conn_type < 0 || handler->conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, handler->conn_type);
-		return false;
-	}
-
 	memcpy_fromio(
 		line,
 		handler->virAddrEmiLogBase + handler->log_offset.emi_guard_pattern_offset,
@@ -513,8 +446,8 @@ static bool connlog_ring_emi_check(struct connlog_dev* handler)
 
 	/* Check ring_emi buffer memory. Dump EMI data if it is corruption. */
 	if (EMI_READ32(ring_emi->read) > handler->log_offset.emi_size ||
-		EMI_READ32(ring_emi->write) > handler->log_offset.emi_size ||
-		strncmp(line, CONNLOG_EMI_END_PATTERN, CONNLOG_EMI_END_PATTERN_SIZE) != 0) {
+	    EMI_READ32(ring_emi->write) > handler->log_offset.emi_size ||
+	    strncmp(line, CONNLOG_EMI_END_PATTERN, CONNLOG_EMI_END_PATTERN_SIZE) != 0) {
 		pr_err("[connlog] %s out of bound or guard pattern overwrited. Read(pos=%p)=[0x%x] write(pos=%p)=[0x%x] size=[0x%x]\n",
 			type_to_title[handler->conn_type],
 			ring_emi->read, EMI_READ32(ring_emi->read),
@@ -552,13 +485,8 @@ static void connlog_ring_emi_to_cache(struct connlog_dev* handler)
 	unsigned int cache_max_size = 0;
 #ifndef DEBUG_LOG_ON
 	static DEFINE_RATELIMIT_STATE(_rs, 10 * HZ, 1);
-
-	ratelimit_set_flags(&_rs, RATELIMIT_MSG_ON_RELEASE);
+	static DEFINE_RATELIMIT_STATE(_rs2, HZ, 1);
 #endif
-	if (handler->conn_type < 0 || handler->conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, handler->conn_type);
-		return;
-	}
 
 	if (RING_FULL(ring_cache)) {
 	#ifndef DEBUG_LOG_ON
@@ -598,6 +526,12 @@ static void connlog_ring_emi_to_cache(struct connlog_dev* handler)
 			ring_dump(__func__, &handler->log_buffer.ring_cache);
 			ring_dump_segment(__func__, &ring_cache_seg);
 #endif
+		#ifndef DEBUG_LOG_ON
+			if (__ratelimit(&_rs2))
+		#endif
+				pr_info("%s: ring_emi_seg.sz=%d, ring_cache_pt=%p, ring_cache_seg.sz=%d\n",
+					type_to_title[handler->conn_type], ring_emi_seg.sz, ring_cache_seg.ring_pt,
+					ring_cache_seg.sz);
 			memcpy_fromio(ring_cache_seg.ring_pt, ring_emi_seg.ring_emi_pt + ring_cache_seg.data_pos,
 				ring_cache_seg.sz);
 			emi_buf_size -= ring_cache_seg.sz;
@@ -632,11 +566,6 @@ static void connlog_fw_log_parser(struct connlog_dev* handler, ssize_t sz)
 	char* log_line = handler->log_line;
 	const char* buf = handler->log_data;
 	int conn_type = handler->conn_type;
-
-	if (conn_type < 0 || conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, conn_type);
-		return;
-	}
 
 	while (sz > LOG_HEAD_LENG) {
 		if (*buf == log_head[0]) {
@@ -684,11 +613,6 @@ static void connlog_ring_print(struct connlog_dev* handler)
 	struct ring_emi *ring_emi = &handler->log_buffer.ring_emi;
 	int conn_type = handler->conn_type;
 
-	if (conn_type < 0 || conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, conn_type);
-		return;
-	}
-
 	if (RING_EMI_EMPTY(ring_emi) || !ring_emi_read_all_prepare(&ring_emi_seg, ring_emi)) {
 		pr_err("type(%s) no data, possibly taken by concurrent reader.\n", type_to_title[conn_type]);
 		return;
@@ -725,48 +649,25 @@ static void connlog_ring_print(struct connlog_dev* handler)
 *****************************************************************************/
 static void connlog_log_data_handler(struct work_struct *work)
 {
-	unsigned int i = 0;
-	unsigned int conn_type_block;
 	struct connlog_dev* handler =
 		container_of(work, struct connlog_dev, logDataWorker);
 #ifndef DEBUG_LOG_ON
 	static DEFINE_RATELIMIT_STATE(_rs, 10 * HZ, 1);
 	static DEFINE_RATELIMIT_STATE(_rs2, 2 * HZ, 1);
-
-	ratelimit_set_flags(&_rs, RATELIMIT_MSG_ON_RELEASE);
-	ratelimit_set_flags(&_rs2, RATELIMIT_MSG_ON_RELEASE);
 #endif
 
-	if (handler == NULL) {
-		pr_notice("%s handler is NULL\n", __func__);
-		return;
-	}
-
-	if (handler->conn_type < 0 || handler->conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s handler->conn_type %d is invalid\n", __func__, handler->conn_type);
-		return;
-	}
-
-	for (i = 0; i < handler->block_num; i++) {
-		conn_type_block = handler->block_type[i];
-		if (conn_type_block < 0 || conn_type_block >= CONN_DEBUG_TYPE_END) {
-			pr_notice("%s conn_type %d is invalid\n", __func__, conn_type_block);
-			return;
-		}
-
-		if (!RING_EMI_EMPTY(&gLogDev[conn_type_block]->log_buffer.ring_emi)) {
-			if (atomic_read(&g_log_mode) == LOG_TO_FILE)
-				connlog_ring_emi_to_cache(gLogDev[conn_type_block]);
-			else
-				connlog_ring_print(gLogDev[conn_type_block]);
-			connlog_event_set(gLogDev[conn_type_block]);
-		} else {
-	#ifndef DEBUG_LOG_ON
-			if (__ratelimit(&_rs))
-	#endif
-				pr_info("[connlog] %s emi ring is empty!\n",
-					type_to_title[conn_type_block]);
-		}
+	if (!RING_EMI_EMPTY(&handler->log_buffer.ring_emi)) {
+		if (atomic_read(&g_log_mode) == LOG_TO_FILE)
+			connlog_ring_emi_to_cache(handler);
+		else
+			connlog_ring_print(handler);
+		connlog_event_set(handler);
+	} else {
+#ifndef DEBUG_LOG_ON
+		if (__ratelimit(&_rs))
+#endif
+			pr_info("[connlog] %s emi ring is empty!\n",
+				type_to_title[handler->conn_type]);
 	}
 
 #ifndef DEBUG_LOG_ON
@@ -778,7 +679,7 @@ static void connlog_log_data_handler(struct work_struct *work)
 
 	spin_lock_irqsave(&handler->irq_lock, handler->flags);
 	if (handler->eirqOn)
-		osal_timer_modify(&handler->workTimer, 1);
+		mod_timer(&handler->workTimer, jiffies + 1);
 	spin_unlock_irqrestore(&handler->irq_lock, handler->flags);
 }
 
@@ -808,7 +709,6 @@ static void connlog_do_schedule_work(struct connlog_dev* handler, bool count)
 unsigned int connsys_log_get_buf_size(int conn_type)
 {
 	struct connlog_dev* handler;
-
 	if (conn_type < CONN_DEBUG_TYPE_WIFI || conn_type >= CONN_DEBUG_TYPE_END)
 		return 0;
 
@@ -842,16 +742,8 @@ static ssize_t connlog_read_internal(
 	struct ring *ring = &handler->log_buffer.ring_cache;
 	unsigned int size = 0;
 	int retval;
-#ifndef DEBUG_LOG_ON
 	static DEFINE_RATELIMIT_STATE(_rs, 10 * HZ, 1);
-
-	ratelimit_set_flags(&_rs, RATELIMIT_MSG_ON_RELEASE);
-#endif
-
-	if (conn_type < 0 || conn_type >= CONN_DEBUG_TYPE_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, conn_type);
-		return 0;
-	}
+	static DEFINE_RATELIMIT_STATE(_rs2, 1 * HZ, 1);
 
 	size = count < RING_SIZE(ring) ? count : RING_SIZE(ring);
 	if (RING_EMPTY(ring) || !ring_read_prepare(size, &ring_seg, ring)) {
@@ -864,9 +756,7 @@ static ssize_t connlog_read_internal(
 		if (to_user) {
 			retval = copy_to_user(userbuf + written, ring_seg.ring_pt, ring_seg.sz);
 			if (retval) {
-		#ifndef DEBUG_LOG_ON
 				if (__ratelimit(&_rs))
-		#endif
 					pr_err("copy to user buffer failed, ret:%d\n", retval);
 				goto done;
 			}
@@ -875,6 +765,11 @@ static ssize_t connlog_read_internal(
 		}
 		cache_buf_size -= ring_seg.sz;
 		written += ring_seg.sz;
+		if (__ratelimit(&_rs2))
+			pr_info("[%s] copy %d to %s\n",
+				type_to_title[conn_type],
+				ring_seg.sz,
+				(to_user? "user space" : "buffer"));
 	}
 done:
 	return written;
@@ -1051,8 +946,6 @@ static struct connlog_dev* connlog_subsys_init(
 	if (!handler)
 		return 0;
 
-	memset(handler, 0, sizeof(struct connlog_dev));
-
 	handler->conn_type = conn_type;
 	if (connlog_emi_init(handler, emi_addr, emi_size)) {
 		pr_err("[%s] EMI init failed\n", type_to_title[conn_type]);
@@ -1064,13 +957,9 @@ static struct connlog_dev* connlog_subsys_init(
 		goto error_exit;
 	}
 
-	// Only WiFi or BT (primary) handler can receive irq
-	if (handler->conn_type >= CONN_DEBUG_PRIMARY_END)
-		return handler;
-
-	handler->workTimer.timeroutHandlerData = (unsigned long)handler;
-	handler->workTimer.timeoutHandler = work_timer_handler;
-	osal_timer_create(&handler->workTimer);
+	init_timer(&handler->workTimer);
+	handler->workTimer.data = (unsigned long)handler;
+	handler->workTimer.function = work_timer_handler;
 	handler->irq_counter = 0;
 	spin_lock_init(&handler->irq_lock);
 	INIT_WORK(&handler->logDataWorker, connlog_log_data_handler);
@@ -1085,101 +974,11 @@ error_exit:
 
 }
 
-static int construct_emi_offset_table(int conn_type, const struct connlog_emi_config* emi_config)
-{
-	int i = 0;
-
-#define INIT_EMI_OFFSET_TABLE(index, base, size, read_offset, write_offset, buf_offset, guard_offset, idx) \
-	emi_offset_table[index].emi_base_offset = base; \
-	emi_offset_table[index].emi_size = size; \
-	emi_offset_table[index].emi_read = read_offset; \
-	emi_offset_table[index].emi_write = write_offset; \
-	emi_offset_table[index].emi_buf = buf_offset; \
-	emi_offset_table[index].emi_guard_pattern_offset = guard_offset; \
-	emi_offset_table[index].emi_idx = idx;
-
-	if (conn_type < 0 || conn_type >= CONN_DEBUG_PRIMARY_END) {
-		pr_notice("%s conn_type %d is invalid\n", __func__, conn_type);
-		return -1;
-	}
-
-	if (is_mcu_block_existed) {
-		unsigned int primary_base = 0;
-		unsigned int primary_size = 0;
-		unsigned int conn_type_mcu = 0;
-		unsigned int mcu_base = 0;
-		unsigned int mcu_size = 0;
-
-		primary_base = CONNLOG_EMI_BASE_OFFSET; // after header size
-		primary_size = emi_config->block[CONN_EMI_BLOCK_PRIMARY].size;
-
-		conn_type_mcu = emi_config->block[CONN_EMI_BLOCK_MCU].type;
-		mcu_base = primary_base + CONNLOG_EMI_SUB_HEADER
-						+ emi_config->block[CONN_EMI_BLOCK_PRIMARY].size
-						+ CONNLOG_CONTROL_RING_BUFFER_RESERVE_SIZE;
-		mcu_size = emi_config->block[CONN_EMI_BLOCK_MCU].size;
-
-		INIT_EMI_OFFSET_TABLE(
-			conn_type,
-			primary_base,
-			primary_size,
-			primary_base + 0,
-			primary_base + 4,
-			primary_base + 32,
-			primary_base + CONNLOG_EMI_SUB_HEADER + primary_size,
-			CONN_EMI_BLOCK_PRIMARY);
-
-		INIT_EMI_OFFSET_TABLE(
-			conn_type_mcu,
-			mcu_base,
-			mcu_size,
-			mcu_base + 0,
-			mcu_base + 4,
-			mcu_base + 32,
-			mcu_base + CONNLOG_EMI_SUB_HEADER + mcu_size,
-			CONN_EMI_BLOCK_MCU);
-	} else {
-		unsigned int cal_log_size = connlog_cal_log_size(
-		emi_config->log_size - CONNLOG_EMI_BASE_OFFSET - CONNLOG_EMI_END_PATTERN_SIZE);
-
-		if (cal_log_size == 0) {
-			pr_notice("[%s] consys emi memory invalid emi_size=%d\n",
-				type_to_title[conn_type], emi_config->log_size);
-			return -1;
-		}
-
-		INIT_EMI_OFFSET_TABLE(
-			conn_type,
-			CONNLOG_EMI_BASE_OFFSET,
-			cal_log_size,
-			CONNLOG_EMI_READ,
-			CONNLOG_EMI_WRITE,
-			CONNLOG_EMI_BUF,
-			CONNLOG_EMI_BUF + cal_log_size,
-			0);
-	}
-
-	while (i < 2) {
-		pr_info("[%s] emi_offset_table[%d]: emi_base=[0x%x], emi_size=[0x%x], emi_read=[0x%x], emi_write=[0x%x], emi_buf=[0x%x], emi_guard=[0x%x], emi_idx=[%d]\n",
-		__func__, conn_type + (i * 2),
-		emi_offset_table[conn_type + (i * 2)].emi_base_offset,
-		emi_offset_table[conn_type + (i * 2)].emi_size,
-		emi_offset_table[conn_type + (i * 2)].emi_read,
-		emi_offset_table[conn_type + (i * 2)].emi_write,
-		emi_offset_table[conn_type + (i * 2)].emi_buf,
-		emi_offset_table[conn_type + (i * 2)].emi_guard_pattern_offset,
-		emi_offset_table[conn_type + (i * 2)].emi_idx);
-		i++;
-	}
-
-	return 0;
-}
-
 /*****************************************************************************
 * FUNCTION
 *  connsys_log_init
 * DESCRIPTION
-*
+* 
 * PARAMETERS
 *  void
 * RETURNS
@@ -1188,13 +987,11 @@ static int construct_emi_offset_table(int conn_type, const struct connlog_emi_co
 int connsys_log_init(int conn_type)
 {
 	struct connlog_dev* handler;
-	struct connlog_dev* mcu_handler;
 	phys_addr_t log_start_addr;
 	unsigned int log_size;
-	const struct connlog_emi_config* emi_config;
-	int ret = 0;
+	struct connlog_emi_config* emi_config;
 
-	if (conn_type < CONN_DEBUG_TYPE_WIFI || conn_type >= CONN_DEBUG_PRIMARY_END) {
+	if (conn_type < CONN_DEBUG_TYPE_WIFI || conn_type >= CONN_DEBUG_TYPE_END) {
 		pr_err("[%s] invalid type:%d\n", __func__, conn_type);
 		return -1;
 	}
@@ -1214,58 +1011,13 @@ int connsys_log_init(int conn_type)
 	pr_info("%s init. Base=%p size=%d\n",
 		type_to_title[conn_type], log_start_addr, log_size);
 
-	// Check if emi layout contains mcu block
-	is_mcu_block_existed = (emi_config->block[CONN_EMI_BLOCK_MCU].size != 0) ? true : false;
-
-	// Construct emi offset table
-	ret = construct_emi_offset_table(conn_type, emi_config);
-
-	if (ret != 0) {
-		return ret;
-	}
-
 	handler = connlog_subsys_init(conn_type, log_start_addr, log_size);
-
 	if (handler == NULL) {
-		pr_notice("[%s] Fail to construct %s handler\n", __func__, type_to_title[conn_type]);
+		pr_err("[%s][%s] failed.\n", __func__, type_to_title[conn_type]);
 		return -1;
 	}
 
-	if (is_mcu_block_existed) {
-		// Contain both itself and mcu block
-		handler->block_num = 2;
-		handler->block_type[CONN_EMI_BLOCK_PRIMARY] = conn_type;
-		handler->block_type[CONN_EMI_BLOCK_MCU]
-			= emi_config->block[CONN_EMI_BLOCK_MCU].type;
-	} else {
-		// Contain no mcu block, only contain itself
-		handler->block_num = 1;
-		handler->block_type[CONN_EMI_BLOCK_PRIMARY] = conn_type;
-	}
-
 	gLogDev[conn_type] = handler;
-
-	if (is_mcu_block_existed) {
-		// Construct mcu handler
-		unsigned int conn_type_mcu = emi_config->block[CONN_EMI_BLOCK_MCU].type;
-		mcu_handler = connlog_subsys_init(conn_type_mcu, log_start_addr, log_size);
-
-		if (mcu_handler == NULL) {
-			pr_notice("[%s] Fail to construct %s handler\n", __func__, type_to_title[conn_type_mcu]);
-			return -1;
-		} else {
-			pr_info("[%s] Construct %s handler success\n", __func__, type_to_title[conn_type_mcu]);
-		}
-
-		gLogDev[conn_type_mcu] = mcu_handler;
-
-		if (conn_type == CONN_DEBUG_TYPE_WIFI) {
-			fw_log_wifi_mcu_register_event_cb();
-		} else if (conn_type == CONN_DEBUG_TYPE_BT) {
-			fw_log_bt_mcu_register_event_cb();
-		}
-	}
-
 	return 0;
 }
 EXPORT_SYMBOL(connsys_log_init);
@@ -1332,11 +1084,11 @@ EXPORT_SYMBOL(connsys_log_deinit);
 void connsys_log_get_utc_time(
 	unsigned int *second, unsigned int *usecond)
 {
-	struct timespec64 time;
+	struct timeval time;
 
-	osal_gettimeofday(&time);
+	do_gettimeofday(&time);
 	*second = (unsigned int)time.tv_sec; /* UTC time second unit */
-	*usecond = (unsigned int)time.tv_nsec / NSEC_PER_USEC; /* UTC time microsecond unit */
+	*usecond = (unsigned int)time.tv_usec; /* UTC time microsecond unit */
 }
 EXPORT_SYMBOL(connsys_log_get_utc_time);
 
@@ -1374,7 +1126,7 @@ static enum alarmtimer_restart connlog_alarm_timer_handler(struct alarm *alarm,
 	int i;
 
 	connsys_log_get_utc_time(&tsec, &tusec);
-	rtc_time64_to_tm(tsec, &tm);
+	rtc_time_to_tm(tsec, &tm);
 	pr_info("[connsys_log_alarm] alarm_timer triggered [%d-%02d-%02d %02d:%02d:%02d.%09u]"
 			, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday
 			, tm.tm_hour, tm.tm_min, tm.tm_sec, tusec);
@@ -1503,11 +1255,10 @@ EXPORT_SYMBOL(connsys_dedicated_log_path_blank_state_changed);
 *  for APSOC platform
 * PARAMETERS
 *  emiaddr      [IN]        EMI physical base address
-*  config       [IN]        platform config
 * RETURNS
 *  void
 ****************************************************************************/
-int connsys_dedicated_log_path_apsoc_init(phys_addr_t emiaddr, const struct connlog_emi_config* config)
+int connsys_dedicated_log_path_apsoc_init(phys_addr_t emiaddr)
 {
 	if (gPhyEmiBase != 0 || emiaddr == 0) {
 		pr_err("Connsys log double init or invalid parameter(emiaddr=%p)\n", emiaddr);
@@ -1517,20 +1268,6 @@ int connsys_dedicated_log_path_apsoc_init(phys_addr_t emiaddr, const struct conn
 	gPhyEmiBase = emiaddr;
 
 	connlog_alarm_init();
-
-	// Set up connsyslog config
-	if (config == NULL) {
-		pr_err("Fail to set up connsys log platform config\n");
-		return -1;
-	} else {
-		g_connsyslog_config = config;
-	}
-
-#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
-	fw_log_wifi_mcu_init();
-	fw_log_bt_mcu_init();
-#endif
-
 	return 0;
 }
 EXPORT_SYMBOL(connsys_dedicated_log_path_apsoc_init);
@@ -1560,48 +1297,6 @@ int connsys_dedicated_log_path_apsoc_deinit(void)
 	}
 
 	gPhyEmiBase = 0;
-	g_connsyslog_config = NULL;
-
-#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
-	fw_log_wifi_mcu_deinit();
-	fw_log_bt_mcu_deinit();
-#endif
-
 	return 0;
 }
 EXPORT_SYMBOL(connsys_dedicated_log_path_apsoc_deinit);
-
-/*****************************************************************************
-* FUNCTION
-*  connsys_dedicated_log_set_ap_state
-* DESCRIPTION
-*  set ap state
-* PARAMETERS
-*  int state  0:suspend, 1:resume
-* RETURNS
-*  0: successfuly, negative if error
-*****************************************************************************/
-int connsys_dedicated_log_set_ap_state(int state)
-{
-	int i;
-	struct connlog_dev* handler;
-
-	if (state < 0 || state > 1) {
-		pr_notice("%s state = %d is unexpected\n", __func__, state);
-		return -1;
-	}
-
-	for (i = CONN_DEBUG_TYPE_WIFI; i < CONN_DEBUG_PRIMARY_END; i++) {
-		handler = gLogDev[i];
-
-		if (handler == NULL || handler->virAddrEmiLogBase == 0) {
-			pr_notice("[%s][%s] didn't init\n", __func__, type_to_title[i]);
-			continue;
-		}
-
-		EMI_WRITE32(handler->virAddrEmiLogBase + 32, state);
-	}
-
-	return 0;
-}
-

@@ -30,14 +30,8 @@
 */
 /* platform dependent */
 #include "plat_def.h"
-#include <linux/io.h>
 
 #define KBYTE (1024*sizeof(char))
-
-#ifndef GENMASK
-#define GENMASK(h, l) \
-	(((~0UL) - (1UL << (l)) + 1) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
-#endif
 
 #define GET_BIT_MASK(value, mask) ((value) & (mask))
 #define SET_BIT_MASK(pdest, value, mask) (*(pdest) = (GET_BIT_MASK(*(pdest), ~(mask)) | GET_BIT_MASK(value, mask)))
@@ -54,10 +48,7 @@
 }
 #define CONSYS_REG_READ(addr) (*((volatile unsigned int *)(addr)))
 #define CONSYS_REG_READ_BIT(addr, BITVAL) (*((volatile unsigned int *)(addr)) & ((unsigned int)(BITVAL)))
-#define CONSYS_REG_WRITE(addr, data) do {\
-	writel(data, (volatile void *)addr); \
-	mb(); \
-} while (0)
+#define CONSYS_REG_WRITE(addr, data)  mt_reg_sync_writel(data, addr)
 #define CONSYS_REG_WRITE_RANGE(reg, data, end, begin) {\
 	unsigned int val = CONSYS_REG_READ(reg); \
 	SET_BIT_RANGE(&val, data, end, begin); \
@@ -102,13 +93,6 @@
 		polling_count++; \
 	} \
 }
-
-#define ADDR(Field) (Field##_ADDR)
-#define MASK(Field) (Field##_MASK)
-#define SHFT(Field) (Field##_SHFT)
-
-#define CONSYS_REG_WRITE_HW_ENTRY(Field, Value) \
-	CONSYS_REG_WRITE_MASK(ADDR(Field), (Value << SHFT(Field)), MASK(Field))
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S

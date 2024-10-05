@@ -75,9 +75,6 @@
  */
 #define PS_SYNC_WITH_FW		BIT(31)
 
-#define NIC_BSS_MCC_MODE_TOKEN_CNT	64
-#define NIC_BSS_LOW_RATE_TOKEN_CNT	256
-
 /*******************************************************************************
  *                             D A T A   T Y P E S
  *******************************************************************************
@@ -115,11 +112,12 @@ enum ENUM_INT_EVENT_T {
 };
 
 enum ENUM_IE_UPD_METHOD {
-	IE_UPD_METHOD_UPDATE_RANDOM = 0,
-	IE_UPD_METHOD_UPDATE_ALL = 1,
-	IE_UPD_METHOD_DELETE_ALL = 2,
-	IE_UPD_METHOD_UPDATE_PROBE_RSP = 3,
-	IE_UPD_METHOD_UNSOL_PROBE_RSP = 4,
+	IE_UPD_METHOD_UPDATE_RANDOM,
+	IE_UPD_METHOD_UPDATE_ALL,
+	IE_UPD_METHOD_DELETE_ALL,
+#if CFG_SUPPORT_P2P_GO_OFFLOAD_PROBE_RSP
+	IE_UPD_METHOD_UPDATE_PROBE_RSP,
+#endif
 };
 
 enum ENUM_SER_STATE {
@@ -158,26 +156,6 @@ enum ENUM_REMOVE_BY_MSDU_TPYE {
 	ENUM_REMOVE_BY_MSDU_TPYE_NUM
 };
 
-/* fos_change begin */
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-enum WAKEUP_TYPE {
-	ABNORMAL_INT,
-	SOFTWARE_INT,
-	TX_INT,
-	RX_DATA_INT,
-	RX_EVENT_INT,
-	RX_MGMT_INT,
-	RX_OTHERS_INT,
-	WAKEUP_TYPE_NUM
-};
-struct WAKEUP_STATISTIC {
-	uint16_t u2Count;
-	uint16_t u2TimePerHundred;
-	OS_SYSTIME rStartTime;
-};
-#endif /* fos_change end */
-
-
 /* Test mode bitmask of disable flag */
 #define TEST_MODE_DISABLE_ONLINE_SCAN  BIT(0)
 #define TEST_MODE_DISABLE_ROAMING      BIT(1)
@@ -199,9 +177,6 @@ struct WAKEUP_STATISTIC {
  *                            P U B L I C   D A T A
  *******************************************************************************
  */
-#if (CFG_TWT_SMART_STA == 1)
-extern struct _TWT_SMART_STA_T g_TwtSmartStaCtrl;
-#endif
 
 /*******************************************************************************
  *                           P R I V A T E   D A T A
@@ -291,54 +266,25 @@ uint32_t nicMediaJoinFailure(IN struct ADAPTER *prAdapter,
 			     IN uint8_t ucBssIndex, IN uint32_t rStatus);
 
 /* Utility function for channel number conversion */
-uint32_t nicChannelNum2Freq(uint32_t u4ChannelNum, enum ENUM_BAND eBand);
+uint32_t nicChannelNum2Freq(IN uint32_t u4ChannelNum);
 
 uint32_t nicFreq2ChannelNum(IN uint32_t u4FreqInKHz);
 
-uint32_t nicGetS1Freq(IN enum ENUM_BAND eBand,
-			IN uint8_t ucPrimaryChannel,
-			IN uint8_t ucBandwidth);
-
-/* Utility to get S1, S2 */
-uint8_t nicGetS1(IN enum ENUM_BAND eBand,
-		IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-uint8_t nicGetS2(IN enum ENUM_BAND eBand,
-		IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth,
-		IN uint8_t ucS1);
 uint8_t nicGetVhtS1(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-uint8_t nicGetHtS1(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-uint8_t nicGetHe6gS1(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-uint8_t nicGetHe6gS2(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth,
-		IN uint8_t ucS1);
-#endif
+		    IN uint8_t ucBandwidth);
 
 /* firmware command wrapper */
 /* NETWORK (WIFISYS) */
 uint32_t nicActivateNetwork(IN struct ADAPTER *prAdapter,
 			    IN uint8_t ucBssIndex);
-uint32_t nicActivateNetworkEx(IN struct ADAPTER *prAdapter,
-			    IN uint8_t ucBssIndex,
-			    IN uint8_t fgReset40mBw);
+
 uint32_t nicDeactivateNetwork(IN struct ADAPTER *prAdapter,
-				IN uint8_t ucBssIndex);
-uint32_t nicDeactivateNetworkEx(IN struct ADAPTER *prAdapter,
-				IN uint8_t ucBssIndex,
-				IN uint8_t fgClearStaRec);
+			      IN uint8_t ucBssIndex);
 
 /* BSS-INFO */
 uint32_t nicUpdateBss(IN struct ADAPTER *prAdapter,
-			IN uint8_t ucBssIndex);
-uint32_t nicUpdateBssEx(IN struct ADAPTER *prAdapter,
-			IN uint8_t ucBssIndex,
-			IN uint8_t fgClearStaRec);
+		      IN uint8_t ucBssIndex);
+
 /* BSS-INFO Indication (PM) */
 uint32_t nicPmIndicateBssCreated(IN struct ADAPTER
 				 *prAdapter, IN uint8_t ucBssIndex);
@@ -368,10 +314,6 @@ uint32_t nicRlmUpdateSRParams(IN struct ADAPTER *prAdapter,
 
 uint32_t nicSetAutoTxPower(IN struct ADAPTER *prAdapter,
 			   IN struct CMD_AUTO_POWER_PARAM *prAutoPwrParam);
-
-/* RXD relative */
-void nicRxdChNumTranslate(
-	IN enum ENUM_BAND eBand, IN uint8_t *pucHwChannelNum);
 
 /*----------------------------------------------------------------------------*/
 /* Calibration Control                                                        */
@@ -535,15 +477,5 @@ u_int8_t nicSerIsRxStop(IN struct ADAPTER *prAdapter);
 void nicSerReInitBeaconFrame(IN struct ADAPTER *prAdapter);
 void nicSerInit(IN struct ADAPTER *prAdapter);
 void nicSerDeInit(IN struct ADAPTER *prAdapter);
-
-/* fos_change begin */
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-void nicUpdateWakeupStatistics(IN struct ADAPTER *prAdapter,
-	IN enum WAKEUP_TYPE intType);
-#endif /* fos_change end */
-
-#if CFG_SUPPORT_DROP_INVALID_MSDUINFO
-void nicDumpMsduInfo(IN struct MSDU_INFO *prMsduInfo);
-#endif /* CFG_SUPPORT_DROP_INVALID_MSDUINFO */
 
 #endif /* _NIC_H */

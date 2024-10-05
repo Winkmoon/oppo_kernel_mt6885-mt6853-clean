@@ -32,58 +32,42 @@ endif
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/
     subdir-ccflags-y += -I$(srctree)/drivers/clk/mediatek/
     subdir-ccflags-y += -I$(srctree)/drivers/pinctrl/mediatek/
-    subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/power_throttling/
 
     # Do Nothing, move to standalone repo
     MODULE_NAME := connadp
     obj-y += $(MODULE_NAME).o
     $(MODULE_NAME)-objs += common/connectivity_build_in_adapter.o
     $(MODULE_NAME)-objs += common/wmt_build_in_adapter.o
-    $(MODULE_NAME)-objs += power_throttling/adapter.o
-    $(MODULE_NAME)-objs += power_throttling/core.o
-    $(MODULE_NAME)-objs += power_throttling/test.o
 
 
     # Do build-in for Makefile checking
     # export CONFIG_WLAN_DRV_BUILD_IN=y
 
+    ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
+        $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])
+        MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
+        $(info MTK_PLATFORM_ID is [${MTK_PLATFORM_ID}])
 
-        ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
-            export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
-            PATH_TO_WMT_DRV      = conninfra/
-            export CONNAC_VER=2_0
-        else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893"))
+        ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC3_0
-            PATH_TO_WMT_DRV      = conninfra/
-            export CONNAC_VER=2_0
-        else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6833"))
-            export MTK_COMBO_CHIP=SOC2_1X1
-            PATH_TO_WMT_DRV      = common/
-            export CONNAC_VER=1_0
+            PATH_TO_WMT_DRV      = conninfra
         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6779" "CONSYS_6873" "CONSYS_6853"))
-            export MTK_COMBO_CHIP=SOC2_2X2
-            PATH_TO_WMT_DRV      = common/
-            export CONNAC_VER=1_0
+            export MTK_COMBO_CHIP=CONNAC2X2
+            PATH_TO_WMT_DRV      = common
         else
             export MTK_COMBO_CHIP=CONNAC
-            export CONNAC_VER=1_0
+            PATH_TO_WMT_DRV      = common
         endif
 
-        export MTK_PLATFORM_WMT=$(MTK_PLATFORM)
-        export TARGET_BOARD_PLATFORM_WMT=$(patsubst CONSYS_%,mt%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
+        PATH_TO_WLAN_CHR_DRV = wlan/adaptor
+        PATH_TO_WLAN_DRV     = wlan/core/gen4m
 
-        PATH_TO_WLAN_CHR_DRV = wlan/adaptor/
-        PATH_TO_WLAN_DRV     = wlan/core/gen4m/
-        
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
         export WLAN_CHIP_ID=$(MTK_PLATFORM_ID)
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
-        
-        obj-y += $(PATH_TO_WMT_DRV)
-        obj-y += $(PATH_TO_WLAN_CHR_DRV)
-        obj-y += $(PATH_TO_WLAN_DRV)
+        export ADAPTOR_OPTS=$(MTK_COMBO_CHIP)
 
         WLAN_IP_SET_1_SERIES := 6765 6761 6885 6893
         WLAN_IP_SET_2_SERIES := 3967 6785
@@ -102,46 +86,42 @@ endif
         # Do build-in for xxx.c checking
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
-        
+        obj-y += $(PATH_TO_WMT_DRV)/
+        obj-y += $(PATH_TO_WLAN_CHR_DRV)/
+        obj-y += $(PATH_TO_WLAN_DRV)/
 
         # For BT built-in mode start @{
-         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885"))
-             PATH_TO_BT_DRV       = bt/mt66xx/btif/
-             export _MTK_BT_CHIP=MTK_CONSYS_MT6885
-         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6893"))
-             PATH_TO_BT_DRV       = bt/mt66xx/btif/
-             export _MTK_BT_CHIP=MTK_CONSYS_MT6893
-         else ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6877"))
-             PATH_TO_BT_DRV       = bt/mt66xx/btif/
-             export _MTK_BT_CHIP=MTK_CONSYS_MT6877
-         else
-             PATH_TO_BT_DRV       = bt/mt66xx/wmt/
-         endif
-         obj-y += $(PATH_TO_BT_DRV)
+            PATH_TO_BT_DRV       = bt
+            export _MTK_BT_CHIP=MTK_CONSYS_MT6885
+        obj-y += $(PATH_TO_BT_DRV)/
         # @} For BT built-in mode end
 
 
         # For FM built-in mode start @{
-        #for fmradio options
-         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893" "CONSYS_6877"))
-             export CFG_BUILD_CONNAC2=true
-         else
-             export CFG_BUILD_CONNAC2=false
-         endif
-         FM_6631_CHIPS := 6758 6759 6771 6775 6765 6761 3967 6797 6768 6785 8168
-         FM_6635_CHIPS := 6779 6885 6873 6893 6877
-         ifneq ($(filter $(FM_6631_CHIPS), $(MTK_PLATFORM_ID)),)
-             FM_CHIP := mt6631
-         else ifneq ($(filter $(FM_6635_CHIPS), $(MTK_PLATFORM_ID)),)
-             FM_CHIP := mt6635
-         endif
-         export CFG_FM_CHIP_ID=$(MTK_PLATFORM_ID)
-         export CFG_FM_CHIP=$(FM_CHIP)
-         obj-y += fmradio/
+        # for fmradio options
+        ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893"))
+            export CFG_BUILD_CONNAC2=true
+        else
+            export CFG_BUILD_CONNAC2=false
+        endif
+        FM_6631_CHIPS := 6758 6759 6771 6775 6765 6761 3967 6797 6768 6785 8168
+        FM_6635_CHIPS := 6779 6885 6873 6893
+        ifneq ($(filter $(FM_6631_CHIPS), $(MTK_PLATFORM_ID)),)
+            FM_CHIP := mt6631
+        else ifneq ($(filter $(FM_6635_CHIPS), $(MTK_PLATFORM_ID)),)
+            FM_CHIP := mt6635
+        endif
+        export CFG_FM_CHIP_ID=$(MTK_PLATFORM_ID)
+        export CFG_FM_CHIP=$(FM_CHIP)
+        obj-y += fmradio/
         # @} For FM built-in mode end
 
         # For GPS built-in mode start @{
         obj-y += gps/
+        # @} For GPS built-in mode end
+
+    endif
+
 # Otherwise we were called directly from the command line;
 # invoke the kernel build system.
 else

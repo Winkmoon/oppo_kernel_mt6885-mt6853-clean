@@ -38,8 +38,6 @@ int file_read_thread(void *arg)
 			data->filename);
 		release_firmware(fw);
 		data->ret = -FM_EPATCH;
-
-		complete(&data->comp);
 		return 0;
 	}
 	WCN_DBG(FM_NTC | CHIP, "load firmware \"%s\" ok\n", data->filename);
@@ -73,7 +71,6 @@ int file_read_thread(void *arg)
 signed int fm_file_read(const signed char *filename, unsigned char *dst, signed int len, signed int position)
 {
 	struct fm_file_read_data *data = &g_file_read_data;
-	struct task_struct *k;
 
 	init_completion(&data->comp);
 
@@ -83,13 +80,10 @@ signed int fm_file_read(const signed char *filename, unsigned char *dst, signed 
 	data->position = position;
 	data->ret = 0;
 
-	k = kthread_run(file_read_thread, (void *)data, "file_read_thread");
-	if (IS_ERR(k)) {
-		WCN_DBG(FM_NTC | CHIP, "%s error ret:%ld\n", __func__,
-			PTR_ERR(k));
-		data->ret = -FM_EPATCH;
-	} else
-		wait_for_completion(&data->comp);
+	kthread_run(file_read_thread, (void *)data, "file_read_thread");
+
+	wait_for_completion(&data->comp);
+
 	return data->ret;
 }
 

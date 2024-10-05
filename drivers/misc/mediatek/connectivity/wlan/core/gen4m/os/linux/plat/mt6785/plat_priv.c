@@ -11,29 +11,13 @@
 
 #include <cpu_ctrl.h>
 #include <topo_ctrl.h>
-#include "gl_os.h"
-
-#if KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
-#include <linux/soc/mediatek/mtk-pm-qos.h>
-#include <helio-dvfsrc-opp.h>
-#define pm_qos_add_request(_req, _class, _value) \
-		mtk_pm_qos_add_request(_req, _class, _value)
-#define pm_qos_update_request(_req, _value) \
-		mtk_pm_qos_update_request(_req, _value)
-#define pm_qos_remove_request(_req) \
-		mtk_pm_qos_remove_request(_req)
-#define pm_qos_request mtk_pm_qos_request
-#define PM_QOS_DDR_OPP MTK_PM_QOS_DDR_OPP
-#define ppm_limit_data cpu_ctrl_data
-#else
 #ifdef WLAN_FORCE_DDR_OPP
 #include <linux/pm_qos.h>
-#endif
 #endif
 
 #include "precomp.h"
 
-#ifdef CONFIG_WLAN_MTK_EMI
+#ifdef CONFIG_MTK_EMI
 #include <mt_emi_api.h>
 #define WIFI_EMI_MEM_OFFSET    0x140000
 #define WIFI_EMI_MEM_SIZE      0x130000
@@ -91,9 +75,27 @@ int32_t kalBoostCpu(IN struct ADAPTER *prAdapter,
 	return 0;
 }
 
-#ifdef CONFIG_WLAN_MTK_EMI
+#ifdef CONFIG_MTK_EMI
 void kalSetEmiMpuProtection(phys_addr_t emiPhyBase, bool enable)
 {
+	struct emi_region_info_t region_info;
+
+	DBGLOG(INIT, INFO, "emiPhyBase: 0x%x, enable: %d\n",
+			emiPhyBase, enable);
+
+	/*set MPU for EMI share Memory */
+	region_info.start = emiPhyBase + WIFI_EMI_MEM_OFFSET;
+	region_info.end = emiPhyBase + WIFI_EMI_MEM_OFFSET
+		+ WIFI_EMI_MEM_SIZE - 1;
+	region_info.region = 26;
+
+	SET_ACCESS_PERMISSION(region_info.apc, enable ? LOCK : UNLOCK,
+			      FORBIDDEN, FORBIDDEN,
+			      FORBIDDEN, FORBIDDEN, FORBIDDEN, FORBIDDEN,
+			      FORBIDDEN, FORBIDDEN, FORBIDDEN, FORBIDDEN,
+			      FORBIDDEN, FORBIDDEN, FORBIDDEN, NO_PROTECTION,
+			      FORBIDDEN, enable ? FORBIDDEN : NO_PROTECTION);
+	emi_mpu_set_protection(&region_info);
 }
 
 void kalSetDrvEmiMpuProtection(phys_addr_t emiPhyBase, uint32_t offset,
@@ -117,7 +119,7 @@ void kalSetDrvEmiMpuProtection(phys_addr_t emiPhyBase, uint32_t offset,
 }
 #endif
 
-int32_t kalGetFwFlavorByPlat(uint8_t *flavor)
+int32_t kalGetFwFlavor(uint8_t *flavor)
 {
 	*flavor = 'a';
 	return 1;

@@ -37,12 +37,8 @@
 *                                 M A C R O S
 ********************************************************************************
 */
-/* Disable pre-cal check on FPGA because FPGA may not have BT and WIFI together */
-#if defined(CONFIG_FPGA_EARLY_PORTING)
-#define ENABLE_PRE_CAL_BLOCKING_CHECK	0
-#else
+
 #define ENABLE_PRE_CAL_BLOCKING_CHECK	1
-#endif
 #define CHIP_RST_REASON_MAX_LEN			128
 
 /*******************************************************************************
@@ -116,15 +112,6 @@ struct conninfra_ctx {
 	/*struct spinlock infra_lock;*/
 	spinlock_t infra_lock;
 
-	/* For power dump function
-	 * 1. Enable power status dump when conninfra power on
-	 * 	- Power status dump includes: sleep count and power state
-	 * 2. Reset and clear power status when platform suspend
-	 * 3. Dump power status when platform resume
-	 */
-	spinlock_t power_dump_lock;
-	atomic_t power_dump_enable;
-
 	OSAL_SLEEPABLE_LOCK core_lock;
 
 	/* chip reset */
@@ -168,11 +155,7 @@ typedef enum {
 	CONNINFRA_OPID_PRE_CAL_CHECK		= 12,
 	CONNINFRA_OPID_FORCE_CONNINFRA_WAKUP	= 13,
 	CONNINFRA_OPID_FORCE_CONNINFRA_SLEEP	= 14,
-	CONNINFRA_OPID_DUMP_POWER_STATE		= 15,
-	CONNINFRA_OPID_RAISE_VOLTAGE		= 16,
-	CONNINFRA_OPID_RFSPI_UPDATE_BITS	= 17,
-	CONNINFRA_OPID_PRE_CAL_BACKUP		= 18,
-	CONNINFRA_OPID_PRE_CAL_CLEAN_DATA	= 19,
+	CONNINFRA_OPID_DUMP_POWER_STATE			= 15,
 	CONNINFRA_OPID_MAX
 } conninfra_core_opid;
 
@@ -221,8 +204,6 @@ int conninfra_core_pre_cal_start(void);
 #if ENABLE_PRE_CAL_BLOCKING_CHECK
 void conninfra_core_pre_cal_blocking(void);
 #endif
-int conninfra_core_pre_cal_backup(unsigned int offset, unsigned int size);
-int conninfra_core_pre_cal_clean_data(void);
 
 /*       reg control      */
 /* NOTE: NOT thread-safe
@@ -231,10 +212,7 @@ int conninfra_core_pre_cal_clean_data(void);
  */
 int conninfra_core_reg_readable(void);
 int conninfra_core_reg_readable_no_lock(void);
-int conninfra_core_reg_readable_for_coredump(void);
 int conninfra_core_is_bus_hang(void);
-/* Special usage: for sspm ipi timeout dump */
-int conninfra_core_conn_bus_dump(void);
 
 int conninfra_core_is_consys_reg(phys_addr_t addr);
 int conninfra_core_reg_read(unsigned long address, unsigned int *value, unsigned int mask);
@@ -247,7 +225,6 @@ void conninfra_core_clock_fail_dump_cb(void);
 
 int conninfra_core_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 int conninfra_core_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
-int conninfra_core_spi_update_bits(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask);
 
 int conninfra_core_adie_top_ck_en_on(enum consys_adie_ctl_type type);
 int conninfra_core_adie_top_ck_en_off(enum consys_adie_ctl_type type);
@@ -257,8 +234,7 @@ int conninfra_core_force_conninfra_sleep(void);
 
 int conninfra_core_spi_clock_switch(enum connsys_spi_speed_type type);
 
-int conninfra_core_reset_power_state(void);
-int conninfra_core_dump_power_state(char *buf, unsigned int size);
+int conninfra_core_dump_power_state(void);
 int conninfra_core_pmic_event_cb(unsigned int, unsigned int);
 
 void conninfra_core_config_setup(void);

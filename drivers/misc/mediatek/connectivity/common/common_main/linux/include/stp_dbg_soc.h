@@ -22,6 +22,7 @@
 
 INT32 stp_dbg_soc_core_dump(INT32 dump_sink);
 PUINT8 stp_dbg_soc_id_to_task(UINT32 id);
+UINT32 stp_dbg_soc_read_debug_crs(ENUM_CONNSYS_DEBUG_CR cr);
 INT32 stp_dbg_soc_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd);
 
 #endif /* end of _STP_DEBUG_SOC_H_ */

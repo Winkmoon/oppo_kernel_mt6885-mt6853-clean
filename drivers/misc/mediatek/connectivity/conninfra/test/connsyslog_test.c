@@ -72,7 +72,7 @@ static void connlog_test_event_handler(void)
 
 int connlog_test_init(void)
 {
-	phys_addr_t emi_addr = 0;
+	unsigned int emi_addr = 0;
 	unsigned int emi_size = 0;
 	int ret;
 
@@ -82,7 +82,7 @@ int connlog_test_init(void)
 		return 1;
 	}
 
-	ret = connsys_dedicated_log_path_apsoc_init(emi_addr, NULL);
+	ret = connsys_dedicated_log_path_apsoc_init(emi_addr);
 	if (ret) {
 		pr_err("connsys_dedicated_log_path_apsoc_init should fail\n");
 		return 2;

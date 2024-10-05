@@ -140,7 +140,7 @@ void connacConstructFirmwarePrio(struct GLUE_INFO *prGlueInfo,
 	uint8_t aucFlavor[2] = {0};
 	int ret = 0;
 
-	kalGetFwFlavor(prGlueInfo->prAdapter, &aucFlavor[0]);
+	kalGetFwFlavor(&aucFlavor[0]);
 	for (ucIdx = 0; apucConnacFwName[ucIdx]; ucIdx++) {
 		if ((*pucNameIdx + 3) >= ucMaxNameIdx) {
 			/* the table is not large enough */
@@ -239,7 +239,7 @@ struct BUS_INFO connac_bus_info = {
 	.tx_ring1_data_idx = 0, /* no used */
 	.fw_own_clear_addr = WPDMA_INT_STA,
 	.fw_own_clear_bit = WPDMA_FW_CLR_OWN_INT,
-	.max_static_map_addr = 0x00040000,
+	.max_static_map_addr = 0x000E0000,
 	.fgCheckDriverOwnInt = FALSE,
 	.u4DmaMask = 36,
 
@@ -260,7 +260,7 @@ struct BUS_INFO connac_bus_info = {
 	.hifRst = NULL,
 	.initPcieInt = NULL,
 	.DmaShdlInit = asicPcieDmaShdlInit,
-	.setDmaIntMask = asicPdmaIntMaskConfig,
+	.setPdmaIntMask = asicPdmaIntMaskConfig,
 #endif /* _HIF_PCIE || _HIF_AXI */
 #if defined(_HIF_USB)
 	.u4UdmaWlCfg_0_Addr = CONNAC_UDMA_WLCFG_0,
@@ -320,7 +320,6 @@ struct CHIP_DBG_OPS connac_debug_ops = {
 	.showCsrInfo = halShowHostCsrInfo,
 	.showDmaschInfo = halShowDmaschInfo,
 	.dumpMacInfo = haldumpMacInfo,
-	.dumpTxdInfo = halDumpTxdInfo,
 #else
 	.showPdmaInfo = NULL,
 	.showPseInfo = NULL,
@@ -329,15 +328,11 @@ struct CHIP_DBG_OPS connac_debug_ops = {
 	.showCsrInfo = NULL,
 	.showDmaschInfo = NULL,
 	.dumpMacInfo = NULL,
-	.dumpTxdInfo = NULL,
 #endif
 	.showWtblInfo = NULL,
 	.showHifInfo = NULL,
 	.printHifDbgInfo = halPrintHifDbgInfo,
 	.show_stat_info = halShowStatInfo,
-#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
-	.get_rx_rate_info = connac_get_rx_rate_info,
-#endif
 };
 
 struct mt66xx_chip_info mt66xx_chip_info_connac = {

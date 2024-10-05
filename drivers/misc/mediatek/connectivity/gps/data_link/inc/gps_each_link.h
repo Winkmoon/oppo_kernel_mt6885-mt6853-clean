@@ -1,8 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 - 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
 #ifndef _GPS_EACH_LINK_H
 #define _GPS_EACH_LINK_H
 
@@ -94,7 +101,6 @@ enum gps_each_link_mutex {
 	GPS_DL_MTX_NUM
 };
 
-bool gps_each_link_mutex_take2(enum gps_dl_link_id_enum link_id, enum gps_each_link_mutex mtx_id);
 void gps_each_link_mutex_take(enum gps_dl_link_id_enum link_id, enum gps_each_link_mutex mtx_id);
 void gps_each_link_mutex_give(enum gps_dl_link_id_enum link_id, enum gps_each_link_mutex mtx_id);
 
@@ -163,8 +169,9 @@ void gps_each_link_context_init(enum gps_dl_link_id_enum link_id);
 void gps_each_link_context_clear(enum gps_dl_link_id_enum link_id);
 void gps_each_link_inc_session_id(enum gps_dl_link_id_enum link_id);
 int gps_each_link_get_session_id(enum gps_dl_link_id_enum link_id);
-int gps_dl_link_get_clock_flag(void);
 
+int gps_each_link_open(enum gps_dl_link_id_enum link_id);
+void gps_dl_link_open_ack(enum gps_dl_link_id_enum link_id, bool okay, bool hw_resume);
 
 enum gps_each_link_lock_reason {
 	GDL_LOCK_FOR_OPEN,
@@ -180,25 +187,28 @@ void gps_each_link_set_state(enum gps_dl_link_id_enum link_id, enum gps_each_lin
 bool gps_each_link_change_state_from(enum gps_dl_link_id_enum link_id,
 	enum gps_each_link_state_enum from, enum gps_each_link_state_enum to);
 
+
 int gps_each_link_take_big_lock(enum gps_dl_link_id_enum link_id,
 	enum gps_each_link_lock_reason reason);
 int gps_each_link_give_big_lock(enum gps_dl_link_id_enum link_id);
 
+int gps_each_link_reset(enum gps_dl_link_id_enum link_id);
+void gps_dl_link_reset_ack(enum gps_dl_link_id_enum link_id);
+void gps_dl_link_on_post_conn_reset(enum gps_dl_link_id_enum link_id);
+bool gps_dl_link_try_to_clear_both_resetting_status(void);
+int gps_dl_link_get_clock_flag(void);
 
 enum gps_each_link_close_or_suspend_op {
 	GDL_CLOSE,
 	GDL_DPSTOP,
 	GDL_CLKEXT,
 };
-
-int gps_each_link_open(enum gps_dl_link_id_enum link_id);
 int gps_each_link_enter_dsleep(enum gps_dl_link_id_enum link_id);
 int gps_each_link_leave_dsleep(enum gps_dl_link_id_enum link_id);
 int gps_each_link_hw_suspend(enum gps_dl_link_id_enum link_id, bool need_clk_ext);
-int gps_each_link_hw_resume(enum gps_dl_link_id_enum link_id, bool revert_for_mvcd);
+int gps_each_link_hw_resume(enum gps_dl_link_id_enum link_id);
 int gps_each_link_close(enum gps_dl_link_id_enum link_id);
 int gps_each_link_check(enum gps_dl_link_id_enum link_id, int reason);
-int gps_each_link_reset(enum gps_dl_link_id_enum link_id);
 
 int gps_each_link_write(enum gps_dl_link_id_enum link_id,
 	unsigned char *buf, unsigned int len);
@@ -238,10 +248,9 @@ enum gps_dl_link_event_id {
 	GPS_DL_EVT_LINK_ENTER_DPSLEEP,
 	GPS_DL_EVT_LINK_LEAVE_DPSLEEP,
 	GPS_DL_EVT_LINK_ENTER_DPSTOP,
-	GPS_DL_EVT_LINK_LEAVE_DPSTOP,/*purpose: is changing status to wake(then to working)*/
+	GPS_DL_EVT_LINK_LEAVE_DPSTOP,
 	GPS_DL_EVT_LINK_UPDATE_SETTING,
 	GPS_DL_EVT_LINK_PRINT_DATA_STATUS,
-	GPS_DL_EVT_LINK_LEAVE_DPSTOP2,/*purpose: is revert deep stop mode to wait for mvcd(reset done)*/
 	GPS_DL_LINK_EVT_NUM,
 };
 
@@ -250,20 +259,6 @@ void gps_dl_link_event_send(enum gps_dl_link_event_id evt,
 
 void gps_dl_link_event_proc(enum gps_dl_link_event_id evt,
 	enum gps_dl_link_id_enum link_id);
-
-void gps_dl_link_irq_set(enum gps_dl_link_id_enum link_id, bool enable);
-void gps_dl_link_pre_off_setting(enum gps_dl_link_id_enum link_id);
-void gps_dl_link_post_enter_dpstop_setting(enum gps_dl_link_id_enum link_id);
-void gps_dl_link_pre_leave_dpstop_setting(enum gps_dl_link_id_enum link_id);
-
-void gps_dl_link_open_wait(enum gps_dl_link_id_enum link_id, long *p_sigval);
-void gps_dl_link_open_ack(enum gps_dl_link_id_enum link_id, bool okay, bool hw_resume);
-
-void gps_dl_link_close_wait(enum gps_dl_link_id_enum link_id, long *p_sigval);
-void gps_dl_link_close_ack(enum gps_dl_link_id_enum link_id, bool hw_suspend);
-
-void gps_dl_link_reset_ack(enum gps_dl_link_id_enum link_id);
-void gps_dl_link_on_post_conn_reset(enum gps_dl_link_id_enum link_id);
 
 #endif /* _GPS_EACH_LINK_H */
 

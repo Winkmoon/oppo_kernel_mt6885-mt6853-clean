@@ -108,9 +108,7 @@
 #define WLAN_AKM_SUITE_FT_PSK           0x000FAC04
 #endif
 /* Add AKM SUITE for OWE since kernel haven't defined it. */
-#if KERNEL_VERSION(5, 7, 0) > CFG80211_VERSION_CODE
 #define WLAN_AKM_SUITE_OWE              0x000FAC12
-#endif
 #if CFG_SUPPORT_802_11W
 #define RSN_AKM_SUITE_802_1X_SHA256     0x05AC0F00
 #define RSN_AKM_SUITE_PSK_SHA256        0x06AC0F00
@@ -156,11 +154,10 @@
 #define CIPHER_FLAG_NONE                        0x00000000
 #define CIPHER_FLAG_WEP40                       0x00000001	/* BIT 1 */
 #define CIPHER_FLAG_TKIP                        0x00000002	/* BIT 2 */
-#define CIPHER_FLAG_CCMP                        0x00000008	/* BIT 4 */
-#define CIPHER_FLAG_WEP104                      0x00000010	/* BIT 5 */
-#define CIPHER_FLAG_WEP128                      0x00000020	/* BIT 6 */
-#define CIPHER_FLAG_GCMP128                     0x00000040      /* BIT 7 */
-#define CIPHER_FLAG_GCMP256                     0x00000080	/* BIT 8 */
+#define CIPHER_FLAG_CCMP                        0x00000008	/* BIT 3 */
+#define CIPHER_FLAG_WEP104                      0x00000010	/* BIT 4 */
+#define CIPHER_FLAG_WEP128                      0x00000020	/* BIT 5 */
+#define CIPHER_FLAG_GCMP256                     0x00000080	/* BIT 7 */
 
 #define TKIP_COUNTERMEASURE_SEC                 60	/* seconds */
 
@@ -169,15 +166,6 @@
 #define RSN_AUTH_MFP_OPTIONAL   1	/* MFP optional */
 #define RSN_AUTH_MFP_REQUIRED   2	/* MFP required */
 #endif
-
-/* Extended RSN Capabilities */
-/* bits 0-3: Field length (n-1) */
-#define WLAN_RSNX_CAPAB_PROTECTED_TWT 4
-#define WLAN_RSNX_CAPAB_SAE_H2E 5
-#define WLAN_RSNX_CAPAB_SAE_PK 6
-#define WLAN_RSNX_CAPAB_SECURE_LTF 8
-#define WLAN_RSNX_CAPAB_SECURE_RTT 9
-#define WLAN_RSNX_CAPAB_PROT_RANGE_NEG 10
 
 /*******************************************************************************
  *                             D A T A   T Y P E S
@@ -205,7 +193,6 @@
  */
 #define RSN_IE(fp)              ((struct RSN_INFO_ELEM *) fp)
 #define WPA_IE(fp)              ((struct WPA_INFO_ELEM *) fp)
-#define RSNX_IE(fp)             ((struct RSNX_INFO_ELEM *) fp)
 
 #define ELEM_MAX_LEN_ASSOC_RSP_WSC_IE          (32 - ELEM_HDR_LEN)
 #define ELEM_MAX_LEN_TIMEOUT_IE          (5)
@@ -248,12 +235,6 @@ void rsnGenerateWPAIE(IN struct ADAPTER *prAdapter,
 		      IN struct MSDU_INFO *prMsduInfo);
 
 void rsnGenerateRSNIE(IN struct ADAPTER *prAdapter,
-		      IN struct MSDU_INFO *prMsduInfo);
-
-void rsnGenerateRSNXIE(IN struct ADAPTER *prAdapter,
-		      IN struct MSDU_INFO *prMsduInfo);
-
-void rsnGenerateOWEIE(IN struct ADAPTER *prAdapter,
 		      IN struct MSDU_INFO *prMsduInfo);
 
 u_int8_t
@@ -353,10 +334,6 @@ void rsnGenerateFTIE(IN struct ADAPTER *prAdapter,
 
 u_int8_t rsnIsFtOverTheAir(IN struct ADAPTER *prAdapter,
 			IN uint8_t ucBssIdx, IN uint8_t ucStaRecIdx);
-
-u_int8_t rsnParseRsnxIE(IN struct ADAPTER *prAdapter,
-		       IN struct RSNX_INFO_ELEM *prInfoElem,
-		       OUT struct RSNX_INFO *prRsnxeInfo);
 
 /*******************************************************************************
  *                              F U N C T I O N S

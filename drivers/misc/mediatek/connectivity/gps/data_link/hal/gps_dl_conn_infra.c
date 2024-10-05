@@ -56,7 +56,7 @@ enum GDL_RET_STATUS gps_dl_emi_remap_phy_to_bus_addr(unsigned int phy_addr, unsi
 void gps_dl_emi_remap_calc_and_set(void)
 {
 	enum gps_dl_link_id_enum  i;
-	struct gps_each_link *p_link = NULL;
+	struct gps_each_link *p_link;
 
 	unsigned int min_addr = 0xFFFFFFFF;
 	unsigned int max_addr = 0;
@@ -101,27 +101,9 @@ unsigned int gps_dl_hal_get_conn_infra_ver(void)
 	return g_gps_dl_hal_conn_infra_poll_ok_ver;
 }
 
-unsigned int g_gps_dl_hal_adie_ver;
-
-void gps_dl_hal_set_adie_ver(unsigned int ver)
-{
-	g_gps_dl_hal_adie_ver = ver;
-}
-
-unsigned int gps_dl_hal_get_adie_ver(void)
-{
-	return g_gps_dl_hal_adie_ver;
-}
-
 bool gps_dl_hal_conn_infra_ver_is_mt6885(void)
 {
 	/* is_mt6885 valid after gps_dl_hw_gps_common_on */
 	return (gps_dl_hal_get_conn_infra_ver() == GDL_HW_CONN_INFRA_VER_MT6885);
-}
-
-bool gps_dl_hal_conn_infra_ver_is_mt6893(void)
-{
-	/* is_mt6893 valid after gps_dl_hw_gps_common_on */
-	return (gps_dl_hal_get_conn_infra_ver() == GDL_HW_CONN_INFRA_VER_MT6893);
 }
 

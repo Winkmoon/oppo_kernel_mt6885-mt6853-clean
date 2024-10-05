@@ -292,8 +292,7 @@ static ssize_t bow_ampc_read(IN struct file *filp, IN char __user *buf, IN size_
 
 	DBGLOG(BOW, INFO, "BoW EVENT read.\n");
 
-	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) ||
-		test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag))
+	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) || (prGlueInfo->ulFlag & GLUE_FLAG_HALT))
 		return -EFAULT;
 	/* size check */
 /* if(kfifo_len(prGlueInfo->rBowInfo.prKfifo) >= size) */
@@ -335,8 +334,7 @@ static ssize_t bow_ampc_write(IN struct file *filp, OUT const char __user *buf, 
 	prGlueInfo = (struct GLUE_INFO *) (filp->private_data);
 	ASSERT(prGlueInfo);
 
-	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) ||
-		test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag))
+	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) || (prGlueInfo->ulFlag & GLUE_FLAG_HALT))
 		return -EFAULT;
 
 	if (size > MAX_BUFFER_SIZE)
@@ -389,8 +387,7 @@ static long bow_ampc_ioctl(IN struct file *filp, IN unsigned int cmd, IN OUT uns
 
 	ASSERT(prGlueInfo);
 
-	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) ||
-		test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag))
+	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) || (prGlueInfo->ulFlag & GLUE_FLAG_HALT))
 		return -EFAULT;
 	/* permission check */
 	if (_IOC_DIR(cmd) & _IOC_READ)
@@ -423,8 +420,7 @@ static unsigned int bow_ampc_poll(IN struct file *filp, IN poll_table * wait)
 
 	ASSERT(prGlueInfo);
 
-	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) ||
-		test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag))
+	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) || (prGlueInfo->ulFlag & GLUE_FLAG_HALT))
 		return -EFAULT;
 
 	poll_wait(filp, &prGlueInfo->rBowInfo.outq, wait);
@@ -515,8 +511,7 @@ void kalIndicateBOWEvent(IN struct GLUE_INFO *prGlueInfo, IN struct BT_OVER_WIFI
 	ASSERT(prEvent);
 
 	/* check device */
-	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) ||
-		test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag))
+	if ((prGlueInfo->rBowInfo.fgIsRegistered == FALSE) || (prGlueInfo->ulFlag & GLUE_FLAG_HALT))
 		return;
 #if 0
 	u4AvailSize = GLUE_BOW_KFIFO_DEPTH - kfifo_len(prGlueInfo->rBowInfo.prKfifo);

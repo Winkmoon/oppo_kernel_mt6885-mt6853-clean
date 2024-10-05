@@ -10,7 +10,6 @@
 #include <linux/compiler.h>
 
 #include "connsys_debug_utility.h"
-#include "connsyslog_hw_config.h"
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -41,14 +40,13 @@ void connsys_log_get_utc_time(
 	unsigned int *second, unsigned int *usecond);
 
 /* Global config */
-int connsys_dedicated_log_path_apsoc_init(phys_addr_t emiaddr, const struct connlog_emi_config* config);
+int connsys_dedicated_log_path_apsoc_init(phys_addr_t emiaddr);
 int connsys_dedicated_log_path_apsoc_deinit(void);
 void connsys_dedicated_log_set_log_mode(int mode);
 int connsys_dedicated_log_get_log_mode(void);
 int connsys_dedicated_log_path_alarm_enable(unsigned int sec);
 int connsys_dedicated_log_path_alarm_disable(void);
 int connsys_dedicated_log_path_blank_state_changed(int blank_state);
-int connsys_dedicated_log_set_ap_state(int state);
 
 /* For subsys */
 int connsys_log_init(int conn_type);

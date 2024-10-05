@@ -106,8 +106,6 @@
 
 /* Support AP Selection*/
 #define AIS_BLACKLIST_TIMEOUT               15 /* seconds */
-#define AIS_AUTORN_MIN_INTERVAL		    20
-
 
 /*******************************************************************************
  *                             D A T A   T Y P E S
@@ -200,18 +198,8 @@ struct AIS_BLACKLIST_ITEM {
 	OS_SYSTIME rAddTime;
 	u_int8_t fgDeauthLastTime;
 	u_int8_t fgIsInFWKBlacklist;
-#if CFG_SUPPORT_MBO
-	uint8_t fgDisallowed;
-	uint16_t u2DisallowSec;
-	int32_t i4RssiThreshold;
-#endif
 };
 /* end Support AP Selection */
-
-struct AX_BLACKLIST_ITEM {
-	struct LINK_ENTRY rLinkEntry;
-	uint8_t aucBSSID[MAC_ADDR_LEN];
-};
 
 struct AIS_FSM_INFO {
 	enum ENUM_AIS_STATE ePreviousState;
@@ -247,7 +235,6 @@ struct AIS_FSM_INFO {
 #if CFG_SUPPORT_DETECT_SECURITY_MODE_CHANGE
 	struct TIMER rSecModeChangeTimer;
 #endif
-	struct TIMER rBtmRespTxDoneTimer;
 
 	uint8_t ucSeqNumOfReqMsg;
 	uint8_t ucSeqNumOfChReq;
@@ -294,9 +281,6 @@ struct AIS_FSM_INFO {
 
 	/* Scan target channel when device roaming */
 	uint8_t fgTargetChnlScanIssued;
-
-	struct LINK rAxBlacklist;
-	struct LINK rHeHtcBlacklist;
 };
 
 struct AIS_OFF_CHNL_TX_REQ_INFO {
@@ -317,8 +301,14 @@ enum WNM_AIS_BSS_TRANSITION {
 	BSS_TRANSITION_DISASSOC,
 	BSS_TRANSITION_MAX_NUM
 };
-struct MSG_AIS_BSS_TRANSITION {
+struct MSG_AIS_BSS_TRANSITION_T {
 	struct MSG_HDR rMsgHdr;	/* Must be the first member */
+	uint8_t ucToken;
+	u_int8_t fgNeedResponse;
+	uint8_t ucValidityInterval;
+	enum WNM_AIS_BSS_TRANSITION eTransitionType;
+	uint16_t u2CandListLen;
+	uint8_t *pucCandList;
 	uint8_t ucBssIndex;
 };
 /*******************************************************************************
@@ -598,9 +588,6 @@ void aisFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 void aisFsmRunEventBssTransition(IN struct ADAPTER *prAdapter,
 				IN struct MSG_HDR *prMsgHdr);
 
-void aisFsmBtmRespTxDoneTimeout(
-	IN struct ADAPTER *prAdapter, unsigned long ulParam);
-
 void aisFsmRunEventCancelTxWait(IN struct ADAPTER *prAdapter,
 		IN struct MSG_HDR *prMsgHdr);
 
@@ -618,18 +605,15 @@ void aisRemoveBlackList(struct ADAPTER *prAdapter, struct BSS_DESC *prBssDesc);
 void aisRemoveTimeoutBlacklist(struct ADAPTER *prAdapter);
 struct AIS_BLACKLIST_ITEM *aisQueryBlackList(struct ADAPTER *prAdapter,
 	struct BSS_DESC *prBssDesc);
-void aisBssTmpDisallow(struct ADAPTER *prAdapter, struct BSS_DESC *prBssDesc,
-	uint32_t sec, int32_t rssiThreshold, uint8_t ucBssIndex);
+/* end Support AP Selection */
 
 /* Support 11K */
-#if CFG_SUPPORT_802_11K
-uint32_t aisCollectNeighborAP(struct ADAPTER *prAdapter, uint8_t *pucApBuf,
-			  uint16_t u2ApBufLen, uint8_t ucValidInterval,
-			  uint8_t ucBssIndex);
 void aisResetNeighborApList(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex);
-void aisCheckNeighborApValidity(IN struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex);
+#if CFG_SUPPORT_802_11K
+void aisCollectNeighborAP(struct ADAPTER *prAdapter, uint8_t *pucApBuf,
+			  uint16_t u2ApBufLen, uint8_t ucValidInterval,
+			  uint8_t ucBssIndex);
 #endif
 void aisSendNeighborRequest(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex);
@@ -641,7 +625,6 @@ void aisSendNeighborRequest(struct ADAPTER *prAdapter,
  */
 
 #define AIS_DEFAULT_INDEX (0)
-#define AIS_SECONDARY_INDEX (1)
 
 struct AIS_FSM_INFO *aisGetAisFsmInfo(
 	IN struct ADAPTER *prAdapter,
@@ -651,7 +634,7 @@ struct AIS_SPECIFIC_BSS_INFO *aisGetAisSpecBssInfo(
 	IN struct ADAPTER *prAdapter,
 	IN uint8_t ucBssIndex);
 
-struct BSS_TRANSITION_MGT_PARAM *
+struct BSS_TRANSITION_MGT_PARAM_T *
 	aisGetBTMParam(
 	IN struct ADAPTER *prAdapter,
 	IN uint8_t ucBssIndex);
@@ -770,25 +753,5 @@ struct cfg80211_ft_event_params *
 	aisGetFtEventParam(
 	IN struct ADAPTER *prAdapter,
 	IN uint8_t ucBssIndex);
-
-u_int8_t addAxBlacklist(IN struct ADAPTER *prAdapter,
-	IN uint8_t aucBSSID[],
-	IN uint8_t ucBssIndex,
-	IN uint8_t ucType);
-
-u_int8_t queryAxBlacklist(IN struct ADAPTER *prAdapter,
-	IN uint8_t aucBSSID[],
-	IN uint8_t ucBssIndex,
-	IN uint8_t ucType);
-
-u_int8_t clearAxBlacklist(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex,
-	IN uint8_t ucType);
-
-#if (CFG_SUPPORT_ANDROID_DUAL_STA == 1)
-void aisMultiStaSetQuoteTime(
-	struct ADAPTER *prAdapter,
-	uint8_t fgSetQuoteTime);
-#endif
 
 #endif /* _AIS_FSM_H */

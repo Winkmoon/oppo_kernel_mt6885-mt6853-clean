@@ -1,8 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 - 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
 #ifndef _GPS_DL_HW_API_H
 #define _GPS_DL_HW_API_H
 
@@ -10,8 +17,6 @@
 #include "gps_dl_dma_buf.h"
 #include "gps_dl_hal_api.h"
 #include "gps_dl_hal_type.h"
-#include "gps_dsp_fsm.h"
-#include "gps_dl_hw_dep_api.h"
 
 enum GDL_HW_RET {
 	HW_OKAY,        /* hw CRs access okay */
@@ -27,17 +32,32 @@ enum GDL_HW_RET {
 #define GDL_HW_STATUS_POLL_INTERVAL_USEC	(2*1000) /* 2ms */
 #endif
 
+enum dsp_ctrl_enum {
+	GPS_L1_DSP_ON,
+	GPS_L1_DSP_OFF,
+	GPS_L5_DSP_ON,
+	GPS_L5_DSP_OFF,
+	GPS_L1_DSP_ENTER_DSLEEP,
+	GPS_L1_DSP_EXIT_DSLEEP,
+	GPS_L1_DSP_ENTER_DSTOP,
+	GPS_L1_DSP_EXIT_DSTOP,
+	GPS_L5_DSP_ENTER_DSLEEP,
+	GPS_L5_DSP_EXIT_DSLEEP,
+	GPS_L5_DSP_ENTER_DSTOP,
+	GPS_L5_DSP_EXIT_DSTOP,
+	GPS_L1_DSP_CLEAR_PWR_STAT,
+	GPS_L5_DSP_CLEAR_PWR_STAT,
+	GPS_DSP_CTRL_MAX
+};
 int gps_dl_hw_gps_dsp_ctrl(enum dsp_ctrl_enum ctrl);
 bool gps_dl_hw_gps_dsp_is_off_done(enum gps_dl_link_id_enum link_id);
 void gps_dl_hw_gps_adie_force_off(void);
 void gps_dl_hw_gps_dump_top_rf_cr(void);
-void gps_dl_hw_gps_dump_top_rf_temp_cr(void);
 
 int gps_dl_hw_gps_common_on(void);
 int gps_dl_hw_gps_common_off(void);
 bool gps_dl_hw_gps_force_wakeup_conninfra_top_off(bool enable);
 void gps_dl_hw_gps_sw_request_emi_usage(bool request);
-void gps_dl_hw_gps_sw_request_peri_usage(bool request);
 
 enum GDL_HW_RET gps_dl_hw_get_mcub_info(
 	enum gps_dl_link_id_enum link_id, struct gps_dl_hal_mcub_info *p);
@@ -52,10 +72,7 @@ enum GDL_RET_STATUS gps_dl_hw_mcub_dsp_read_request(
 
 void gps_dl_hw_set_gps_emi_remapping(unsigned int _20msb_of_36bit_phy_addr);
 unsigned int gps_dl_hw_get_gps_emi_remapping(void);
-#if GPS_DL_USE_PERI_REMAP
-void gps_dl_hw_set_gps_peri_remapping(unsigned int _20msb_of_36bit_phy_addr);
-unsigned int gps_dl_hw_get_gps_peri_remapping(void);
-#endif
+
 void gps_dl_hw_set_dma_start(enum gps_dl_hal_dma_ch_index channel,
 	struct gdl_hw_dma_transfer *p_transfer);
 
@@ -97,12 +114,6 @@ struct gps_dl_hw_usrt_status_struct {
 	unsigned int mcub_a2d_flag;
 	unsigned int mcub_a2d_d0;
 	unsigned int mcub_a2d_d1;
-	unsigned int monf;
-};
-
-struct gps_dl_hw_pair_time_struct {
-	unsigned int dsp_ms;
-	unsigned long kernel_ms;
 };
 
 /* TODO: replace gps_dl_hw_usrt_status_struct */
@@ -130,10 +141,7 @@ void gps_dl_hw_do_gps_a2z_dump(void);
 void gps_dl_hw_print_usrt_status(enum gps_dl_link_id_enum link_id);
 bool gps_dl_hw_poll_usrt_dsp_rx_empty(enum gps_dl_link_id_enum link_id);
 void gps_dl_hw_gps_dump_gps_rf_cr(void);
-void gps_dl_hw_gps_dump_gps_rf_temp_cr(void);
 void gps_dl_hw_print_ms_counter_status(void);
-struct gps_dl_hw_pair_time_struct *gps_dl_hw_get_dsp_ms_counter(
-	unsigned int *p_tcxo_low, unsigned int *p_tcxo_high);
 
 void gps_dl_hw_switch_dsp_jtag(void);
 
@@ -159,6 +167,11 @@ void gps_dl_hw_deinit_pta(void);
 void gps_dl_hw_claim_pta_used_by_gps(void);
 void gps_dl_hw_disclaim_pta_used_by_gps(void);
 void gps_dl_hw_set_pta_blanking_parameter(bool use_direct_path);
+
+bool gps_dl_hw_take_conn_coex_hw_sema(unsigned int timeout_ms);
+void gps_dl_hw_give_conn_coex_hw_sema(void);
+bool gps_dl_hw_take_conn_rfspi_hw_sema(unsigned int timeout_ms);
+void gps_dl_hw_give_conn_rfspi_hw_sema(void);
 
 unsigned int gps_dl_hw_get_mcub_a2d1_cfg(enum gps_dl_link_id_enum link_id, bool is_1byte_mode);
 

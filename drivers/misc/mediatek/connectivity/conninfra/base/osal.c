@@ -30,7 +30,6 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
-#include <linux/version.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/kallsyms.h>
@@ -744,13 +743,9 @@ int osal_timer_create(P_OSAL_TIMER pTimer)
 {
 	struct timer_list *timer = &pTimer->timer;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
-	timer_setup(timer, pTimer->timeoutHandler, 0);
-#else
 	init_timer(timer);
 	timer->function = pTimer->timeoutHandler;
 	timer->data = (unsigned long)pTimer->timeroutHandlerData;
-#endif
 	return 0;
 }
 
@@ -1246,14 +1241,24 @@ int osal_usleep_range(unsigned long min, unsigned long max)
 	return 0;
 }
 
-int osal_gettimeofday(struct timespec64 *tv)
+int osal_gettimeofday(int *sec, int *usec)
 {
-	if (tv == NULL)
-		return -1;
+	int ret = 0;
+	struct timeval now;
 
-	ktime_get_real_ts64(tv);
+	do_gettimeofday(&now);
 
-	return 0;
+	if (sec != NULL)
+		*sec = now.tv_sec;
+	else
+		ret = -1;
+
+	if (usec != NULL)
+		*usec = now.tv_usec;
+	else
+		ret = -1;
+
+	return ret;
 }
 
 void osal_get_local_time(unsigned long long *sec, unsigned long *nsec)
@@ -1358,22 +1363,19 @@ void osal_op_raise_signal(P_OSAL_OP pOp, int result)
 
 int osal_ftrace_print(const char *str, ...)
 {
-	int ret = 0;
 #ifdef CONFIG_TRACING
 	va_list args;
 	char tempString[DBG_LOG_STR_SIZE];
 
 	if (ftrace_flag) {
 		va_start(args, str);
-		ret = vsnprintf(tempString, DBG_LOG_STR_SIZE, str, args);
+		vsnprintf(tempString, DBG_LOG_STR_SIZE, str, args);
 		va_end(args);
-		if (ret < 0)
-			pr_notice("%s ret = %d failed\n", __func__, ret);
-		else
-			trace_printk("%s\n", tempString);
+
+		trace_printk("%s\n", tempString);
 	}
 #endif
-	return ret;
+	return 0;
 }
 
 int osal_ftrace_print_ctrl(int flag)
@@ -1552,11 +1554,8 @@ void osal_op_history_save(struct osal_op_history *log_history, P_OSAL_OP pOp)
 
 static inline void osal_systrace_prepare(void)
 {
-/* Since K419, the function is not exported. */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0))
 	if (unlikely(mark_addr == 0))
 		mark_addr = kallsyms_lookup_name("tracing_mark_write");
-#endif
 	if (unlikely(g_pid == 0))
 		g_pid = task_pid_nr(current);
 }
@@ -1643,63 +1642,3 @@ void osal_systrace_minor_c(int val, const char *fmt, ...)
 	osal_systrace_c(val, log);
 }
 
-int osal_wake_lock_init(struct osal_wake_lock *pLock)
-{
-	if (!pLock)
-		return -1;
-	if (pLock->init_flag == 0) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 149))
-		pLock->wake_lock = wakeup_source_register(NULL, pLock->name);
-#else
-		pLock->wake_lock = wakeup_source_register(pLock->name);
-#endif
-		pLock->init_flag = 1;
-	}
-	return 0;
-}
-
-int osal_wake_lock_deinit(struct osal_wake_lock *pLock)
-{
-	if (!pLock)
-		return -1;
-	if (pLock->init_flag == 1) {
-		wakeup_source_unregister(pLock->wake_lock);
-		pLock->init_flag = 0;
-	} else
-		pr_info("%s: wake_lock is not initialized!\n", __func__);
-	return 0;
-}
-
-int osal_wake_lock(struct osal_wake_lock *pLock)
-{
-	if (!pLock)
-		return -1;
-	if (pLock->init_flag == 1)
-		__pm_stay_awake(pLock->wake_lock);
-	else
-		pr_info("%s: wake_lock is not initialized!\n", __func__);
-	return 0;
-}
-
-int osal_wake_unlock(struct osal_wake_lock *pLock)
-{
-	if (!pLock)
-		return -1;
-	if (pLock->init_flag == 1)
-		__pm_relax(pLock->wake_lock);
-	else
-		pr_info("%s: wake_lock is not initialized!\n", __func__);
-	return 0;
-}
-
-int osal_wake_lock_count(struct osal_wake_lock *pLock)
-{
-	int count = 0;
-	if (!pLock)
-		return -1;
-	if (pLock->init_flag == 1)
-		count = pLock->wake_lock->active;
-	else
-		pr_info("%s: wake_lock is not initialized!\n", __func__);
-	return count;
-}

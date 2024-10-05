@@ -1,8 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 - 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
 #include "gps_dl_config.h"
 
 #include "gps_dl_base.h"
@@ -43,7 +50,6 @@ const char *const gps_dl_ret_name_list[GDL_RET_NUM + 1] = {
 	[GDL_FAIL_NOSPACE]        = "FAIL_NOSPACE",
 	[GDL_FAIL_NOSPACE_PENDING_RX] = "FAIL_NOSPACE_PENDING_RX",
 	[GDL_FAIL_NODATA]         = "FAIL_NODATA",
-	[GDL_FAIL_NODATA2]        = "FAIL_NODATA2",
 	[GDL_FAIL_STATE_MISMATCH] = "FAIL_STATE_MISMATCH",
 	[GDL_FAIL_SIGNALED]       = "FAIL_SIGNALED",
 	[GDL_FAIL_TIMEOUT]        = "FAIL_TIMEOUT",
@@ -57,7 +63,7 @@ const char *const gps_dl_ret_name_list[GDL_RET_NUM + 1] = {
 
 const char *gdl_ret_to_name(enum GDL_RET_STATUS gdl_ret)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_ret_name_list, GDL_RET_NUM, gdl_ret, retval);
 	return retval;
@@ -77,7 +83,7 @@ const char *const gps_dl_dsp_state_name_list[GPS_DSP_ST_MAX + 1] = {
 
 const char *gps_dl_dsp_state_name(enum gps_dsp_state_t state)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_dsp_state_name_list, GPS_DSP_ST_MAX, state, retval);
 	return retval;
@@ -99,7 +105,7 @@ const char *const gps_dl_dsp_event_name_list[GPS_DSP_EVT_MAX + 1] = {
 
 const char *gps_dl_dsp_event_name(enum gps_dsp_event_t event)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_dsp_event_name_list, GPS_DSP_EVT_MAX, event, retval);
 	return retval;
@@ -124,7 +130,7 @@ const char * const gps_dl_link_state_name_list[LINK_STATE_NUM + 1] = {
 
 const char *gps_dl_link_state_name(enum gps_each_link_state_enum state)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_link_state_name_list, LINK_STATE_NUM, state, retval);
 	return retval;
@@ -148,14 +154,12 @@ const char *const gps_dl_link_event_name_list[GPS_DL_LINK_EVT_NUM + 1] = {
 	[GPS_DL_EVT_LINK_ENTER_DPSTOP]    = "ENTER_DPSTOP",
 	[GPS_DL_EVT_LINK_LEAVE_DPSTOP]    = "LEAVE_DPSTOP",
 	[GPS_DL_EVT_LINK_PRINT_DATA_STATUS] = "PRINT_DATA_STATUS",
-	[GPS_DL_EVT_LINK_UPDATE_SETTING]  = "UPDATE_SETTING",
-	[GPS_DL_EVT_LINK_LEAVE_DPSTOP2]   = "LEAVE_DPSTOP2",
 	[GPS_DL_LINK_EVT_NUM]             = "LINK_INVALID_EVT"
 };
 
 const char *gps_dl_link_event_name(enum gps_dl_link_event_id event)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_link_event_name_list, GPS_DL_LINK_EVT_NUM, event, retval);
 	return retval;
@@ -173,7 +177,7 @@ const char *gps_dl_hal_event_name_list[GPD_DL_HAL_EVT_NUM + 1] = {
 
 const char *gps_dl_hal_event_name(enum gps_dl_hal_event_id event)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_hal_event_name_list, GPD_DL_HAL_EVT_NUM, event, retval);
 	return retval;
@@ -189,7 +193,7 @@ const char *const gps_dl_waitable_name_list[GPS_DL_WAIT_NUM + 1] = {
 
 const char *gps_dl_waitable_type_name(enum gps_each_link_waitable_type type)
 {
-	const char *retval = NULL;
+	const char *retval;
 
 	RETURN_NAME_IN_LIST(gps_dl_waitable_name_list, GPS_DL_WAIT_NUM, type, retval);
 	return retval;

@@ -1726,18 +1726,13 @@ uint32_t
 wlanoidAbortP2pScan(IN struct ADAPTER *prAdapter,
 		OUT void *pvQueryBuffer,
 		IN uint32_t u4QueryBufferLen,
-		OUT uint32_t *pu4QueryInfoLen)
-{
-	uint8_t ucBssIdx;
+		OUT uint32_t *pu4QueryInfoLen) {
+
+	DBGLOG(P2P, INFO, "wlanoidAbortP2pScan\n");
 
 	ASSERT(prAdapter);
 
-	ucBssIdx = *((uint8_t *) pvQueryBuffer);
-
-	if (ucBssIdx == prAdapter->ucP2PDevBssIdx)
-		p2pDevFsmRunEventScanAbort(prAdapter, ucBssIdx);
-	else
-		p2pRoleFsmRunEventScanAbort(prAdapter, ucBssIdx);
+	p2pDevFsmRunEventScanAbort(prAdapter, NULL);
 
 	return WLAN_STATUS_SUCCESS;
 }

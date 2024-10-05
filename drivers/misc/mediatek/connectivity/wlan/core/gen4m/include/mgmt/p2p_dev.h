@@ -83,11 +83,7 @@ struct MSG_P2P_CHNL_REQUEST {
 	enum ENUM_CH_REQ_TYPE eChnlReqType;
 };
 
-#if (CFG_TC10_FEATURE == 1)
-#define P2P_DEV_EXTEND_CHAN_TIME	2000
-#else
 #define P2P_DEV_EXTEND_CHAN_TIME	500
-#endif
 
 #if CFG_SUPPORT_WFD
 
@@ -231,7 +227,7 @@ void p2pDevFsmRunEventTimeout(IN struct ADAPTER *prAdapter,
 void p2pDevFsmRunEventScanRequest(IN struct ADAPTER *prAdapter,
 		IN struct MSG_HDR *prMsgHdr);
 void p2pDevFsmRunEventScanAbort(IN struct ADAPTER *prAdapter,
-		IN uint8_t ucBssIdx);
+		IN struct MSG_HDR *prMsgHdr);
 
 void
 p2pDevFsmRunEventScanDone(IN struct ADAPTER *prAdapter,

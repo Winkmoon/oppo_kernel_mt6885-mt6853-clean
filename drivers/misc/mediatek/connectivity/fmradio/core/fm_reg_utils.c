@@ -25,6 +25,50 @@ unsigned char *cmd_buf;
 struct fm_lock *cmd_buf_lock;
 struct fm_res_ctx *fm_res;
 
+int fm_ioremap_read(phys_addr_t addr, unsigned int *val)
+{
+	unsigned int size = 0x10;
+	void *vir_addr = NULL;
+
+	request_mem_region(addr, size, "FM_TEMP_READ");
+	vir_addr = ioremap_nocache(addr, size);
+	if (!vir_addr) {
+		WCN_DBG(FM_ERR | CHIP, "Cannot remap address.\n");
+		return -1;
+	}
+
+	*val = readl(vir_addr);
+	iounmap(vir_addr);
+	release_mem_region(addr, size);
+
+	WCN_DBG(FM_NTC | CHIP, "Read 0x%08lx=0x%08x",
+		(unsigned long)addr, *val);
+
+	return 0;
+}
+
+int fm_ioremap_write(phys_addr_t addr, unsigned int val)
+{
+	unsigned int size = 0x10;
+	void *vir_addr = NULL;
+
+	request_mem_region(addr, size, "FM_TEMP_WRITE");
+	vir_addr = ioremap_nocache(addr, size);
+	if (!vir_addr) {
+		WCN_DBG(FM_ERR | CHIP, "Cannot remap address.\n");
+		return -1;
+	}
+
+	writel(val, vir_addr);
+	iounmap(vir_addr);
+	release_mem_region(addr, size);
+
+	WCN_DBG(FM_NTC | CHIP, "Write 0x%08lx=0x%08x",
+		(unsigned long)addr, val);
+
+	return 0;
+}
+
 void fw_spi_read(unsigned char addr, unsigned short *data)
 {
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
@@ -56,9 +100,6 @@ void fw_bop_udelay(unsigned int usec)
 void fw_bop_rd_until(unsigned char addr, unsigned short mask,
 		     unsigned short value)
 {
-#define __DUMP_STR__ \
-	"[%d] addr:0x%02x mask:0x%04x value:0x%04x data:0x%04x\n"
-
 	unsigned short data, count = 0;
 
 	do {
@@ -68,27 +109,8 @@ void fw_bop_rd_until(unsigned char addr, unsigned short mask,
 	} while (((data & mask) != value) && (count < 3000));
 
 	/* 3000ms should be big enough for polling bits */
-	if (count == 3000) {
+	if (count == 3000)
 		WCN_DBG(FM_WAR | CHIP, "Value is never changed.\n");
-		WCN_DBG(FM_NTC | CHIP, __DUMP_STR__,
-			count, addr, mask, value, data);
-	}
-
-#undef __DUMP_STR__
-}
-
-void fw_bop_copy_by_mask(unsigned char src, unsigned char dst,
-		     unsigned short mask_and)
-{
-	unsigned short data_src, data_dst;
-
-	fw_spi_read(src, &data_src);
-	fw_spi_read(dst, &data_dst);
-	/* get the value we want from src */
-	data_src &= mask_and;
-	/* write the value to dst */
-	data_dst |= data_src;
-	fw_spi_write(dst, data_dst);
 }
 
 void fw_bop_modify(unsigned char addr, unsigned short mask_and,
@@ -105,9 +127,6 @@ void fw_bop_modify(unsigned char addr, unsigned short mask_and,
 void fw_bop_spi_rd_until(unsigned char subsys, unsigned short addr,
 			 unsigned int mask, unsigned int value)
 {
-#define __DUMP_STR__ \
-	"[%d] subsys:0x%02x addr:0x%04x mask:0x%08x value:0x%08x data:0x%08x\n"
-
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
 	unsigned int data;
 	unsigned short count = 0;
@@ -119,13 +138,8 @@ void fw_bop_spi_rd_until(unsigned char subsys, unsigned short addr,
 	} while (((data & mask) != value) && (count < 3000));
 
 	/* 3000ms should be big enough for polling bits */
-	if (count == 3000) {
+	if (count == 3000)
 		WCN_DBG(FM_WAR | CHIP, "Value is never changed.\n");
-		WCN_DBG(FM_NTC | CHIP, __DUMP_STR__,
-			count, subsys, addr, mask, value, data);
-	}
-
-#undef __DUMP_STR__
 }
 
 void fw_bop_spi_modify(unsigned char subsys, unsigned short addr,

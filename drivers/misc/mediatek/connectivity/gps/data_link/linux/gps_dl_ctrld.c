@@ -1,8 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 - 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
 #include "gps_dl_ctrld.h"
 #include "gps_each_device.h"
 #if GPS_DL_MOCK_HAL
@@ -10,7 +17,6 @@
 #endif
 #include "gps_data_link_devices.h"
 #include "gps_dl_hal_api.h"
-#include "gps_dl_time_tick.h"
 
 struct gps_dl_ctrld_context gps_dl_ctrld;
 
@@ -52,7 +58,7 @@ static int gps_dl_opfunc_hal_event_proc(struct gps_dl_osal_op_dat *pOpDat)
 
 unsigned int gps_dl_wait_event_checker(struct gps_dl_osal_thread *pThread)
 {
-	struct gps_dl_ctrld_context *pgps_dl_ctrld = NULL;
+	struct gps_dl_ctrld_context *pgps_dl_ctrld;
 
 	if (pThread) {
 		pgps_dl_ctrld = (struct gps_dl_ctrld_context *) (pThread->pThreadData);
@@ -65,8 +71,6 @@ unsigned int gps_dl_wait_event_checker(struct gps_dl_osal_thread *pThread)
 static int gps_dl_core_opid(struct gps_dl_osal_op_dat *pOpDat)
 {
 	int ret;
-	unsigned long opid_duration;
-	unsigned long opfunc_j0, opfunc_duration;
 
 	if (pOpDat == NULL) {
 		GDL_LOGE_EVT("null operation data");
@@ -79,24 +83,9 @@ static int gps_dl_core_opid(struct gps_dl_osal_op_dat *pOpDat)
 		return -2;
 	}
 
-	/* get Op-deque time*/
-	opid_duration = gps_dl_tick_get_ms() - pOpDat->op_enq;
-	/* if op duration more than 0.5s(default value, can be set dynamically), print warning*/
-	if (opid_duration >= gps_dl_opid_enque_timeout_get())
-		GDL_LOGI("warning enque timeout: link_id (%lu), evt (%lu), OPID (%d), opid_duration = %lu",
-			pOpDat->au4OpData[0], pOpDat->au4OpData[1], pOpDat->opId, opid_duration);
-
-	opfunc_j0 = gps_dl_tick_get_ms();
 	if (gps_dl_core_opfunc[pOpDat->opId]) {
 		GDL_LOGD_EVT("GPS data link: operation id(%d)", pOpDat->opId);
 		ret = (*(gps_dl_core_opfunc[pOpDat->opId])) (pOpDat);
-		/* get Opfunc time*/
-		opfunc_duration = gps_dl_tick_get_ms() - opfunc_j0;
-		/* if op duration more than 0.5s(default value, can be set dynamically), print warning*/
-		if (opfunc_duration >= gps_dl_opid_opfunc_timeout_get())
-			GDL_LOGI("warning opfunc timeout: link_id (%lu), evt (%lu), OPID (%d), opfunc_duration = %lu",
-				pOpDat->au4OpData[0], pOpDat->au4OpData[1], pOpDat->opId, opfunc_duration);
-
 		return ret;
 	}
 
@@ -220,7 +209,7 @@ struct gps_dl_osal_lxop *gps_dl_get_free_op(void)
 
 static struct gps_dl_osal_lxop *gps_dl_get_op(struct gps_dl_osal_lxop_q *pOpQ)
 {
-	struct gps_dl_osal_lxop *pOp = NULL;
+	struct gps_dl_osal_lxop *pOp;
 	int iRet;
 
 	if (pOpQ == NULL) {
@@ -262,7 +251,7 @@ static int gps_dl_ctrl_thread(void *pData)
 {
 	struct gps_dl_ctrld_context *pgps_dl_ctrld = (struct gps_dl_ctrld_context *) pData;
 	struct gps_dl_osal_event *pEvent = NULL;
-	struct gps_dl_osal_lxop *pOp = NULL;
+	struct gps_dl_osal_lxop *pOp;
 	int iResult;
 
 	if (pgps_dl_ctrld == NULL) {
@@ -313,8 +302,8 @@ static int gps_dl_ctrl_thread(void *pData)
 
 int gps_dl_ctrld_init(void)
 {
-	struct gps_dl_ctrld_context *pgps_dl_ctrld = NULL;
-	struct gps_dl_osal_thread *pThread = NULL;
+	struct gps_dl_ctrld_context *pgps_dl_ctrld;
+	struct gps_dl_osal_thread *pThread;
 	int iRet;
 	int i;
 
@@ -363,14 +352,21 @@ int gps_dl_ctrld_deinit(void)
 
 	pThread = &gps_dl_ctrld.thread;
 
+	iRet = gps_dl_osal_thread_stop(pThread);
+	if (iRet)
+		GDL_LOGE("gps data link ontrol thread stop fail:%d", iRet);
+	else
+		GDL_LOGI("gps data link ontrol thread stop okay:%d", iRet);
+
+	gps_dl_osal_event_deinit(&gps_dl_ctrld.rgpsdlWq);
+
 	iRet = gps_dl_osal_thread_destroy(pThread);
 	if (iRet) {
 		GDL_LOGE("gps data link ontrol thread destroy fail:%d", iRet);
 		return -1;
 	}
-
 	GDL_LOGI("gps data link ontrol thread destroy okay:%d\n", iRet);
-	gps_dl_osal_event_deinit(&gps_dl_ctrld.rgpsdlWq);
+
 	return 0;
 }
 

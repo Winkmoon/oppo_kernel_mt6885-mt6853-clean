@@ -1,19 +1,25 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 - 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
 #include "gps_dl_config.h"
 #include "gps_dl_context.h"
 #include "gps_dl_hw_priv_util.h"
-#include "gps_dl_hw_dep_api.h"
+#include "gps_dl_subsys_reset.h"
 
 #if GPS_DL_ON_LINUX
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <asm/io.h>
 #include "gps_dl_linux.h"
-#include "gps_dl_subsys_reset.h"
 #if GPS_DL_HAS_PLAT_DRV
 #include "gps_dl_linux_plat_drv.h"
 #endif
@@ -76,7 +82,7 @@ void gps_dl_bus_wr_opt(enum GPS_DL_BUS_ENUM bus_id, unsigned int bus_addr, unsig
 
 	if (do_check) {
 		/* gps_dl_conninfra_not_readable_show_warning(host_addr); */
-		gps_dl_hw_dep_may_do_bus_check_and_print(host_addr);
+		gps_dl_bus_check_and_print(host_addr);
 	}
 #endif /* GPS_DL_ON_LINUX */
 
@@ -175,7 +181,7 @@ unsigned int gps_dl_bus_rd_opt(enum GPS_DL_BUS_ENUM bus_id, unsigned int bus_add
 
 	if (do_check) {
 		/* gps_dl_conninfra_not_readable_show_warning(host_addr); */
-		gps_dl_hw_dep_may_do_bus_check_and_print(host_addr);
+		gps_dl_bus_check_and_print(host_addr);
 	}
 #endif /* GPS_DL_ON_LINUX */
 

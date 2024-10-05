@@ -21,9 +21,6 @@
 #include "conninfra_core.h"
 #include "emi_mng.h"
 #include "connsys_debug_utility.h"
-#include "consys_hw.h"
-#include <linux/regmap.h>
-#include "clock_mng.h"
 
 #define CONNINFRA_DBG_PROCNAME "driver/conninfra_dbg"
 
@@ -37,9 +34,10 @@
 
 static struct proc_dir_entry *g_conninfra_dbg_entry;
 
-ssize_t conninfra_dbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
-
 #if CONNINFRA_DBG_SUPPORT
+static ssize_t conninfra_dbg_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);
+static ssize_t conninfra_dbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
+
 static int conninfra_dbg_hwver_get(int par1, int par2, int par3);
 
 static int conninfra_dbg_chip_rst(int par1, int par2, int par3);
@@ -58,12 +56,6 @@ static int conninfra_dbg_efuse_write(int par1, int par2, int par3);
 static int conninfra_dbg_ap_reg_read(int par1, int par2, int par3);
 static int conninfra_dbg_ap_reg_write(int par1, int par2, int par3);
 
-static int conninfra_dbg_clk_reg_read(int par1, int par2, int par3);
-static int conninfra_dbg_clk_reg_write(int par1, int par2, int par3);
-
-static int conninfra_dbg_spi_read(int par1, int par2, int par3);
-static int conninfra_dbg_spi_write(int par1, int par2, int par3);
-static int conninfra_dbg_set_spi_write_subsys(int par1, int par2, int par3);
 
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 /* consys log, need this ?? */
@@ -78,13 +70,10 @@ static int conninfra_dbg_thermal_query(int par1, int count, int interval);
 static int conninfra_dbg_thermal_ctrl(int par1, int par2, int par3);
 
 static int conninfra_dbg_connsys_emi_dump(int par1, int par2, int par3);
-static int conninfra_dbg_set_platform_config(int par1, int par2, int par3);
 #endif /* CONNINFRA_DBG_SUPPORT */
 
 static int conninfra_dbg_connsys_coredump_ctrl(int par1, int par2, int par3);
 static int conninfra_dbg_connsys_coredump_mode_query(int par1, int par2, int par3);
-static int conninfra_dbg_mcu_log_ctrl(int par1, int par2, int par3);
-static int conninfra_dbg_dump_power_state(int par1, int par2, int par3);
 
 static const CONNINFRA_DEV_DBG_FUNC conninfra_dev_dbg_func[] = {
 #if CONNINFRA_DBG_SUPPORT
@@ -115,21 +104,6 @@ static const CONNINFRA_DEV_DBG_FUNC conninfra_dev_dbg_func[] = {
 #endif /* CONNINFRA_DBG_SUPPORT */
 	[0x13] = conninfra_dbg_connsys_coredump_ctrl,
 	[0x14] = conninfra_dbg_connsys_coredump_mode_query,
-	/* Notice: The usage of config might be different for each platform. */
-	/* MT6983: for sleep mode control, 1: sleep_mode_1 2: sleep_mode_2 */
-#if CONNINFRA_DBG_SUPPORT
-	[0x15] = conninfra_dbg_set_platform_config,
-	[0x16] = conninfra_dbg_clk_reg_read,
-	[0x17] = conninfra_dbg_clk_reg_write,
-	[0x18] = conninfra_dbg_spi_read,
-	[0x19] = conninfra_dbg_spi_write,
-	[0x20] = conninfra_dbg_set_spi_write_subsys,
-#endif
-	[0x21] = conninfra_dbg_mcu_log_ctrl,
-
-	/* The following command ids should be used by WMT as well. */
-	/* Check the usage of WMT before add a new one */
-	[0x40] = conninfra_dbg_dump_power_state,
 };
 
 #define CONNINFRA_DBG_DUMP_BUF_SIZE 1024
@@ -139,8 +113,6 @@ int g_dump_buf_len;
 static OSAL_SLEEPABLE_LOCK g_dump_lock;
 
 #if CONNINFRA_DBG_SUPPORT
-static int spi_write_subsys = SYS_SPI_TOP;
-
 int conninfra_dbg_hwver_get(int par1, int par2, int par3)
 {
 	pr_info("query chip version\n");
@@ -174,16 +146,11 @@ int conninfra_dbg_reg_read(int par1, int par2, int par3)
 	int iRet;
 
 	iRet = conninfra_core_reg_read(par2, &value, par3);
-	ret = snprintf(buf, CONNINFRA_DBG_DUMP_BUF_SIZE,
+	snprintf(buf, CONNINFRA_DBG_DUMP_BUF_SIZE,
 			"read chip register (0x%08x) with mask (0x%08x) %s, value = 0x%08x\n",
 			par2, par3, iRet != 0 ? "failed" : "succeed", iRet != 0 ? -1 : value);
-	if (ret < 0) {
-		pr_info("read chip register (0x%08x) with mask (0x%08x) error(%d)\n",
-			par2, par3, ret);
-		return -1;
-	} else
-		pr_info("%s", buf);
 
+	pr_info("%s", buf);
 	ret = osal_lock_sleepable_lock(&g_dump_lock);
 	if (ret) {
 		pr_err("dump_lock fail!!");
@@ -278,7 +245,7 @@ static int conninfra_dbg_ap_reg_read(int par1, int par2, int par3)
 	unsigned char *ap_reg_base = NULL;
 
 	pr_info("AP register read, reg address:0x%x\n", par2);
-	ap_reg_base = ioremap(par2, 0x4);
+	ap_reg_base = ioremap_nocache(par2, 0x4);
 	if (ap_reg_base) {
 		value = readl(ap_reg_base);
 		pr_info("AP register read, reg address:0x%x, value:0x%x\n", par2, value);
@@ -296,7 +263,7 @@ static int conninfra_dbg_ap_reg_write(int par1, int par2, int par3)
 
 	pr_info("AP register write, reg address:0x%x, value:0x%x\n", par2, par3);
 
-	ap_reg_base = ioremap(par2, 0x4);
+	ap_reg_base = ioremap_nocache(par2, 0x4);
 	if (ap_reg_base) {
 		writel(par3, ap_reg_base);
 		value = readl(ap_reg_base);
@@ -417,7 +384,7 @@ static int conninfra_dbg_connsys_emi_dump(int par1, int par2, int par3)
 	}
 
 	pr_info("EMI dump, offset=0x%x(physical addr=0x%x), size=0x%x\n", par2, start, size);
-	vir_addr = ioremap(start, size);
+	vir_addr = ioremap_nocache(start, size);
 	if (!vir_addr) {
 		pr_err("ioremap fail");
 		osal_free(buf);
@@ -438,145 +405,6 @@ static int conninfra_dbg_connsys_emi_dump(int par1, int par2, int par3)
 	osal_free(buf);
 	return 0;
 }
-
-static int conninfra_dbg_set_platform_config(int par1, int par2, int par3)
-{
-        consys_hw_set_platform_config(par2);
-
-        pr_info("set platform config %d\n", par2);
-        return 0;
-}
-
-static int conninfra_dbg_clk_reg_read(int par1, int par2, int par3)
-{
-	int value = 0;
-	struct regmap *map = consys_clock_mng_get_regmap();
-
-	pr_info("%s clock ic register read, reg address:0x%x\n", __func__, par2);
-	if (map == NULL) {
-		pr_notice("%s clock ic regmap is NULL.\n", __func__);
-		return 0;
-	}
-	regmap_read(map, par2, &value);
-	pr_info("%s clock ic register read, reg address:0x%x, value:0x%x\n", __func__, par2, value);
-
-	return 0;
-}
-
-static int conninfra_dbg_clk_reg_write(int par1, int par2, int par3)
-{
-	int value = 0;
-	struct regmap *map = consys_clock_mng_get_regmap();
-
-	pr_info("%s clock ic register write, reg address:0x%x, value:0x%x\n", __func__, par2, par3);
-	if (map == NULL) {
-		pr_notice("%s clock ic regmap is NULL.\n", __func__);
-		return 0;
-	}
-
-	regmap_write(map, par2, par3);
-	regmap_read(map, par2, &value);
-	pr_info("%s clock ic register write done, value after write:0x%x\n", __func__, value);
-
-	return 0;
-}
-
-static inline char* conninfra_dbg_spi_subsys_string(enum sys_spi_subsystem subsystem)
-{
-	static char* subsys_name[] = {
-		"SYS_SPI_WF1",
-		"SYS_SPI_WF",
-		"SYS_SPI_BT",
-		"SYS_SPI_FM",
-		"SYS_SPI_GPS",
-		"SYS_SPI_TOP",
-		"SYS_SPI_WF2",
-		"SYS_SPI_WF3",
-		"SYS_SPI_MAX"
-	};
-
-	if (subsystem < 0 || subsystem > SYS_SPI_MAX)
-		return "UNKNOWN";
-
-	return subsys_name[subsystem];
-}
-
-static int conninfra_dbg_spi_read(int par1, int par2, int par3)
-{
-	unsigned int data;
-	int iRet, get_lock_ret, spi_ret, sz;
-	char buf[CONNINFRA_DBG_DUMP_BUF_SIZE] = {'\0'};
-
-	if (par2 < 0 || par2 >= SYS_SPI_MAX) {
-		pr_notice("%s par2 is out of range\n", __func__);
-		return 0;
-	}
-
-	spi_ret = conninfra_spi_read(par2, par3, &data);
-	if (spi_ret == 0) {
-		pr_info("%s read[%s]addr[0x%x]val[0x%x] ok\n",
-			__func__, conninfra_dbg_spi_subsys_string(par2), par3, data);
-		iRet = snprintf(buf, CONNINFRA_DBG_DUMP_BUF_SIZE, "[%s] addr[0x%08x]=[0x%08x]\n",
-			conninfra_dbg_spi_subsys_string(par2), par3, data);
-	} else {
-		pr_notice("%s read[%s]addr[0x%x] failed(%d)\n",
-			__func__, conninfra_dbg_spi_subsys_string(par2), par3, spi_ret);
-		iRet = snprintf(buf, CONNINFRA_DBG_DUMP_BUF_SIZE, "[%s] addr[0x%08x] read fail, spi_ret=%d\n",
-			conninfra_dbg_spi_subsys_string(par2), par3, spi_ret);
-	}
-
-	if (iRet)
-		pr_info("[%s] string error, iRet = %d", __func__, iRet);
-
-	get_lock_ret = osal_lock_sleepable_lock(&g_dump_lock);
-	if (get_lock_ret) {
-		pr_err("[%] dump lock fail, ret=%d", get_lock_ret);
-		return 0;
-	}
-
-	if (g_dump_buf_len < CONNINFRA_DBG_DUMP_BUF_SIZE - 1) {
-		sz = strlen(buf);
-		sz = (sz < CONNINFRA_DBG_DUMP_BUF_SIZE - g_dump_buf_len -1) ?
-			sz : CONNINFRA_DBG_DUMP_BUF_SIZE - g_dump_buf_len - 1;
-		strncpy(g_dump_buf + g_dump_buf_len, buf, sz);
-		g_dump_buf_len += sz;
-		g_dump_buf[g_dump_buf_len] = '\0';
-	}
-	osal_unlock_sleepable_lock(&g_dump_lock);
-
-	return 0;
-}
-
-static int conninfra_dbg_set_spi_write_subsys(int par1, int par2, int par3)
-{
-	if (par2 < 0 || par2 >= SYS_SPI_MAX) {
-		pr_notice("%s par2 is out of range\n", __func__);
-		return 0;
-	}
-	spi_write_subsys = par2;
-	pr_info("%s:%s\n", __func__, conninfra_dbg_spi_subsys_string(par2));
-	return 0;
-}
-
-static int conninfra_dbg_spi_write(int par1, int par2, int par3)
-{
-	int ret;
-
-	if (spi_write_subsys < 0 || spi_write_subsys >= SYS_SPI_MAX) {
-		pr_notice("%s spi_write_subsys %d is out of range\n", __func__, spi_write_subsys);
-		return 0;
-	}
-
-	ret = conninfra_spi_write(spi_write_subsys, par2, par3);
-	if (ret == 0)
-		pr_info("%s write[%s]addr[0x%x]val[0x%x] ok\n",
-			__func__, conninfra_dbg_spi_subsys_string(spi_write_subsys), par2, par3);
-	else
-		pr_notice("%s write[%s]addr[0x%x]val[0x%x] failed(%d)\n",
-			__func__, conninfra_dbg_spi_subsys_string(spi_write_subsys), par2, par3, ret);
-	return 0;
-}
-
 #endif /* CONNINFRA_DBG_SUPPORT */
 
 static int conninfra_dbg_connsys_coredump_ctrl(int par1, int par2, int par3)
@@ -594,62 +422,6 @@ static int conninfra_dbg_connsys_coredump_mode_query(int par1, int par2, int par
 
 	pr_info("Connsys coredump mode is [%d]\n", orig_mode);
 	return orig_mode;
-}
-
-static int conninfra_dbg_mcu_log_ctrl(int par1, int par2, int par3)
-{
-	int ret = 0;
-	pr_info("%s\n", __func__);
-
-	if (par2 < 0 || par2 > 1 || par3 < 0 || par3 > 1) {
-		pr_info("[%s] Invalid parameter\n", __func__);
-		return -1;
-	}
-
-	ret = conninfra_core_force_conninfra_wakeup();
-	if (ret) {
-		pr_info("[%s] conninfra wakup fail\n", __func__);
-		return -1;
-	}
-
-	if (par3 == 1)
-		consys_hw_set_mcu_control(par2, true);
-	else
-		consys_hw_set_mcu_control(par2, false);
-
-	ret = conninfra_core_force_conninfra_sleep();
-	if (ret) {
-		pr_info("[%s] conninfra sleep fail\n", __func__);
-		return -1;
-	}
-
-	return ret;
-}
-
-static int conninfra_dbg_dump_power_state(int par1, int par2, int par3)
-{
-	int ret = 0, len;
-
-	ret = osal_lock_sleepable_lock(&g_dump_lock);
-	if (ret) {
-		pr_notice("dump_lock fail!!");
-		return ret;
-	}
-
-	ret = conninfra_core_dump_power_state(g_dump_buf, CONNINFRA_DBG_DUMP_BUF_SIZE);
-	if (ret) {
-		osal_unlock_sleepable_lock(&g_dump_lock);
-		return ret;
-	}
-
-	len = strlen(g_dump_buf);
-	if (len > 0 && len < CONNINFRA_DBG_DUMP_BUF_SIZE) {
-		g_dump_buf_ptr = g_dump_buf;
-		g_dump_buf_len = len + 1;
-	}
-
-	osal_unlock_sleepable_lock(&g_dump_lock);
-	return 0;
 }
 
 ssize_t conninfra_dbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
@@ -756,9 +528,9 @@ ssize_t conninfra_dbg_write(struct file *filp, const char __user *buffer, size_t
 		return len;
 	}
 #endif
-	/* For user load, only 0x13, 0x14 and 0x40 is allowed to execute */
+	/* For user load, only 0x13 is allowed to execute */
 	/* allow command 0x2e to enable catch connsys log on userload  */
-	if (0 == dbg_enabled && (x != 0x13) && (x != 0x14) && (x != 0x40)) {
+	if (0 == dbg_enabled && (x != 0x13) && (x != 0x14)) {
 		pr_info("please enable conninfra debug first\n\r");
 		return len;
 	}
@@ -773,18 +545,11 @@ ssize_t conninfra_dbg_write(struct file *filp, const char __user *buffer, size_t
 
 int conninfra_dev_dbg_init(void)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
-	static const struct proc_ops conninfra_dbg_fops = {
-		.proc_read = conninfra_dbg_read,
-		.proc_write = conninfra_dbg_write,
-	};
-#else
 	static const struct file_operations conninfra_dbg_fops = {
 		.owner = THIS_MODULE,
 		.read = conninfra_dbg_read,
 		.write = conninfra_dbg_write,
 	};
-#endif
 	int i_ret = 0;
 
 	g_conninfra_dbg_entry = proc_create(CONNINFRA_DBG_PROCNAME, 0664, NULL, &conninfra_dbg_fops);
@@ -795,7 +560,6 @@ int conninfra_dev_dbg_init(void)
 
 	osal_sleepable_lock_init(&g_dump_lock);
 
-	memset(g_dump_buf, '\0', CONNINFRA_DBG_DUMP_BUF_SIZE);
 	return i_ret;
 }
 

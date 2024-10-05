@@ -33,6 +33,7 @@
 #include "cal_test.h"
 #include "msg_evt_test.h"
 #include "chip_rst_test.h"
+#include "mailbox_test.h"
 #include "coredump_test.h"
 #include "consys_hw.h"
 
@@ -76,6 +77,7 @@ static int conf_tc(int par1, int par2, int par3);
 static int cal_tc(int par1, int par2, int par3);
 static int msg_evt_tc(int par1, int par2, int par3);
 static int chip_rst_tc(int par1, int par2, int par3);
+static int mailbox_tc(int par1, int par2, int par3);
 static int emi_tc(int par1, int par2, int par3);
 static int log_tc(int par1, int par2, int par3);
 static int thermal_tc(int par1, int par2, int par3);
@@ -103,6 +105,7 @@ static const CONNINFRA_TEST_FUNC conninfra_test_func[] = {
 	[0x03] = msg_evt_tc,
 	[0x04] = chip_rst_tc,
 	[0x05] = cal_tc,
+	[0x06] = mailbox_tc,
 	[0x07] = emi_tc,
 	[0x08] = log_tc,
 	[0x09] = thermal_tc,
@@ -230,19 +233,25 @@ static int cal_tc(int par1, int par2, int par3)
 	return calibration_test();
 }
 
+
+static int mailbox_tc(int par1, int par2, int par3)
+{
+	return mailbox_test();
+}
+
 static int emi_tc(int par1, int par2, int par3)
 {
-	phys_addr_t addr = 0;
+	unsigned int addr = 0;
 	unsigned int size = 0;
 	int ret = 0;
 
 	pr_info("[%s] start", __func__);
 	conninfra_get_phy_addr(&addr, &size);
 	if (addr == 0 || size == 0) {
-		pr_notice("[%s] fail! addr=[%p] size=[%u]", __func__, addr, size);
+		pr_err("[%s] fail! addr=[0x%x] size=[%u]", __func__, addr, size);
 		ret = -1;
 	} else
-		pr_info("[%s] pass. addr=[%p] size=[%u]", __func__, addr, size);
+		pr_info("[%s] pass. addr=[0x%x] size=[%u]", __func__, addr, size);
 
 	pr_info("[%s] end", __func__);
 
@@ -424,18 +433,11 @@ ssize_t conninfra_test_write(struct file *filp, const char __user *buffer, size_
 
 int conninfra_test_setup(void)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
-	static const struct proc_ops conninfra_test_fops = {
-		.proc_read = conninfra_test_read,
-		.proc_write = conninfra_test_write,
-	};
-#else
 	static const struct file_operations conninfra_test_fops = {
 		.owner = THIS_MODULE,
 		.read = conninfra_test_read,
 		.write = conninfra_test_write,
 	};
-#endif
 	int i_ret = 0;
 
 	gConninfraTestEntry = proc_create(CONNINFRA_TEST_PROCNAME,

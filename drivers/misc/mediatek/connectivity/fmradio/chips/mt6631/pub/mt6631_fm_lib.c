@@ -98,7 +98,7 @@ static bool mt6631_do_SPI_hopping_26M(void)
 	if (ret)
 		WCN_DBG(FM_ERR | CHIP, "Switch SPI clock to 26MHz failed\n");
 
-	ret = fm_host_reg_read(0x80021010, &hw_ver_id);
+	ret = fm_ioremap_read(0x180B1010, &hw_ver_id);
 	if (ret)
 		WCN_DBG(FM_ERR | CHIP, "%s: read HW ver. failed\n", __func__);
 	hw_ver_id = hw_ver_id >> 16;
@@ -167,7 +167,7 @@ static bool mt6631_do_SPI_hopping_64M(unsigned short freq)
 		"%s: freq:%d is SPI hopping channel,turn on 64M PLL\n",
 		__func__, freq);
 
-	ret = fm_host_reg_read(0x80021010, &hw_ver_id);
+	ret = fm_ioremap_read(0x180B1010, &hw_ver_id);
 	if (ret)
 		WCN_DBG(FM_ERR | CHIP, "%s: read HW ver. failed\n", __func__);
 	WCN_DBG(FM_NTC | CHIP, "%s: HW ver. ID = 0x%08x\n", __func__, hw_ver_id);
@@ -1197,7 +1197,7 @@ static signed int mt6631_PowerDown(void)
 	mt6631_do_SPI_hopping_26M();
 
 	/* Enable 26M crystal sleep */
-	if (hwid >= FM_CONNAC_1_0) {
+	if (hwid >= FM_CONNAC_1_0 && hwid <= FM_CONNAC_1_2) {
 		WCN_DBG(FM_DBG | CHIP, "PowerDown: Enable 26M crystal sleep,Set 0x81021200[23] = 0x0\n");
 		fm_host_reg_read(0x81021200, &tem);   /* Set 0x81021200[23] = 0x0 */
 		tem = tem & 0xFF7FFFFF;
@@ -1542,18 +1542,18 @@ static signed int mt6631_full_cqi_get(signed int min_freq, signed int max_freq, 
 				for (i = 0; i < fm_res->cqi[1]; i++) {
 					/* just for debug */
 					WCN_DBG(FM_NTC | CHIP,
-						"freq %d, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x\n",
+						"%04d, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x,\n",
 						p_cqi[i].ch, p_cqi[i].rssi, p_cqi[i].pamd,
 						p_cqi[i].pr, p_cqi[i].fpamd, p_cqi[i].mr,
 						p_cqi[i].atdc, p_cqi[i].prx, p_cqi[i].atdev,
 						p_cqi[i].smg, p_cqi[i].drssi);
 					/* format to buffer */
 					if (sprintf(cqi_log_buf,
-							"%04d, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x,\n",
-							p_cqi[i].ch, p_cqi[i].rssi, p_cqi[i].pamd,
-							p_cqi[i].pr, p_cqi[i].fpamd, p_cqi[i].mr,
-							p_cqi[i].atdc, p_cqi[i].prx, p_cqi[i].atdev,
-							p_cqi[i].smg, p_cqi[i].drssi) < 0)
+						    "%04d, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x,\n",
+						    p_cqi[i].ch, p_cqi[i].rssi, p_cqi[i].pamd,
+						    p_cqi[i].pr, p_cqi[i].fpamd, p_cqi[i].mr,
+						    p_cqi[i].atdc, p_cqi[i].prx, p_cqi[i].atdev,
+						    p_cqi[i].smg, p_cqi[i].drssi) < 0)
 						WCN_DBG(FM_NTC | CHIP, "sprintf fail\n");
 					/* write back to log file */
 					fm_file_write(cqi_log_path, cqi_log_buf, strlen(cqi_log_buf), &pos);

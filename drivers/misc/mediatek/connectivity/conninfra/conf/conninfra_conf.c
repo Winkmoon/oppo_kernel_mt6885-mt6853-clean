@@ -536,7 +536,6 @@ static int platform_request_firmware(char *patch_name, osal_firmware **ppPatch)
 	} while (ret == -EAGAIN);
 	if (ret != 0) {
 		pr_err("failed to open or read!(%s)\n", patch_name);
-		release_firmware(fw);
 		return -1;
 	}
 	pr_debug("loader firmware %s  ok!!\n", patch_name);
@@ -564,11 +563,6 @@ int conninfra_conf_init(void)
 	osal_strcpy(&(g_conninfra_conf.conf_name[0]), "conninfra.cfg");
 
 	pr_debug("config file:%s\n", &(g_conninfra_conf.conf_name[0]));
-#ifdef CONFIG_FPGA_EARLY_PORTING
-	pr_info("For FPGA, skip %s\n", __func__);
-	g_conninfra_conf.cfg_exist = 0;
-	return 0;
-#endif
 	if (0 ==
 	    platform_request_firmware(&g_conninfra_conf.conf_name[0],
 					(osal_firmware **) &conf_inst)) {

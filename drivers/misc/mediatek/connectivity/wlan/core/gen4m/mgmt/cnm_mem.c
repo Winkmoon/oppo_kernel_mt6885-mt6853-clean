@@ -153,11 +153,7 @@ static void cnmStaRecCmdHeContentFill(
 	struct STA_RECORD *prStaRec,
 	struct CMD_UPDATE_STA_RECORD *prCmdContent);
 #endif
-#if (CFG_SUPPORT_802_11BE == 1)
-static void cnmStaRecCmdEhtContentFill(
-	struct STA_RECORD *prStaRec,
-	struct CMD_UPDATE_STA_RECORD *prCmdContent);
-#endif
+
 
 /*******************************************************************************
  *                              F U N C T I O N S
@@ -647,10 +643,6 @@ struct STA_RECORD *cnmStaRecAlloc(struct ADAPTER *prAdapter,
 			for (k = 0; k < STA_WAIT_QUEUE_NUM; k++)
 				LINK_INITIALIZE(&prStaRec->arStaWaitQueue[k]);
 
-			LINK_INITIALIZE(&prStaRec->rMscsMonitorList);
-			LINK_INITIALIZE(&prStaRec->rMscsTcpMonitorList);
-			DBGLOG(MEM, WARN, "LINK_INITIALIZE list: %p\n",
-						&prStaRec->rMscsMonitorList);
 #if CFG_ENABLE_PER_STA_STATISTICS && CFG_ENABLE_PKT_LIFETIME_PROFILE
 			prStaRec->u4TotalTxPktsNumber = 0;
 			prStaRec->u4TotalTxPktsTime = 0;
@@ -682,12 +674,8 @@ struct STA_RECORD *cnmStaRecAlloc(struct ADAPTER *prAdapter,
 	/* Sync to chip to allocate WTBL resource */
 	if (i < CFG_STA_REC_NUM) {
 		COPY_MAC_ADDR(prStaRec->aucMacAddr, pucMacAddr);
-		if (secPrivacySeekForEntry(prAdapter, prStaRec)) {
+		if (secPrivacySeekForEntry(prAdapter, prStaRec))
 			cnmStaSendUpdateCmd(prAdapter, prStaRec, NULL, FALSE);
-#if CFG_SUPPORT_LIMITED_PKT_PID
-			nicTxInitPktPID(prAdapter, prStaRec->ucWlanIndex);
-#endif /* CFG_SUPPORT_LIMITED_PKT_PID */
-		}
 #if DBG
 		else {
 			prStaRec->fgIsInUse = FALSE;
@@ -720,22 +708,18 @@ void cnmStaRecFree(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec)
 	if (!prStaRec)
 		return;
 
-	log_dbg(CNM, INFO, "cnmStaRecFree %d\n", prStaRec->ucIndex);
+	log_dbg(RSN, INFO, "cnmStaRecFree %d\n", prStaRec->ucIndex);
 
 	ucStaRecIndex = prStaRec->ucIndex;
 	ucBssIndex = prStaRec->ucBssIndex;
 
-	if (prStaRec->fgIsInUse) {
-		nicFreePendingTxMsduInfo(prAdapter, prStaRec->ucWlanIndex,
+	nicFreePendingTxMsduInfo(prAdapter, prStaRec->ucWlanIndex,
 				MSDU_REMOVE_BY_WLAN_INDEX);
 
-		cnmStaRoutinesForAbort(prAdapter, prStaRec);
+	cnmStaRoutinesForAbort(prAdapter, prStaRec);
 
-		cnmStaSendRemoveCmd(prAdapter, STA_REC_CMD_ACTION_STA,
-			ucStaRecIndex, ucBssIndex);
-	} else {
-		log_dbg(CNM, ERROR, "prStaRec is not in use\n");
-	}
+	cnmStaSendRemoveCmd(prAdapter, STA_REC_CMD_ACTION_STA,
+		ucStaRecIndex, ucBssIndex);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -829,22 +813,6 @@ void cnmStaFreeAllStaByNetwork(struct ADAPTER *prAdapter, uint8_t ucBssIndex,
 #endif
 }
 
-struct STA_RECORD *cnmGetStaRecByIndexWithoutInUseCheck(
-	struct ADAPTER *prAdapter,
-	uint8_t ucIndex)
-{
-	struct STA_RECORD *prStaRec;
-
-	ASSERT(prAdapter);
-
-	if (ucIndex < CFG_STA_REC_NUM)
-		prStaRec = &prAdapter->arStaRec[ucIndex];
-	else
-		prStaRec = NULL;
-
-	return prStaRec;
-}
-
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief
@@ -859,7 +827,12 @@ struct STA_RECORD *cnmGetStaRecByIndex(struct ADAPTER *prAdapter,
 {
 	struct STA_RECORD *prStaRec;
 
-	prStaRec = cnmGetStaRecByIndexWithoutInUseCheck(prAdapter, ucIndex);
+	ASSERT(prAdapter);
+
+	if (ucIndex < CFG_STA_REC_NUM)
+		prStaRec = &prAdapter->arStaRec[ucIndex];
+	else
+		prStaRec = NULL;
 
 	if (prStaRec && prStaRec->fgIsInUse == FALSE)
 		prStaRec = NULL;
@@ -1148,16 +1121,6 @@ void cnmStaSendUpdateCmd(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 	/* AMSDU in AMPDU global configuration */
 	prCmdContent->ucTxAmsduInAmpdu = prAdapter->rWifiVar.ucAmsduInAmpduTx;
 	prCmdContent->ucRxAmsduInAmpdu = prAdapter->rWifiVar.ucAmsduInAmpduRx;
-
-#if (CFG_SUPPORT_802_11BE == 1)
-	if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_SET_802_11BE) {
-		/* EHT peer AMSDU in AMPDU configuration */
-		prCmdContent->ucTxAmsduInAmpdu &=
-			prAdapter->rWifiVar.ucEhtAmsduInAmpduTx;
-		prCmdContent->ucRxAmsduInAmpdu &=
-		prAdapter->rWifiVar.ucEhtAmsduInAmpduRx;
-	} else
-#endif
 #if (CFG_SUPPORT_802_11AX == 1)
 	/* prStaRec->ucDesiredPhyTypeSet firm in */
 		/* bssDetermineStaRecPhyTypeSet() in advance */
@@ -1186,14 +1149,6 @@ void cnmStaSendUpdateCmd(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 
 	prCmdContent->u4TxMaxAmsduInAmpduLen
 		= prAdapter->rWifiVar.u4TxMaxAmsduInAmpduLen;
-#if (CFG_SUPPORT_802_11BE == 1)
-	if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_SET_802_11BE) {
-		prCmdContent->rBaSize.rEhtBaSize.u2RxBaSize =
-				prAdapter->rWifiVar.u2RxEhtBaSize;
-		prCmdContent->rBaSize.rEhtBaSize.u2TxBaSize =
-				prAdapter->rWifiVar.u2TxEhtBaSize;
-	} else
-#endif
 #if (CFG_SUPPORT_802_11AX == 1)
 	if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_SET_802_11AX) {
 		prCmdContent->rBaSize.rHeBaSize.u2RxBaSize =
@@ -1207,10 +1162,10 @@ void cnmStaSendUpdateCmd(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 			= prAdapter->rWifiVar.ucTxBaSize;
 
 		if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_SET_802_11AC)
-			prCmdContent->rBaSize.rHtVhtBaSize.ucRxBaSize
+			prCmdContent->rBaSize.rHtVhtBaSize.ucTxBaSize
 				= prAdapter->rWifiVar.ucRxVhtBaSize;
 		else
-			prCmdContent->rBaSize.rHtVhtBaSize.ucRxBaSize
+			prCmdContent->rBaSize.rHeBaSize.u2TxBaSize
 				= prAdapter->rWifiVar.ucRxHtBaSize;
 	}
 
@@ -1227,13 +1182,6 @@ void cnmStaSendUpdateCmd(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 	if (fgEfuseCtrlAxOn == 1) {
 	cnmStaRecCmdHeContentFill(prStaRec, prCmdContent);
 	}
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	prCmdContent->u2He6gBandCapInfo = prStaRec->u2He6gBandCapInfo;
-#endif
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-	cnmStaRecCmdEhtContentFill(prStaRec, prCmdContent);
 #endif
 
 	log_dbg(REQ, TRACE, "Update StaRec[%u] WIDX[%u] State[%u] Type[%u] BssIdx[%u] AID[%u]\n",
@@ -1915,19 +1863,6 @@ static void cnmStaRecCmdHeContentFill(
 		CPU_TO_LE16(prStaRec->u2HeRxMcsMapBW80P80);
 	prCmdContent->u2HeTxMcsMapBW80P80 =
 		CPU_TO_LE16(prStaRec->u2HeTxMcsMapBW80P80);
-}
-#endif
-
-#if (CFG_SUPPORT_802_11BE == 1)
-static void cnmStaRecCmdEhtContentFill(
-	struct STA_RECORD *prStaRec,
-	struct CMD_UPDATE_STA_RECORD *prCmdContent)
-{
-	prCmdContent->ucVersion = CMD_UPDATE_STAREC_VER1;
-	memcpy(prCmdContent->ucEhtMacCapInfo, prStaRec->ucEhtMacCapInfo,
-		EHT_MAC_CAP_BYTE_NUM);
-	memcpy(prCmdContent->ucEhtPhyCapInfo, prStaRec->ucEhtPhyCapInfo,
-		EHT_PHY_CAP_BYTE_NUM);
 }
 #endif
 

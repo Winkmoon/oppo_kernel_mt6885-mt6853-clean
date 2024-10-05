@@ -526,9 +526,7 @@ struct WIFI_CFG_PARAM_STRUCT {
 	uint8_t ucNeedCheckLDO;
 	uint8_t ucDefaultTestMode;
 	uint8_t ucSupportCoAnt;
-	uint8_t aucReserved0[4];
-	uint8_t ucAFCCapId;
-	uint8_t aucReserved2[7];
+	uint8_t aucReserved0[12];
 	/* NVRAM offset[256] ~ offset[255] */
 	/* uint8_t aucReserved0[256 - 241]; */
 
@@ -567,7 +565,6 @@ struct WIFI_NVRAM_TAG_FORMAT {
 #endif
 
 #define MAX_CFG_FILE_WIFI_REC_SIZE    (1024*8)
-#define MAX_CFG_FILE_WIFI_RECAL_SIZE    512
 
 /*******************************************************************************
  *                  F U N C T I O N   D E C L A R A T I O N S

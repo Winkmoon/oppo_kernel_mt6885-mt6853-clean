@@ -88,13 +88,7 @@
 #endif
 
 #if KERNEL_VERSION(4, 19, 0) > CFG80211_VERSION_CODE
-
-#define NL80211_EXT_FEATURE_FILS_MAX_CHANNEL_TIME 17
-#define NL80211_EXT_FEATURE_ACCEPT_BCAST_PROBE_RESP 18
-#define NL80211_EXT_FEATURE_OCE_PROBE_REQ_HIGH_TX_RATE 19
-#define NL80211_EXT_FEATURE_OCE_PROBE_REQ_DEFERRAL_SUPPRESSION 20
 #define NL80211_EXT_FEATURE_LOW_SPAN_SCAN 22
-
 #define NL80211_SCAN_FLAG_LOW_SPAN (1 << 8)
 #endif
 
@@ -367,6 +361,12 @@ int mtk_cfg80211_testmode_cmd(struct wiphy *wiphy,
 int mtk_cfg80211_testmode_sw_cmd(IN struct wiphy *wiphy,
 					IN struct wireless_dev *wdev,
 					IN void *data, IN int len);
+
+#if CFG_SUPPORT_PASSPOINT
+int mtk_cfg80211_testmode_hs20_cmd(IN struct wiphy *wiphy,
+					IN struct wireless_dev *wdev,
+					IN void *data, IN int len);
+#endif /* CFG_SUPPORT_PASSPOINT */
 
 #if CFG_SUPPORT_WAPI
 int mtk_cfg80211_testmode_set_key_ext(IN struct wiphy
@@ -691,12 +691,6 @@ void mtk_cfg_mgmt_frame_register(struct wiphy *wiphy,
 				 struct wireless_dev *wdev,
 				 u16 frame_type, bool reg);
 
-#if KERNEL_VERSION(5, 8, 0) <= CFG80211_VERSION_CODE
-void mtk_cfg_mgmt_frame_update(struct wiphy *wiphy,
-				struct wireless_dev *wdev,
-				struct mgmt_frame_regs *upd);
-#endif
-
 #ifdef CONFIG_NL80211_TESTMODE
 #if KERNEL_VERSION(3, 12, 0) <= CFG80211_VERSION_CODE
 int mtk_cfg_testmode_cmd(struct wiphy *wiphy,
@@ -768,11 +762,6 @@ int mtk_cfg_get_txpower(struct wiphy *wiphy,
 
 int mtk_cfg80211_update_ft_ies(struct wiphy *wiphy, struct net_device *dev,
 				struct cfg80211_update_ft_ies_params *ftie);
-
-#ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
-int mtk_cfg80211_set_monitor_channel(struct wiphy *wiphy,
-				struct cfg80211_chan_def *chandef);
-#endif
 
 #if CFG_SUPPORT_WPA3
 int mtk_cfg80211_external_auth(struct wiphy *wiphy, struct net_device *dev,

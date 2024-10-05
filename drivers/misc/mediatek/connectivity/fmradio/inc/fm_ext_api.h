@@ -24,36 +24,6 @@ enum fm_spi_speed {
 	FM_SPI_SPEED_MAX
 };
 
-enum fm_reg_map {
-	CONN_TCR_CKMCTL,
-	CONN_TCR_FMAUD_SET,
-	CONN_TCR_FI2SCK_DIV_CNT,
-	CONN_INFRA_WAKEPU_FM,
-	CONN_HW_VER,
-	OSC_MASK,
-	PLL_STATUS,
-	CONN_INFRA_CFG_RC_STATUS,
-	ADIE_CTL,
-	CKGEN_BUS,
-	FM_CTRL_MEM_SWCTL_PDN,
-	RG_DIG_EN_02,
-	SPI_CRTL,
-	FM_CTRL,
-	WB_SLP_TOP_CK_4,
-	CONN_INFRA_CFG_PWRCTRL1,
-	FM_REG_MAP_MAX
-};
-#define CONN_INFRA_CFG_FM_PWRCTRL0 CONN_TCR_CKMCTL
-
-enum fm_base_addr {
-	CONN_RF_SPI_MST_REG,
-	CONN_HOST_CSR_TOP,
-	MCU_CFG_CONSYS,
-	FM_BASE_ADDR_MAX
-};
-
-#define FM_REG_NO_USED 0x00000000
-
 struct fm_ext_interface {
 	void (*eint_handler)(void);
 	void (*eint_cb)(void);
@@ -73,12 +43,6 @@ struct fm_ext_interface {
 	int (*spi_clock_switch)(enum fm_spi_speed speed);
 	bool (*is_bus_hang)(void);
 	int (*spi_hopping)(void);
-	int (*disable_spi_hopping)(void);
-	void (*host_reg_dump)(void);
-	int (*host_pre_on)(void);
-	int (*host_post_on)(void);
-	int (*host_pre_off)(void);
-	int (*host_post_off)(void);
 	signed int (*low_ops_register)(struct fm_callback *cb, struct fm_basic_interface *bi);
 	signed int (*low_ops_unregister)(struct fm_basic_interface *bi);
 	signed int (*rds_ops_register)(struct fm_basic_interface *bi, struct fm_rds_interface *ri);
@@ -86,11 +50,6 @@ struct fm_ext_interface {
 
 	struct platform_driver *drv;
 	unsigned int irq_id;
-	unsigned int family_id;
-	unsigned int conn_id;
-	unsigned int reg_map[FM_REG_MAP_MAX];
-	unsigned int base_addr[FM_BASE_ADDR_MAX];
-	unsigned int base_size[FM_BASE_ADDR_MAX];
 };
 
 #endif /* FM_EXT_API_H */

@@ -71,7 +71,7 @@ typedef enum _ENUM_STP_BTM_OPID_T {
 #endif
 	STP_OPID_BTM_ASSERT_TIMEOUT = 0xa,
 	STP_OPID_BTM_EMI_DUMP_END = 0xb,
-	STP_OPID_BTM_EXIT = 0xc,
+	STP_OPID_BTM_EXIT,
 	STP_OPID_BTM_NUM
 } ENUM_STP_BTM_OPID_T, *P_ENUM_STP_BTM_OPID_T;
 
@@ -89,7 +89,7 @@ typedef struct mtk_stp_btm {
 	P_OSAL_OP pCurOP;	/* current op */
 	INT32 gDumplogflag;
 
-	/* wmt_notify */
+	/*wmt_notify */
 	INT32 (*wmt_notify)(MTKSTP_BTM_WMT_OP_T);
 
 	OSAL_TIMER trigger_assert_timer;
@@ -122,7 +122,9 @@ INT32 stp_btm_notify_wmt_dmp_wq(MTKSTP_BTM_T *stp_btm);
 INT32 stp_btm_notify_emi_dump_end(MTKSTP_BTM_T *stp_btm);
 INT32 stp_btm_deinit(MTKSTP_BTM_T *stp_btm);
 INT32 stp_btm_reset_btm_wq(MTKSTP_BTM_T *stp_btm);
-
+INT32 stp_notify_btm_poll_cpupcr(MTKSTP_BTM_T *stp_btm, UINT32 times, UINT32 sleep);
+INT32 stp_notify_btm_poll_cpupcr_ctrl(UINT32 en);
+INT32 stp_btm_sort_btm_wq(MTKSTP_BTM_T *stp_btm);
 INT32 stp_notify_btm_dump(MTKSTP_BTM_T *stp_btm);
 INT32 stp_notify_btm_do_fw_assert(MTKSTP_BTM_T *stp_btm);
 INT32 stp_notify_btm_handle_wmt_lte_coex(MTKSTP_BTM_T *stp_btm);

@@ -114,9 +114,6 @@ enum ENUM_ROAMING_REASON {
 	ROAMING_REASON_BEACON_TIMEOUT,
 	ROAMING_REASON_INACTIVE,
 	ROAMING_REASON_SAA_FAIL,
-	ROAMING_REASON_UPPER_LAYER_TRIGGER,
-	ROAMING_REASON_BTM,
-	ROAMING_REASON_BTM_DISASSOC,
 	ROAMING_REASON_NUM
 };
 
@@ -154,21 +151,9 @@ enum ENUM_ROAMING_STATE {
 	ROAMING_STATE_IDLE = 0,
 	ROAMING_STATE_DECISION,
 	ROAMING_STATE_DISCOVERY,
+	ROAMING_STATE_REQ_CAND_LIST,
 	ROAMING_STATE_ROAM,
 	ROAMING_STATE_NUM
-};
-
-struct ROAMING_EVENT_INFO {
-	uint8_t ucStatus;
-	uint8_t aucPrevBssid[MAC_ADDR_LEN];
-	uint8_t aucCurrBssid[MAC_ADDR_LEN];
-	uint8_t ucPrevChannel;
-	uint8_t ucCurrChannel;
-	uint8_t ucPrevRcpi;
-	uint8_t ucCurrRcpi;
-	uint8_t ucBw;
-	uint16_t u2ApLoading;
-	uint8_t ucSupportStbc;
 };
 
 struct ROAMING_INFO {
@@ -182,11 +167,11 @@ struct ROAMING_INFO {
 #endif
 
 	u_int8_t fgDrvRoamingAllow;
+	struct TIMER rWaitCandidateTimer;
 	enum ENUM_ROAMING_REASON eReason;
 	uint8_t ucPER;
 	uint8_t ucRcpi;
 	uint8_t ucThreshold;
-	struct ROAMING_EVENT_INFO rEventInfo;
 };
 
 /*******************************************************************************
@@ -235,18 +220,13 @@ void roamingFsmRunEventRoam(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucBssIndex);
 
 void roamingFsmRunEventFail(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucReason,
+	IN uint32_t u4Reason,
 	IN uint8_t ucBssIndex);
 
 void roamingFsmRunEventAbort(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucBssIndex);
 
-void roamingFsmNotifyEvent(IN struct ADAPTER *adapter, IN uint8_t bssIndex,
-	IN uint8_t ucFail, IN struct BSS_DESC *prBssDesc);
-
 uint32_t roamingFsmProcessEvent(IN struct ADAPTER *prAdapter,
 	IN struct CMD_ROAMING_TRANSIT *prTransit);
-
-uint8_t roamingFsmInDecision(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
 
 #endif /* _ROAMING_FSM_H */

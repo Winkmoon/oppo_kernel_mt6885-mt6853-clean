@@ -640,16 +640,8 @@ uint32_t wlanDbgGetLogLevelImpl(IN struct ADAPTER *prAdapter,
 void wlanDbgSetLogLevelImpl(IN struct ADAPTER *prAdapter,
 		uint32_t u4Version, uint32_t u4Module, uint32_t u4level)
 {
-	wlanDbgSetLogLevel(prAdapter, u4Version, u4Module, u4level, FALSE);
-}
-
-void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
-		uint32_t u4Version, uint32_t u4Module,
-		uint32_t u4level, u_int8_t fgEarlySet)
-{
 	uint32_t u4DriverLevel = ENUM_WIFI_LOG_LEVEL_DEFAULT;
 	uint32_t u4FwLevel = ENUM_WIFI_LOG_LEVEL_DEFAULT;
-	uint32_t rStatus = WLAN_STATUS_SUCCESS;
 
 	if (u4level >= ENUM_WIFI_LOG_LEVEL_NUM)
 		return;
@@ -676,23 +668,13 @@ void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
 		case ENUM_WIFI_LOG_MODULE_FW:
 		{
 			struct CMD_EVENT_LOG_UI_INFO cmd;
-			prAdapter->fgSetLogLevel = false;
 
 			kalMemZero(&cmd,
 					sizeof(struct CMD_EVENT_LOG_UI_INFO));
 			cmd.ucVersion = u4Version;
 			cmd.ucLogLevel = u4level;
 
-			if (fgEarlySet) {
-				/* Set during wifi on flow */
-				rStatus = wlanSendFwLogControlCmd(prAdapter,
-					CMD_ID_LOG_UI_INFO,
-					nicCmdEventSetCommon,
-					nicOidCmdTimeoutCommon,
-					sizeof(struct CMD_EVENT_LOG_UI_INFO),
-					(uint8_t *)&cmd);
-			} else {
-				rStatus = wlanSendSetQueryCmd(prAdapter,
+			wlanSendSetQueryCmd(prAdapter,
 					CMD_ID_LOG_UI_INFO,
 					TRUE,
 					FALSE,
@@ -703,12 +685,6 @@ void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
 					(uint8_t *)&cmd,
 					NULL,
 					0);
-			}
-
-			if (rStatus != WLAN_STATUS_FAILURE)
-				prAdapter->fgSetLogLevel = true;
-			else
-				DBGLOG(INIT, INFO, "Log level setting fail!\n");
 		}
 			break;
 		default:
@@ -907,7 +883,7 @@ void wlanFillTimestamp(struct ADAPTER *prAdapter, void *pvPacket,
 	uint8_t *pucEth = NULL;
 	uint32_t u4Length = 0;
 	uint8_t *pucUdp = NULL;
-	struct timespec64 tval;
+	struct timeval tval;
 
 	if (!prAdapter || !prAdapter->rDebugInfo.fgVoE5_7Test || !skb)
 		return;
@@ -922,7 +898,7 @@ void wlanFillTimestamp(struct ADAPTER *prAdapter, void *pvPacket,
 	pucUdp = &pucEth[ETH_HLEN+28];
 	if (kalStrnCmp(pucUdp, "1345678", 7))
 		return;
-	ktime_get_ts64(&tval);
+	do_gettimeofday(&tval);
 	switch (ucPhase) {
 	case PHASE_XMIT_RCV: /* xmit */
 		pucUdp += 20;
@@ -935,6 +911,6 @@ void wlanFillTimestamp(struct ADAPTER *prAdapter, void *pvPacket,
 		break;
 	}
 	wlanSetBE32(tval.tv_sec, pucUdp);
-	wlanSetBE32(NSEC_TO_USEC(tval.tv_nsec), pucUdp+4);
+	wlanSetBE32(tval.tv_usec, pucUdp+4);
 }
 /* End: Functions used to breakdown packet jitter, for test case VoE 5.7 */

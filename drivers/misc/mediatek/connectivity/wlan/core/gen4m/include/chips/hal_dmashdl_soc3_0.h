@@ -37,7 +37,7 @@
 #define MT6885_DMASHDL_PKT_PSE_MAX_PAGE                (0x0)
 #define MT6885_DMASHDL_GROUP_0_REFILL_EN               (1)
 #define MT6885_DMASHDL_GROUP_1_REFILL_EN               (1)
-#define MT6885_DMASHDL_GROUP_2_REFILL_EN               (1)
+#define MT6885_DMASHDL_GROUP_2_REFILL_EN               (0)
 #define MT6885_DMASHDL_GROUP_3_REFILL_EN               (0)
 #define MT6885_DMASHDL_GROUP_4_REFILL_EN               (0)
 #define MT6885_DMASHDL_GROUP_5_REFILL_EN               (0)
@@ -53,7 +53,7 @@
 #define MT6885_DMASHDL_GROUP_15_REFILL_EN              (0)
 #define MT6885_DMASHDL_GROUP_0_MAX_QUOTA               (0x15D)
 #define MT6885_DMASHDL_GROUP_1_MAX_QUOTA               (0x15D)
-#define MT6885_DMASHDL_GROUP_2_MAX_QUOTA               (0x15D)
+#define MT6885_DMASHDL_GROUP_2_MAX_QUOTA               (0x0)
 #define MT6885_DMASHDL_GROUP_3_MAX_QUOTA               (0x0)
 #define MT6885_DMASHDL_GROUP_4_MAX_QUOTA               (0x0)
 #define MT6885_DMASHDL_GROUP_5_MAX_QUOTA               (0x0)
@@ -69,7 +69,7 @@
 #define MT6885_DMASHDL_GROUP_15_MAX_QUOTA              (0x0)
 #define MT6885_DMASHDL_GROUP_0_MIN_QUOTA               (0x10)
 #define MT6885_DMASHDL_GROUP_1_MIN_QUOTA               (0x10)
-#define MT6885_DMASHDL_GROUP_2_MIN_QUOTA               (0x10)
+#define MT6885_DMASHDL_GROUP_2_MIN_QUOTA               (0x0)
 #define MT6885_DMASHDL_GROUP_3_MIN_QUOTA               (0x0)
 #define MT6885_DMASHDL_GROUP_4_MIN_QUOTA               (0x0)
 #define MT6885_DMASHDL_GROUP_5_MIN_QUOTA               (0x0)
@@ -86,19 +86,19 @@
 #define MT6885_DMASHDL_QUEUE_0_TO_GROUP                (0x0)   /* LMAC AC00 */
 #define MT6885_DMASHDL_QUEUE_1_TO_GROUP                (0x0)   /* LMAC AC01 */
 #define MT6885_DMASHDL_QUEUE_2_TO_GROUP                (0x0)   /* LMAC AC02 */
-#define MT6885_DMASHDL_QUEUE_3_TO_GROUP                (0x2)   /* LMAC AC03 */
+#define MT6885_DMASHDL_QUEUE_3_TO_GROUP                (0x0)   /* LMAC AC03 */
 #define MT6885_DMASHDL_QUEUE_4_TO_GROUP                (0x1)   /* LMAC AC10 */
 #define MT6885_DMASHDL_QUEUE_5_TO_GROUP                (0x1)   /* LMAC AC11 */
 #define MT6885_DMASHDL_QUEUE_6_TO_GROUP                (0x1)   /* LMAC AC12 */
-#define MT6885_DMASHDL_QUEUE_7_TO_GROUP                (0x2)   /* LMAC AC13 */
+#define MT6885_DMASHDL_QUEUE_7_TO_GROUP                (0x1)   /* LMAC AC13 */
 #define MT6885_DMASHDL_QUEUE_8_TO_GROUP                (0x0)   /* LMAC AC20 */
 #define MT6885_DMASHDL_QUEUE_9_TO_GROUP                (0x0)   /* LMAC AC21 */
 #define MT6885_DMASHDL_QUEUE_10_TO_GROUP               (0x0)   /* LMAC AC22 */
-#define MT6885_DMASHDL_QUEUE_11_TO_GROUP               (0x2)   /* LMAC AC23 */
-#define MT6885_DMASHDL_QUEUE_12_TO_GROUP               (0x1)   /* LMAC AC30 */
-#define MT6885_DMASHDL_QUEUE_13_TO_GROUP               (0x1)   /* LMAC AC31 */
-#define MT6885_DMASHDL_QUEUE_14_TO_GROUP               (0x1)   /* LMAC AC32 */
-#define MT6885_DMASHDL_QUEUE_15_TO_GROUP               (0x2)   /* LMAC AC33 */
+#define MT6885_DMASHDL_QUEUE_11_TO_GROUP               (0x0)   /* LMAC AC23 */
+#define MT6885_DMASHDL_QUEUE_12_TO_GROUP               (0x0)   /* LMAC AC30 */
+#define MT6885_DMASHDL_QUEUE_13_TO_GROUP               (0x0)   /* LMAC AC31 */
+#define MT6885_DMASHDL_QUEUE_14_TO_GROUP               (0x0)   /* LMAC AC32 */
+#define MT6885_DMASHDL_QUEUE_15_TO_GROUP               (0x0)   /* LMAC AC33 */
 #define MT6885_DMASHDL_QUEUE_16_TO_GROUP               (0x0)   /* ALTX */
 #define MT6885_DMASHDL_QUEUE_17_TO_GROUP               (0x0)   /* BMC */
 #define MT6885_DMASHDL_QUEUE_18_TO_GROUP               (0x0)   /* BCN */
@@ -131,10 +131,6 @@
 #define MT6885_DMASHDL_PRIORITY13_GROUP                (0xD)
 #define MT6885_DMASHDL_PRIORITY14_GROUP                (0xE)
 #define MT6885_DMASHDL_PRIORITY15_GROUP                (0xF)
-/* 3 rings are used */
-#define MT6885_DMASHDL_HIF_ACK_CNT_TH                  (0x3)
-/* Ring 0/1/2 are used */
-#define MT6885_DMASHDL_HIF_GUP_ACT_MAP                 (0x0007)
 
 #endif /* defined(_HIF_PCIE) || defined(_HIF_AXI) */
 
@@ -143,11 +139,41 @@
 ********************************************************************************
 */
 
+enum ENUM_MT6885_DMASHDL_GROUP_IDX {
+	ENUM_MT6885_DMASHDL_GROUP_0 = 0,
+	ENUM_MT6885_DMASHDL_GROUP_1,
+	ENUM_MT6885_DMASHDL_GROUP_2,
+	ENUM_MT6885_DMASHDL_GROUP_3,
+	ENUM_MT6885_DMASHDL_GROUP_4,
+	ENUM_MT6885_DMASHDL_GROUP_5,
+	ENUM_MT6885_DMASHDL_GROUP_6,
+	ENUM_MT6885_DMASHDL_GROUP_7,
+	ENUM_MT6885_DMASHDL_GROUP_8,
+	ENUM_MT6885_DMASHDL_GROUP_9,
+	ENUM_MT6885_DMASHDL_GROUP_10,
+	ENUM_MT6885_DMASHDL_GROUP_11,
+	ENUM_MT6885_DMASHDL_GROUP_12,
+	ENUM_MT6885_DMASHDL_GROUP_13,
+	ENUM_MT6885_DMASHDL_GROUP_14,
+	ENUM_MT6885_DMASHDL_GROUP_15,
+	ENUM_MT6885_DMASHDL_GROUP_NUM
+};
+
+struct MT6885_DMASHDL_CFG {
+	u_int8_t fgSlotArbiterEn;
+	uint16_t u2PktPleMaxPage;
+	uint16_t u2PktPseMaxPage;
+	u_int8_t afgRefillEn[ENUM_MT6885_DMASHDL_GROUP_NUM];
+	uint16_t au2MaxQuota[ENUM_MT6885_DMASHDL_GROUP_NUM];
+	uint16_t au2MinQuota[ENUM_MT6885_DMASHDL_GROUP_NUM];
+	uint8_t aucQueue2Group[32];
+	uint8_t aucPriority2Group[16];
+};
+
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
-extern struct DMASHDL_CFG rMT6885DmashdlCfg;
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -169,5 +195,39 @@ extern struct DMASHDL_CFG rMT6885DmashdlCfg;
 ********************************************************************************
 */
 
+void mt6885HalDmashdlSetPlePktMaxPage(struct ADAPTER *prAdapter,
+				      uint16_t u2MaxPage);
+
+void mt6885HalDmashdlSetPsePktMaxPage(struct ADAPTER *prAdapter,
+				      uint16_t u2MaxPage);
+
+void mt6885HalDmashdlSetRefill(struct ADAPTER *prAdapter, uint8_t ucGroup,
+			       u_int8_t fgEnable);
+
+void mt6885HalDmashdlSetMaxQuota(struct ADAPTER *prAdapter, uint8_t ucGroup,
+				 uint16_t u2MaxQuota);
+
+void mt6885HalDmashdlSetMinQuota(struct ADAPTER *prAdatper, uint8_t ucGroup,
+				 uint16_t u2MinQuota);
+
+void mt6885HalDmashdlSetQueueMapping(struct ADAPTER *prAdapter, uint8_t ucQueue,
+				     uint8_t ucGroup);
+
 void mt6885DmashdlInit(struct ADAPTER *prAdapter);
+
+void mt6885HalDmashdlGetPktMaxPage(struct ADAPTER *prAdapter);
+
+void mt6885HalDmashdlGetRefill(struct ADAPTER *prAdapter);
+
+void mt6885HalDmashdlGetGroupControl(struct ADAPTER *prAdapter,
+	uint8_t ucGroup);
+
+uint32_t mt6885HalDmashdlGetRsvCount(struct ADAPTER *prAdapter,
+	uint8_t ucGroup);
+
+uint32_t mt6885HalDmashdlGetSrcCount(struct ADAPTER *prAdapter,
+	uint8_t ucGroup);
+
+void mt6885HalDmashdlGetPKTCount(struct ADAPTER *prAdapter,
+	uint8_t ucGroup);
 #endif /* _HAL_DMASHDL_MT6885_H */

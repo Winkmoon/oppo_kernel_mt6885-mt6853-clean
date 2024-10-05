@@ -19,6 +19,5 @@
 
 INT32 stp_dbg_combo_core_dump(INT32 dump_sink);
 PUINT8 stp_dbg_combo_id_to_task(UINT32 id);
-INT32 stp_dbg_combo_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd);
 
 #endif /* end of _STP_DEBUG_COMBO_H_ */

@@ -15,8 +15,6 @@
 *                                 M A C R O S
 ********************************************************************************
 */
-// Only support WIFI and BT for connsyslog init
-#define CONN_DEBUG_PRIMARY_END 2
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -26,8 +24,6 @@
 enum CONN_DEBUG_TYPE {
 	CONN_DEBUG_TYPE_WIFI = 0,
 	CONN_DEBUG_TYPE_BT = 1,
-	CONN_DEBUG_TYPE_WIFI_MCU = 2,
-	CONN_DEBUG_TYPE_BT_MCU = 3,
 	CONN_DEBUG_TYPE_END,
 };
 

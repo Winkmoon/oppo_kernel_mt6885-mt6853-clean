@@ -122,7 +122,7 @@
 #define IFNAMELEN 16
 #endif
 
-#define SERV_IOCTLBUFF 4096
+#define SERV_IOCTLBUFF 2048
 
 /* Test log dump type */
 #define fTEST_LOG_RXV			(1 << TEST_LOG_RXV)
@@ -213,13 +213,9 @@ enum test_band_mode {
 /* Test DBDC band type for QA */
 enum test_band_type {
 	TEST_BAND_TYPE_UNUSE = 0,
-	TEST_BAND_TYPE_2_4G,
-	TEST_BAND_TYPE_5G,
-	TEST_BAND_TYPE_2_4G_5G,
-	TEST_BAND_TYPE_6G,
-	TEST_BAND_TYPE_2_4G_6G,
-	TEST_BAND_TYPE_5G_6G,
-	TEST_BAND_TYPE_2_4G_5G_6G,
+	TEST_BAND_TYPE_G,
+	TEST_BAND_TYPE_A,
+	TEST_BAND_TYPE_ALL
 };
 
 /* Test DBDC enable for QA */
@@ -465,13 +461,11 @@ struct serv_chip_cap {
 	u_int8 vht_ampdu_exp;
 	u_int16 he_tx_ba_wsize;
 	u_int8 he_ampdu_exp;
-	u_int32 efuse_size;
+	u_int16 efuse_size;
 	struct serv_mcs_nss_caps mcs_nss;
 	struct serv_qos_caps qos;
 	struct serv_spe_map_list spe_map_list;
 	boolean swq_per_band;
-	boolean ra_offload;
-	boolean support_6g;
 };
 
 /* Service channel configuration */
@@ -781,7 +775,7 @@ struct test_capability_ph_cap {
 
 	/* content: GET_CAPABILITY_TAG_PHY_LEN */
 
-	/* BIT0: 11 a/b/g, BIT1: 11n, BIT2: 11ac, BIT3: 11ax */
+	/* BIT0 : 11 a/b/g  BIT1: 11n , BIT2: 11ac , BIT3: 11ax */
 	u_int32 protocol;
 
 	/* 1:1x1, 2:2x2, ... */
@@ -790,18 +784,17 @@ struct test_capability_ph_cap {
 	/* BIT0: DBDC support */
 	u_int32 dbdc;
 
-	/* BIT0: TxLDPC, BTI1: RxLDPC, BIT2: TxSTBC, BIT3: RxSTBC */
+	/* BIT0: TxLDPC , BTI1 : RxLDPC , BIT2: TxSTBC , BIT3: RxSTBC */
 	u_int32 coding;
 
-	/* BIT0: 2.4G, BIT1: 5G, BIT2: 6G */
+	/* BIT0 : 2.4G  BIT1: 5G , BIT2: 6G */
 	u_int32 channel_band;
 
-	/* BIT0: BW20, BIT1: BW40, BIT2: BW80 */
-	/* BIT3: BW160C, BIT4: BW80+80(BW160NC) */
+	/* BIT0: BW20, BIT1:BW40, BIT2:BW80, BIT3:BW160, BIT4:BW80+80 */
 	u_int32 bandwidth;
 
-	/* BIT0: Band0 2.4G, BIT1: Band1 5G, BIT2: Band0 6G */
-	/* BIT16: Band1 2.4G, BIT17: Band1 5G, BIT18: Band1 6G */
+	/* BIT0 : Band0 2.4G  BIT1: Band1 5G , BIT2: Band0 6G */
+	/* BIT16 : Band1 2.4G  BIT17: Band1 5G , BIT18: Band1 6G */
 	u_int32 channel_band_dbdc;
 
 	u_int32 reserved[9];
@@ -1144,13 +1137,6 @@ struct test_wlan_info {
 	/* HW Tx on off */
 	u_int32 hw_tx_enable;
 
-	/* icap parameter */
-	u_char icap_arch;
-	u_char icap_bitwidth;
-	u_char icap_phy_idx;
-	u_int32 icap_emi_start_addr;
-	u_int32 icap_emi_end_addr;
-	u_int32 icap_emi_msb_addr;
 };
 
 /* Test control register read/write for service */
@@ -1173,57 +1159,6 @@ struct test_eeprom {
 	u_int16 *value;
 	/* For get efuse block count only */
 	u_int32 efuse_free_block;
-};
-
-struct list_mode_tx_seg_header {
-	u_int32	u4ExtId;
-	u_int32	u4FC;
-	u_int32	u4Dur;
-	u_int32	u4SeqID;
-	u_int32	u4TxLen;
-	u_int8	aucSourceAddr[SERV_MAC_ADDR_LEN];
-	u_int8	aucDestAddr[SERV_MAC_ADDR_LEN];
-	u_int8	aucBSSID[SERV_MAC_ADDR_LEN];
-	u_int32	u4STBC;
-	u_int32	u4SegNum;
-	u_int32	u4SegParaNum;
-
-	u_int32	au4Buffer[0];
-};
-
-struct list_mode_rx_seg_header {
-	u_int32	u4ExtId;
-	u_int8	aucOwnMac[SERV_MAC_ADDR_LEN];
-	u_int32	u4SegNum;
-	u_int32	u4SegParaNum;
-
-	u_int32	au4Buffer[0];
-};
-
-struct list_mode_rx_get_status {
-	u_int32	u4ExtId;
-	u_int32	u4SegNumStart;
-};
-
-struct list_mode_rx_status {
-	u_int32	u4RXOK;
-	u_int32	u4FCSErr;
-	u_int32	u4RSSI0;
-	u_int32	u4RSSI1;
-};
-
-#define	LIST_SEG_MAX 100
-#define LIST_MODE_FW_SEG_NUM_MAX	8
-
-struct list_mode_event {
-	u_int16	u2Status;
-	u_int32	u4ExtId;
-	u_int32	u4SegNumTotal;
-	u_int32	u4SegNumRead;
-	union {
-		u_int32 u4TxStatus[LIST_SEG_MAX];
-		struct list_mode_rx_status tRxStatus[LIST_SEG_MAX];
-	};
 };
 
 /* Test operation hook handlers for service */
@@ -1590,12 +1525,6 @@ struct test_operation {
 		struct test_wlan_info *winfos,
 		struct test_configuration *configs,
 		u_char band_idx);
-	s_int32 (*op_listmode_cmd)(
-		struct test_wlan_info *winfos,
-		u_int8 *para,
-		u_int16 para_len,
-		u_int32 *rsp_len,
-		void *rsp_data);
 };
 
 

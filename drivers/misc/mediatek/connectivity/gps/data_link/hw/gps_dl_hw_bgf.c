@@ -1,8 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 - 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
 #include "gps_dl_config.h"
 #include "gps_dl_hw_priv_util.h"
 /* #include "bgf/bgf_cfg.h" */
@@ -18,7 +25,7 @@ static const struct gps_dl_addr_map_entry g_bfg_addr_table[BGF_ADDR_ENTRY_NUM] =
 unsigned int bgf_bus_to_host(unsigned int bgf_addr)
 {
 	unsigned int i;
-	const struct gps_dl_addr_map_entry *p = NULL;
+	const struct gps_dl_addr_map_entry *p;
 
 	for (i = 0; i < BGF_ADDR_ENTRY_NUM; i++) {
 		p = &g_bfg_addr_table[i];
