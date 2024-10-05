@@ -507,7 +507,7 @@ INT32 _stp_psm_put_act_op(MTKSTP_PSM_T *stp_psm, P_OSAL_OP pOp)
 		}
 	} while (0);
 
-	if (stp_psm && pOp && atomic_dec_and_test(&pOp->ref_count)) {
+	if (pOp && atomic_dec_and_test(&pOp->ref_count)) {
 		/* put Op back to freeQ */
 		bRet = _stp_psm_put_op(stp_psm, &stp_psm->rFreeOpQ, pOp);
 		if (bRet == 0)
@@ -1359,13 +1359,9 @@ static inline INT32 _stp_psm_do_wait(MTKSTP_PSM_T *stp_psm, MTKSTP_PSM_STATE_T s
 	osal_get_local_time(&sec, &usec);
 	while (_stp_psm_get_state(stp_psm) != state && i < limit && mtk_wcn_stp_is_enable()) {
 		i++;
-		#ifndef OPLUS_BUG_STABILITY
-		//Pan.Zhang@CONNECTIVITY.WIFI.BASE.LOG.1120976, 2017/09/27,
-		//Remove for reduce useless log.
 		if (i < 3)
 			STP_PSM_PR_INFO("STP is waiting state for %s, i=%d, state = %d\n",
 					  g_psm_state[state], i, _stp_psm_get_state(stp_psm));
-		#endif /* OPLUS_BUG_STABILITY */
 		osal_sleep_ms(POLL_WAIT);
 		if (i == 10) {
 			STP_PSM_PR_WARN("-Wait for %s takes %d msec\n", g_psm_state[state], i * POLL_WAIT);
@@ -1383,13 +1379,9 @@ static inline INT32 _stp_psm_do_wait(MTKSTP_PSM_T *stp_psm, MTKSTP_PSM_STATE_T s
 		_stp_psm_opid_dbg_out_printk(g_stp_psm_opid_dbg);
 		return STP_PSM_OPERATION_FAIL;
 	}
-	#ifndef OPLUS_BUG_STABILITY
-	//Pan.Zhang@CONNECTIVITY.WIFI.BASE.LOG.1120976, 2017/09/27,
-	//Remove for reduce useless log.
 	if (i > 0)
 		STP_PSM_PR_INFO("+Total waits for %s takes %llu usec\n",
 					g_psm_state[state], osal_elapsed_us(sec, usec));
-	#endif /* OPLUS_BUG_STABILITY */
 	return STP_PSM_OPERATION_SUCCESS;
 }
 
@@ -1598,7 +1590,7 @@ INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir)
 	return 0;
 }
 #else
-static struct timespec64 tv_now, tv_end;
+static struct timeval tv_now, tv_end;
 static INT32 sample_start;
 static INT32 tx_sum_len;
 static INT32 rx_sum_len;
@@ -1616,7 +1608,7 @@ INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir, INT32 l
 		/* STP_PSM_PR_INFO("tv_now:%d.%d tv_end:%d.%d\n", tv_now.tv_sec, tv_now.tv_usec,
 		 * tv_end.tv_sec,tv_end.tv_usec);
 		 */
-		if (((tv_now.tv_sec == tv_end.tv_sec) && (tv_now.tv_nsec > tv_end.tv_nsec)) ||
+		if (((tv_now.tv_sec == tv_end.tv_sec) && (tv_now.tv_usec > tv_end.tv_usec)) ||
 		    (tv_now.tv_sec > tv_end.tv_sec)) {
 			STP_PSM_PR_INFO("STP speed rx:%d tx:%d\n", rx_sum_len, tx_sum_len);
 			if ((rx_sum_len + tx_sum_len) > RTX_SPEED_THRESHOLD) {
@@ -1798,7 +1790,7 @@ INT32 stp_psm_check_sleep_enable(MTKSTP_PSM_T *stp_psm)
 static INT32 _stp_psm_dbg_dmp_in(STP_PSM_RECORD_T *stp_psm_dbg, UINT32 flag, UINT32 line_num)
 {
 	INT32 index = 0;
-	struct timespec64 now;
+	struct timeval now;
 
 	if (stp_psm_dbg) {
 		osal_lock_unsleepable_lock(&stp_psm_dbg->lock);
@@ -1811,7 +1803,7 @@ static INT32 _stp_psm_dbg_dmp_in(STP_PSM_RECORD_T *stp_psm_dbg, UINT32 flag, UIN
 		stp_psm_dbg->queue[stp_psm_dbg->in].line_num = line_num;
 		stp_psm_dbg->queue[stp_psm_dbg->in].package_no = g_record_num++;
 		stp_psm_dbg->queue[stp_psm_dbg->in].sec = now.tv_sec;
-		stp_psm_dbg->queue[stp_psm_dbg->in].usec = now.tv_nsec / NSEC_PER_USEC;
+		stp_psm_dbg->queue[stp_psm_dbg->in].usec = now.tv_usec;
 		stp_psm_dbg->size++;
 		STP_PSM_PR_DBG("pre_Flag = %d, cur_flag = %d\n", stp_psm_dbg->queue[stp_psm_dbg->in].prev_flag,
 				 stp_psm_dbg->queue[stp_psm_dbg->in].cur_flag);
@@ -1867,7 +1859,7 @@ static INT32 _stp_psm_dbg_out_printk(STP_PSM_RECORD_T *stp_psm_dbg)
 static INT32 _stp_psm_opid_dbg_dmp_in(P_STP_PSM_OPID_RECORD p_opid_dbg, UINT32 opid, UINT32 line_num)
 {
 	INT32 index = 0;
-	struct timespec64 now;
+	struct timeval now;
 	UINT64 ts;
 	ULONG nsec;
 
@@ -1883,7 +1875,7 @@ static INT32 _stp_psm_opid_dbg_dmp_in(P_STP_PSM_OPID_RECORD p_opid_dbg, UINT32 o
 		p_opid_dbg->queue[p_opid_dbg->in].line_num = line_num;
 		p_opid_dbg->queue[p_opid_dbg->in].package_no = g_opid_record_num++;
 		p_opid_dbg->queue[p_opid_dbg->in].sec = now.tv_sec;
-		p_opid_dbg->queue[p_opid_dbg->in].usec = now.tv_nsec / NSEC_PER_USEC;
+		p_opid_dbg->queue[p_opid_dbg->in].usec = now.tv_usec;
 		p_opid_dbg->queue[p_opid_dbg->in].pid = current->pid;
 		p_opid_dbg->queue[p_opid_dbg->in].l_sec = ts;
 		p_opid_dbg->queue[p_opid_dbg->in].l_nsec = nsec;

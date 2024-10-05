@@ -90,8 +90,6 @@ uint32_t p2pCalculate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 			& PHY_TYPE_SET_802_11AC)
 			&& (prStaRec->ucPhyTypeSet & PHY_TYPE_SET_802_11AC)) {
 			u4RetValue += (ELEM_HDR_LEN + ELEM_MAX_LEN_VHT_CAP);
-			u4RetValue += (ELEM_HDR_LEN +
-				ELEM_MAX_LEN_VHT_OP_MODE_NOTIFICATION);
 		}
 #endif
 
@@ -101,19 +99,6 @@ uint32_t p2pCalculate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 			& PHY_TYPE_SET_802_11AX)
 			&& (prStaRec->ucPhyTypeSet & PHY_TYPE_SET_802_11AX)) {
 			u4RetValue += heRlmCalculateHeCapIELen(prAdapter,
-				 prStaRec->ucBssIndex, prStaRec);
-#if (CFG_SUPPORT_WIFI_6G == 1)
-			/* Add HE 6G Band Cap IE */
-			u4RetValue += (ELEM_HDR_LEN + ELEM_MAX_LEN_HE_6G_CAP);
-#endif
-		}
-#endif
-#if CFG_SUPPORT_802_11BE
-		/* ADD EHT Capability */
-		if ((prAdapter->rWifiVar.ucAvailablePhyTypeSet
-			& PHY_TYPE_SET_802_11BE)
-			&& (prStaRec->ucPhyTypeSet & PHY_TYPE_SET_802_11BE)) {
-			u4RetValue += ehtRlmCalculateCapIELen(prAdapter,
 				 prStaRec->ucBssIndex, prStaRec);
 		}
 #endif
@@ -176,21 +161,11 @@ void p2pGenerate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 #if CFG_SUPPORT_802_11AC
 		/* Add VHT IE */
 		rlmReqGenerateVhtCapIE(prAdapter, prMsduInfo);
-		rlmReqGenerateVhtOpNotificationIE(prAdapter, prMsduInfo);
 #endif
 
 #if CFG_SUPPORT_802_11AX
 		/* Add HE IE */
 		heRlmReqGenerateHeCapIE(prAdapter, prMsduInfo);
-#if (CFG_SUPPORT_WIFI_6G == 1)
-		/* Add HE 6G Band Cap IE */
-		heRlmReqGenerateHe6gBandCapIE(prAdapter, prMsduInfo);
-#endif
-#endif
-
-#if CFG_SUPPORT_802_11BE
-		/* Add EHT IE */
-		ehtRlmReqGenerateCapIE(prAdapter, prMsduInfo);
 #endif
 
 #if CFG_SUPPORT_MTK_SYNERGY

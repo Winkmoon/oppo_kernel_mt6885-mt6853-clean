@@ -475,9 +475,6 @@ authSendAuthFrame(IN struct ADAPTER *prAdapter,
 	     AUTH_TRANSACTION_SEQENCE_NUM_FIELD_LEN + STATUS_CODE_FIELD_LEN);
 
 	/* 4 <3> Update information of MSDU_INFO_T */
-	nicTxSetPktLifeTime(prMsduInfo, 200);
-	nicTxSetPktRetryLimit(prMsduInfo, TX_DESC_TX_COUNT_NO_LIMIT);
-	nicTxSetForceRts(prMsduInfo, TRUE);
 
 	TX_SET_MMPDU(prAdapter,
 		     prMsduInfo,
@@ -609,9 +606,7 @@ uint32_t authCheckRxAuthFrameTransSeq(IN struct ADAPTER *prAdapter,
 	}
 
 	prStaRec = cnmGetStaRecByIndex(prAdapter, prSwRfb->ucStaRecIdx);
-	if (prStaRec &&
-		(IS_STA_IN_AIS(prStaRec) ||
-		(IS_STA_IN_P2P(prStaRec) && IS_CLIENT_STA(prStaRec)))) {
+	if (prStaRec && IS_STA_IN_AIS(prStaRec)) {
 		if (prStaRec->eAuthAssocState == SAA_STATE_EXTERNAL_AUTH) {
 			saaFsmRunEventRxAuth(prAdapter, prSwRfb);
 			return WLAN_STATUS_SUCCESS;
@@ -1114,13 +1109,14 @@ authSendDeauthFrame(IN struct ADAPTER *prAdapter,
 			     + MAC_TX_RESERVED_FIELD);
 
 			prDeauthFrame->u2FrameCtrl |= MASK_FC_PROTECTED_FRAME;
-
-			/* Set deauth flag except p2p gc scenario*/
-			GET_BSS_INFO_BY_INDEX(prAdapter,
-				prStaRec->ucBssIndex)
-				->encryptedDeauthIsInProcess
-					= TRUE;
-
+			if (GET_BSS_INFO_BY_INDEX(prAdapter,
+				prStaRec->ucBssIndex)->eNetworkType ==
+				(uint8_t) NETWORK_TYPE_AIS) {
+				GET_BSS_INFO_BY_INDEX(prAdapter,
+					prStaRec->ucBssIndex)
+					->encryptedDeauthIsInProcess
+						= TRUE;
+			}
 			DBGLOG(SAA, INFO,
 			       "Reason=%d, DestAddr=" MACSTR
 			       " srcAddr=" MACSTR " BSSID=" MACSTR "\n",
@@ -1132,8 +1128,8 @@ authSendDeauthFrame(IN struct ADAPTER *prAdapter,
 	}
 #endif
 	nicTxSetPktLifeTime(prMsduInfo, 100);
+
 	nicTxSetPktRetryLimit(prMsduInfo, TX_DESC_TX_COUNT_NO_LIMIT);
-	nicTxSetForceRts(prMsduInfo, TRUE);
 
 	/* 4 <7> Update information of MSDU_INFO_T */
 	TX_SET_MMPDU(prAdapter,
@@ -1150,7 +1146,7 @@ authSendDeauthFrame(IN struct ADAPTER *prAdapter,
 	if (rsnCheckBipKeyInstalled(prAdapter, prStaRec)) {
 		/* 4.3.3.1 send unprotected deauth reason 6/7 */
 		if (prStaRec->rPmfCfg.fgRxDeauthResp != TRUE) {
-			DBGLOG(RSN, TRACE,
+			DBGLOG(RSN, INFO,
 			       "Deauth Set MSDU_OPT_PROTECTED_FRAME\n");
 			nicTxConfigPktOption(prMsduInfo,
 					     MSDU_OPT_PROTECTED_FRAME, TRUE);
@@ -1354,7 +1350,7 @@ uint32_t authCalculateRSNIELen(struct ADAPTER *prAdapter, uint8_t ucBssIdx,
 {
 	struct FT_IES *prFtIEs = aisGetFtIe(prAdapter, ucBssIdx);
 
-	if (!prFtIEs->prRsnIE || !prStaRec ||
+	if (!prFtIEs->prRsnIE ||
 	    !rsnIsFtOverTheAir(prAdapter, ucBssIdx, prStaRec->ucIndex))
 		return 0;
 	return IE_SIZE(prFtIEs->prRsnIE);

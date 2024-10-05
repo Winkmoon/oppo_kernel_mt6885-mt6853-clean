@@ -390,47 +390,11 @@ uint8_t wmmCalculateUapsdSetting(struct ADAPTER *prAdapter,
 	return ucFinalSetting;
 }
 
-void wmmSyncPsParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
-	uint8_t ucBssIndex)
-{
-	struct CMD_SET_WMM_PS_TEST_STRUCT rSetWmmPsTestParam;
-	struct BSS_INFO *prAisBssInfo = NULL;
-
-	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
-	if (prAisBssInfo == NULL)
-		return;
-
-	kalMemZero(&rSetWmmPsTestParam, sizeof(rSetWmmPsTestParam));
-	rSetWmmPsTestParam.ucBssIndex = prAisBssInfo->ucBssIndex;
-	rSetWmmPsTestParam.bmfgApsdEnAc =
-		wmmCalculateUapsdSetting(prAdapter, prAisBssInfo->ucBssIndex);
-	wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_WMM_PS_TEST_PARMS, TRUE,
-			    FALSE, FALSE, NULL, NULL,
-			    sizeof(struct CMD_SET_WMM_PS_TEST_STRUCT),
-			    (uint8_t *)&rSetWmmPsTestParam, NULL, 0);
-
-	DBGLOG(WMM, INFO, "Ac=%d, Uapsd 0x%02x\n",
-	       ucAc, rSetWmmPsTestParam.bmfgApsdEnAc);
-}
-
-void wmmReSyncPsParamWithFw(struct ADAPTER *prAdapter, uint8_t ucBssIndex)
-{
-	struct WMM_INFO *prWmmInfo = aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct TSPEC_INFO *prCurTs = NULL;
-	uint8_t ucTid = 0;
-
-	for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM; ucTid++) {
-		prCurTs = &prWmmInfo->arTsInfo[ucTid];
-		if (prCurTs->eState == QOS_TS_ACTIVE)
-			wmmSyncPsParamWithFw(
-				prAdapter, prCurTs->eAC, ucBssIndex);
-	}
-}
-
 void wmmSyncAcParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
 	uint16_t u2MediumTime, uint32_t u4PhyRate,
 	uint8_t ucBssIndex)
 {
+	struct CMD_SET_WMM_PS_TEST_STRUCT rSetWmmPsTestParam;
 #if CFG_SUPPORT_SOFT_ACM
 	struct SOFT_ACM_CTRL *prAcmCtrl = NULL;
 #endif
@@ -461,11 +425,18 @@ void wmmSyncAcParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
 	wlanSendSetQueryCmd(prAdapter, CMD_ID_UPDATE_AC_PARMS, TRUE, FALSE,
 		FALSE, NULL, NULL, sizeof(struct CMD_UPDATE_AC_PARAMS),
 		(uint8_t *)&rCmdUpdateAcParam, NULL, 0);
+	kalMemZero(&rSetWmmPsTestParam, sizeof(rSetWmmPsTestParam));
+	rSetWmmPsTestParam.ucBssIndex = prAisBssInfo->ucBssIndex;
+	rSetWmmPsTestParam.bmfgApsdEnAc =
+		wmmCalculateUapsdSetting(prAdapter,
+		prAisBssInfo->ucBssIndex);
+	wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_WMM_PS_TEST_PARMS, TRUE,
+			    FALSE, FALSE, NULL, NULL,
+			    sizeof(struct CMD_SET_WMM_PS_TEST_STRUCT),
+			    (uint8_t *)&rSetWmmPsTestParam, NULL, 0);
 
-	DBGLOG(WMM, INFO, "Ac=%d, MediumTime=%d PhyRate=%u\n",
-	       ucAc, u2MediumTime, u4PhyRate);
-
-	wmmSyncPsParamWithFw(prAdapter, ucAc, ucBssIndex);
+	DBGLOG(WMM, INFO, "Ac=%d, MediumTime=%d PhyRate=%u Uapsd 0x%02x\n",
+	       ucAc, u2MediumTime, u4PhyRate, rSetWmmPsTestParam.bmfgApsdEnAc);
 }
 
 /* Return: AC List in bit map if this ac has active tspec */
@@ -884,8 +855,8 @@ void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
 	}
 	prStaRec = prAisBssInfo->prStaRecOfAP;
 	if (!prStaRec) {
-		DBGLOG(WMM, INFO, "No station record found for "MACSTR"\n",
-			MAC2STR(prTsmReq->aucPeerAddr));
+		DBGLOG(WMM, INFO, "No station record found for %pM\n",
+		       prTsmReq->aucPeerAddr);
 		cnmMemFree(prAdapter, prTsmReq);
 		rrmScheduleNextRm(prAdapter,
 			ucBssIndex);
@@ -1175,12 +1146,6 @@ u_int8_t wmmParseTspecIE(struct ADAPTER *prAdapter, uint8_t *pucIE,
 		struct IE_WMM_TSPEC *prIeWmmTspec =
 			(struct IE_WMM_TSPEC *)pucIE;
 		uint8_t aucWfaOui[] = VENDOR_OUI_WFA;
-
-		/* WMM TSPEC length */
-		if (prIeWmmTspec->ucLength < ELEM_MAX_LEN_WMM_TSPEC) {
-			DBGLOG(WMM, INFO, "Abnormal IE length\n");
-			return FALSE;
-		}
 
 		if (prIeWmmTspec->ucId != ELEM_ID_VENDOR ||
 		    kalMemCmp(prIeWmmTspec->aucOui, aucWfaOui,
@@ -1490,9 +1455,8 @@ uint32_t wmmDumpActiveTspecs(struct ADAPTER *prAdapter, uint8_t *pucBuffer,
 		if (prStaRec) {
 			i4BytesWritten += kalSnprintf(
 				pucBuffer + i4BytesWritten, u2BufferLen,
-				"\nACM status for AP "MACSTR
-				":\nBE %d; BK %d; VI %d; VO %d\n",
-				MAC2STR(prStaRec->aucMacAddr),
+				"\nACM status for AP %pM:\nBE %d; BK %d; VI %d; VO %d\n",
+				prStaRec->aucMacAddr,
 				prStaRec->afgAcmRequired[ACI_BE],
 				prStaRec->afgAcmRequired[ACI_BK],
 				prStaRec->afgAcmRequired[ACI_VI],

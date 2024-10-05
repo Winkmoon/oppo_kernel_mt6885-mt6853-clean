@@ -1,7 +1,30 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2020 MediaTek Inc.
- */
+ ***************************************************************************
+ * Ralink Tech Inc.
+ * 4F, No. 2 Technology	5th Rd.
+ * Science-based Industrial Park
+ * Hsin-chu, Taiwan, R.O.C.
+ *
+ * (c) Copyright 2002-2004, Ralink Technology, Inc.
+ *
+ * All rights reserved.	Ralink's source	code is	an unpublished work and the
+ * use of a copyright notice does not imply otherwise. This source code
+ * contains confidential trade secret material of Ralink Tech. Any attemp
+ * or participation in deciphering, decoding, reverse engineering or in any
+ * way altering	the source code	is stricitly prohibited, unless	the prior
+ * written consent of Ralink Technology, Inc. is obtained.
+ ***************************************************************************
+
+	Module Name:
+	host_csr.h
+
+	Abstract:
+	Ralink Wireless Chip MAC related definition & structures
+
+	Revision History:
+	Who			When		  What
+	--------	----------	  --------------------------------------
+*/
 
 #ifndef __HOST_CSR_H__
 #define __HOST_CSR_H__
@@ -48,12 +71,14 @@
 #define HOST_CSR_AP2CONN_AHB_HADDR	(HOST_CSR_DRIVER_OWN_INFO + 0x4C)
 #endif
 
+#if CFG_MTK_MCIF_WIFI_SUPPORT
 /* Modem LP control */
 #define HOST_CSR_CONN_HIF_ON_MD_LPCTL_ADDR (HOST_CSR_DRIVER_OWN_INFO + 0x30)
 /* Modem interrupt enable */
 #define HOST_CSR_CONN_HIF_ON_MD_IRQ_STAT_ADDR (HOST_CSR_DRIVER_OWN_INFO + 0x34)
 /* Modem interrupt status */
 #define HOST_CSR_CONN_HIF_ON_MD_IRQ_ENA_ADDR (HOST_CSR_DRIVER_OWN_INFO + 0x38)
+#endif
 
 /*
 * AP2CONN_ADDR_MAP1[31..16]

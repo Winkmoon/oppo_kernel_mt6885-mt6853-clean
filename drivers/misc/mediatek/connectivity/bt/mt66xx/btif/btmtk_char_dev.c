@@ -4,13 +4,8 @@
  */
 
 #include "btmtk_main.h"
-#include "btmtk_chip_if.h"
-#include "btmtk_fw_log.h"
-#include "btmtk_dbg_tp_evt_if.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
-
-#if (USE_DEVICE_NODE == 1)
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -23,13 +18,8 @@ MODULE_LICENSE("Dual BSD/GPL");
 *                              C O N S T A N T S
 ********************************************************************************
 */
-#define BT_BUFFER_SIZE				(2048)
-#define FTRACE_STR_LOG_SIZE			(256)
-#define COMBO_IOC_MAGIC				0xb0
-#define COMBO_IOCTL_BT_HOST_DEBUG	_IOW(COMBO_IOC_MAGIC, 4, void*)
-#define COMBO_IOCTL_BT_INTTRX		_IOW(COMBO_IOC_MAGIC, 5, void*)
-#define IOCTL_BT_HOST_DEBUG_BUF_SIZE	(32)
-#define IOCTL_BT_HOST_INTTRX_SIZE		(128)
+#define BT_BUFFER_SIZE                (2048)
+#define FTRACE_STR_LOG_SIZE           (256)
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -55,18 +45,15 @@ static int32_t BT_devs = 1;
 static int32_t BT_major = 192;
 module_param(BT_major, uint, 0);
 static struct cdev BT_cdev;
+#if CREATE_NODE_DYNAMIC
 static struct class *BT_class;
 static struct device *BT_dev;
+#endif
 
 static uint8_t i_buf[BT_BUFFER_SIZE]; /* Input buffer for read */
 static uint8_t o_buf[BT_BUFFER_SIZE]; /* Output buffer for write */
-static uint8_t ioc_buf[IOCTL_BT_HOST_INTTRX_SIZE];
 
-extern struct btmtk_dev *g_sbdev;
-extern bool g_bt_trace_pt;
-extern struct btmtk_btif_dev g_btif_dev;
-extern void bthost_debug_init(void);
-extern void bthost_debug_save(uint32_t id, uint32_t value, char* desc);
+extern struct btmtk_dev *g_bdev;
 static struct semaphore wr_mtx, rd_mtx;
 static struct bt_wake_lock bt_wakelock;
 /* Wait queue for poll and read */
@@ -89,6 +76,9 @@ static loff_t rd_offset;
 *                              F U N C T I O N S
 ********************************************************************************
 */
+extern int bt_dev_dbg_init(void);
+extern int bt_dev_dbg_deinit(void);
+extern int bt_dev_dbg_set_state(bool turn_on);
 
 static int32_t ftrace_print(const uint8_t *str, ...)
 {
@@ -122,7 +112,7 @@ static size_t bt_report_hw_error(uint8_t *buf, size_t count, loff_t *f_pos)
 	return bytes_read;
 }
 
-static void bt_state_cb(u_int8_t state)
+static void bt_state_cb(enum bt_state state)
 {
 	switch (state) {
 
@@ -150,6 +140,7 @@ static void bt_state_cb(u_int8_t state)
 	return;
 }
 
+#if 1
 static void BT_event_cb(void)
 {
 	ftrace_print("%s get called", __func__);
@@ -176,12 +167,12 @@ static void BT_event_cb(void)
 	wake_up(&BT_wq);
 	ftrace_print("%s wake_up triggered", __func__);
 }
+#endif
 
 static unsigned int BT_poll(struct file *filp, poll_table *wait)
 {
 	uint32_t mask = 0;
 
-	//bt_dbg_tp_evt(TP_ACT_POLL, 0, 0, NULL);
 	if ((!btmtk_rx_data_valid() && rstflag == CHIP_RESET_NONE) ||
 	    (rstflag == CHIP_RESET_START) || (rstflag == CHIP_RESET_NOTIFIED)) {
 		/*
@@ -213,9 +204,7 @@ static ssize_t __bt_write(uint8_t *buf, size_t count, uint32_t flags)
 {
 	int32_t retval = 0;
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_WR_IN, 0, count, buf);
-	retval = btmtk_send_data(g_sbdev->hdev, buf, count);
+	retval = btmtk_send_data(g_bdev->hdev, buf, count);
 
 	if (retval < 0)
 		BTMTK_ERR("bt_core_send_data failed, retval %d", retval);
@@ -311,8 +300,6 @@ static ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t
 {
 	ssize_t retval = 0;
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_RD_IN, 0, count, NULL);
 	ftrace_print("%s get called, count %zd", __func__, count);
 	down(&rd_mtx);
 
@@ -359,7 +346,7 @@ static ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t
 	}
 
 	do {
-		retval = btmtk_receive_data(g_sbdev->hdev, i_buf, count);
+		retval = btmtk_receive_data(g_bdev->hdev, i_buf, count);
 		if (retval < 0) {
 			BTMTK_ERR("bt_core_receive_data failed, retval %d", retval);
 			goto OUT;
@@ -377,8 +364,6 @@ static ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t
 			wait_event(BT_wq, flag != 0);
 			flag = 0;
 		} else { /* Got something from RX queue */
-			if (g_bt_trace_pt)
-				bt_dbg_tp_evt(TP_ACT_RD_OUT, 0, retval, i_buf);
 			break;
 		}
 	} while (btmtk_rx_data_valid() && rstflag == CHIP_RESET_NONE);
@@ -408,57 +393,11 @@ OUT:
 	return retval;
 }
 
-int _ioctl_copy_evt_to_buf(uint8_t *buf, int len)
-{
-	BTMTK_INFO("%s", __func__);
-	memset(ioc_buf, 0x00, sizeof(ioc_buf));
-	ioc_buf[0] = 0x04; // evt packet type
-	memcpy(ioc_buf + 1, buf, len); // copy evt to ioctl buffer
-	BTMTK_INFO_RAW(ioc_buf, len + 1, "%s: len[%d] RX: ", __func__, len + 1);
-	return 0;
-}
-
 static long BT_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int32_t retval = 0;
-	BTMTK_INFO("%s: cmd[0x%08x]", __func__, cmd);
 
-	memset(ioc_buf, 0x00, sizeof(ioc_buf));
-	switch (cmd) {
-	case COMBO_IOCTL_BT_HOST_DEBUG:
-		/* input: arg(buf_size = 32): id[0:3], value[4:7], desc[8:31]
-		   output: none
-		*/
-		if (copy_from_user(ioc_buf, (uint8_t __user*)arg, IOCTL_BT_HOST_DEBUG_BUF_SIZE))
-			retval = -EFAULT;
-		else {
-			uint32_t* pint32 = (uint32_t*)&ioc_buf[0];
-			BTMTK_INFO("%s: id[%x], value[0x%08x], desc[%s]", __func__, pint32[0], pint32[1], &ioc_buf[8]);
-			bthost_debug_save(pint32[0], pint32[1], (char*)&ioc_buf[8]);
-		}
-		break;
-	case COMBO_IOCTL_BT_INTTRX:
-		/* input: arg(buf_size = 128): hci cmd raw data
-		   output: arg(buf_size = 128): hci evt raw data
-		*/
-		if (copy_from_user(ioc_buf, (uint8_t __user*)arg, IOCTL_BT_HOST_INTTRX_SIZE))
-			retval = -EFAULT;
-		else {
-			BTMTK_INFO_RAW(ioc_buf, ioc_buf[3] + 4, "%s: len[%d] TX: ", __func__, ioc_buf[3] + 4);
-			/* DynamicAdjustTxPower function */
-			if (ioc_buf[0] == 0x01 && ioc_buf[1] == 0x2D && ioc_buf[2] == 0xFC) {
-				if (btmtk_inttrx_DynamicAdjustTxPower(ioc_buf[4], ioc_buf[5], _ioctl_copy_evt_to_buf, TRUE) == 0) {
-					if (copy_to_user((uint8_t __user*)arg, ioc_buf, IOCTL_BT_HOST_INTTRX_SIZE))
-						retval = -EFAULT;
-				}
-			} else
-				retval = -EFAULT;
-		}
-		break;
-	default:
-		break;
-	}
-
+	BTMTK_DBG("cmd: 0x%08x", cmd);
 	return retval;
 }
 
@@ -475,7 +414,7 @@ static int BT_open(struct inode *inode, struct file *file)
 	BTMTK_INFO("major %d minor %d (pid %d)", imajor(inode), iminor(inode), current->pid);
 
 	/* Turn on BT */
-	ret = g_sbdev->hdev->open(g_sbdev->hdev);
+	ret = g_bdev->hdev->open(g_bdev->hdev);
 	if (ret) {
 		BTMTK_ERR("BT turn on fail!");
 		bt_release_wake_lock(&bt_wakelock);
@@ -484,11 +423,11 @@ static int BT_open(struct inode *inode, struct file *file)
 
 	BTMTK_INFO("BT turn on OK!");
 
-	btmtk_register_rx_event_cb(g_sbdev->hdev, BT_event_cb);
+	btmtk_register_rx_event_cb(g_bdev, BT_event_cb);
 
 	bt_ftrace_flag = 1;
+	bt_dev_dbg_set_state(TRUE);
 	bt_release_wake_lock(&bt_wakelock);
-	bthost_debug_init();
 	return 0;
 }
 
@@ -498,19 +437,20 @@ static int BT_close(struct inode *inode, struct file *file)
 
 	bt_hold_wake_lock(&bt_wakelock);
 	BTMTK_INFO("major %d minor %d (pid %d)", imajor(inode), iminor(inode), current->pid);
+	bt_dev_dbg_set_state(FALSE);
 	bt_ftrace_flag = 0;
 	//bt_core_unregister_rx_event_cb();
 
-	ret = g_sbdev->hdev->close(g_sbdev->hdev);
-	bt_release_wake_lock(&bt_wakelock);
-	bthost_debug_init();
-
+	ret = g_bdev->hdev->close(g_bdev->hdev);
 	if (ret) {
 		BTMTK_ERR("BT turn off fail!");
+		bt_release_wake_lock(&bt_wakelock);
 		return ret;
 	}
 
 	BTMTK_INFO("BT turn off OK!");
+
+	bt_release_wake_lock(&bt_wakelock);
 	return 0;
 }
 
@@ -526,7 +466,7 @@ const struct file_operations BT_fops = {
 	.poll = BT_poll
 };
 
-int BT_init(void)
+static int BT_init(void)
 {
 	int32_t alloc_err = 0;
 	int32_t cdv_err = 0;
@@ -541,8 +481,14 @@ int BT_init(void)
 	bt_wakelock.name[9] = 0;
 	bt_wake_lock_init(&bt_wakelock);
 
-	g_btif_dev.state_change_cb[0] = fw_log_bt_state_cb;
-	g_btif_dev.state_change_cb[1] = bt_state_cb;
+	main_driver_init();
+
+	g_bdev->state_change_cb[1] = bt_state_cb;
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+#if 0
+	fw_log_bt_init();
+#endif
+#endif
 
 	/* Allocate char device */
 	alloc_err = register_chrdev_region(dev, BT_devs, BT_DRIVER_NAME);
@@ -558,16 +504,20 @@ int BT_init(void)
 	if (cdv_err)
 		goto cdv_error;
 
+#if CREATE_NODE_DYNAMIC /* mknod replace */
 	BT_class = class_create(THIS_MODULE, BT_DRIVER_NODE_NAME);
 	if (IS_ERR(BT_class))
 		goto create_node_error;
 	BT_dev = device_create(BT_class, NULL, dev, NULL, BT_DRIVER_NODE_NAME);
 	if (IS_ERR(BT_dev))
 		goto create_node_error;
+#endif
 
+	bt_dev_dbg_init();
 	BTMTK_INFO("%s driver(major %d) installed", BT_DRIVER_NAME, BT_major);
 	return 0;
 
+#if CREATE_NODE_DYNAMIC
 create_node_error:
 	if (BT_class && !IS_ERR(BT_class)) {
 		class_destroy(BT_class);
@@ -575,19 +525,27 @@ create_node_error:
 	}
 
 	cdev_del(&BT_cdev);
+#endif
 
 cdv_error:
 	unregister_chrdev_region(dev, BT_devs);
 
 alloc_error:
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+#if 0
+	fw_log_bt_exit();
+#endif
+#endif
 	main_driver_exit();
 	return -1;
 }
 
-void BT_exit(void)
+static void BT_exit(void)
 {
 	dev_t dev = MKDEV(BT_major, 0);
+	bt_dev_dbg_deinit();
 
+#if CREATE_NODE_DYNAMIC
 	if (BT_dev && !IS_ERR(BT_dev)) {
 		device_destroy(BT_class, dev);
 		BT_dev = NULL;
@@ -596,12 +554,18 @@ void BT_exit(void)
 		class_destroy(BT_class);
 		BT_class = NULL;
 	}
+#endif
 
 	cdev_del(&BT_cdev);
 	unregister_chrdev_region(dev, BT_devs);
 
-	g_btif_dev.state_change_cb[0] = NULL;
-	g_btif_dev.state_change_cb[1] = NULL;
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+#if 0
+	fw_log_bt_exit();
+#endif
+#endif
+	g_bdev->state_change_cb[1] = NULL;
+	main_driver_exit();
 
 	/* Destroy wake lock */
 	bt_wake_lock_deinit(&bt_wakelock);
@@ -609,32 +573,23 @@ void BT_exit(void)
 	BTMTK_INFO("%s driver removed", BT_DRIVER_NAME);
 }
 
-#else
-
-int BT_init(void) {
-	BTMTK_INFO("%s: not device node, return", __func__);
-	return 0;
-}
-
-void BT_exit(void) {
-	BTMTK_INFO("%s: not device node, return", __func__);
-	return;
-}
-
-#endif // USE_DEVICE_NODE
-
-
 #ifdef MTK_WCN_REMOVE_KERNEL_MODULE
-/* build-in mode */
+
 int mtk_wcn_stpbt_drv_init(void)
 {
-	return main_driver_init();
+	return BT_init();
 }
 EXPORT_SYMBOL(mtk_wcn_stpbt_drv_init);
 
 void mtk_wcn_stpbt_drv_exit(void)
 {
-	return main_driver_exit();
+	return BT_exit();
 }
 EXPORT_SYMBOL(mtk_wcn_stpbt_drv_exit);
+
+#else
+
+module_init(BT_init);
+module_exit(BT_exit);
+
 #endif

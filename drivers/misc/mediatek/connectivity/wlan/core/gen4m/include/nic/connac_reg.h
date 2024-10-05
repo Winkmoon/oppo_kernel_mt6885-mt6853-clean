@@ -82,6 +82,11 @@
 #define CONN_CFG_ON_CONN_ON_MISC_ADDR	(CONN_CFG_ON_BASE + 0x140)
 #define CONN_CFG_CHIP_ID_ADDR	        (CONN_CFG_BASE + 0x1010)
 
+#define CONN_MCU_CONFG_ON_BASE			0x81030000
+
+#define CONN_MCU_CONFG_ON_HOST_MAILBOX_WF_ADDR \
+	(CONN_MCU_CONFG_ON_BASE + 0x100)
+
 /*
  * ============================================================================
  *
@@ -210,11 +215,7 @@
 #define MCU_INT_SER_TRIGGER_FROM_HOST   BIT(2)
 #define MCU_INT_PDMA0_RECOVERY_DONE     BIT(3)
 #define MCU_INT_DRIVER_SER              BIT(4)
-#if (CFG_SUPPORT_CONNAC2X == 0)
 #define MCU_INT_NOTIFY_MD_CRASH         BIT(5)
-#else
-#define MCU_INT_NOTIFY_MD_CRASH         BIT(2)
-#endif
 #define CONNAC_MCU_SW_INT BIT(29)
 
 #define ERROR_DETECT_STOP_PDMA_WITH_FW_RELOAD BIT(1)

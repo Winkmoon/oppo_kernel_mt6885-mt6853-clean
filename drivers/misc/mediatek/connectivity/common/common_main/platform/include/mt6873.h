@@ -311,10 +311,8 @@
 
 #define MT6359_PMIC_REG_BASE                 ((unsigned int)(0x0))
 
-#define MT6359_BUCK_VS2_CON1                 (MT6359_PMIC_REG_BASE+0x188e)
 #define MT6359_BUCK_VS2_VOTER_SET            (MT6359_PMIC_REG_BASE+0x18ac)
 #define MT6359_BUCK_VS2_VOTER_CLR            (MT6359_PMIC_REG_BASE+0x18ae)
-#define MT6359_BUCK_VS2_ELR0                 (MT6359_PMIC_REG_BASE+0x18b4)
 #define MT6359_LDO_VCN33_1_CON0              (MT6359_PMIC_REG_BASE+0x1be2)
 #define MT6359_LDO_VCN33_1_OP_EN_SET         (MT6359_PMIC_REG_BASE+0x1bea)
 #define MT6359_LDO_VCN33_1_OP_CFG_SET        (MT6359_PMIC_REG_BASE+0x1bf0)
@@ -337,14 +335,6 @@
 	MT6359_BUCK_VS2_VOTER_CLR
 #define PMIC_RG_BUCK_VS2_VOTER_EN_CLR_MASK                  0xFFF
 #define PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT                 0
-#define PMIC_RG_BUCK_VS2_VOSEL_ADDR                         \
-	MT6359_BUCK_VS2_ELR0
-#define PMIC_RG_BUCK_VS2_VOSEL_MASK                         0x7F
-#define PMIC_RG_BUCK_VS2_VOSEL_SHIFT                        0
-#define PMIC_RG_BUCK_VS2_VOSEL_SLEEP_ADDR                   \
-	MT6359_BUCK_VS2_CON1
-#define PMIC_RG_BUCK_VS2_VOSEL_SLEEP_MASK                   0x7F
-#define PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT                  0
 #define PMIC_RG_LDO_VCN33_1_LP_ADDR                         \
 	MT6359_LDO_VCN33_1_CON0
 #define PMIC_RG_LDO_VCN33_1_LP_MASK                         0x1
@@ -423,44 +413,6 @@ extern struct bt_wifi_v33_status gBtWifiV33;
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-extern INT32 dump_conn_mcu_pc_log_mt6873(const char *trg_str);
-extern INT32 dump_conn_debug_dump_mt6873(const char *);
-extern INT32 dump_conn_mcu_debug_flag_mt6873(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer1_mt6873(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer2_mt6873(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer3_mt6873(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer4_mt6873(const char *);
-extern INT32 dump_conn_mcu_ahb_timeout_info_mt6873(const char *);
-extern INT32 dump_conn_bus_hang_debug_mt6873(const char *);
-extern INT32 dump_conn_mcu_apb_timeout_info_mt6873(const char *);
-extern INT32 dump_conn_apb_bus0_hang_mt6873(const char *);
-extern INT32 dump_conn_apb_bus1_hang_mt6873(const char *);
-extern INT32 dump_conn_apb_bus2_hang_mt6873(const char *);
-extern INT32 dump_conn_emi_ctrl_host_csr_mt6873(const char *);
-extern INT32 dump_conn_mcu_confg_emi_ctrl_mt6873(const char *);
-extern INT32 dump_conn_mcu_cpu_probe_mt6873(const char *);
-extern INT32 dump_conn_mcu_ahb_probe_mt6873(const char *);
-extern INT32 dump_conn_mcu_idlm_prot_prob_mt6873(const char *);
-extern INT32 dump_conn_mcu_wf_cmdbt_ram_prob_mt6873(const char *);
-extern INT32 dump_conn_mcu_pda_dbg_flag_mt6873(const char *);
-extern INT32 dump_conn_mcu_sysram_prb_mt6873(const char *);
-extern INT32 dump_conn_mcu_confg_mt6873(const char *);
-extern INT32 dump_conn_mcu_i_eidlm_mt6873(const char *);
-extern INT32 dump_conn_mcu_dma_mt6873(const char *);
-extern INT32 dump_conn_mcu_tcm_prob_mt6873(const char *);
-extern INT32 dump_conn_mcu_met_prob_mt6873(const char *);
-extern INT32 dump_conn_mcusys_n9_mt6873(const char *);
-extern INT32 dump_conn_mcu_uart_dbg_loop_mt6873(const char *);
-extern INT32 dump_conn_cfg_on_Debug_Signal_mt6873(const char *);
-extern INT32 dump_conn_cfg_on_register_mt6873(const char *);
-extern INT32 dump_conn_cmdbt_debug_signal_mt6873(const char *);
-extern INT32 dump_conn_cmdbt_register_mt6873(const char *);
-extern INT32 dump_conn_emi_detect_mt6873(const char *);
-extern INT32 dump_conn_cmdbt_debug_mt6873(const char *);
-extern INT32 dump_conn_hif_reg_debug_mt6873(const char *);
-extern INT32 dump_conn_mcu_confg_bus_hang_reg_mt6873(const char *);
-extern INT32 dump_wf_pdma_reg_debug_mt6873(const char *);
-extern INT32 dump_conn_to_EMI_bus_path_mt6873(const char *trg_str);
 
 /*******************************************************************************
 *                              F U N C T I O N S

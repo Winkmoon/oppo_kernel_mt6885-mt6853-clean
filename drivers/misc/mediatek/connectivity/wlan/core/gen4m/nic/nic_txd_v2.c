@@ -300,9 +300,9 @@ void nic_txd_v2_compose(
 	struct HW_MAC_CONNAC2X_TX_DESC *prTxDesc;
 	struct STA_RECORD *prStaRec;
 	struct BSS_INFO *prBssInfo;
-	uint8_t ucEtherTypeOffsetInWord;
+	u_int8_t ucEtherTypeOffsetInWord;
 	u_int32_t u4TxDescAndPaddingLength;
-	uint8_t ucWmmQueSet, ucTarQueue, ucTarPort;
+	u_int8_t ucTarQueue, ucTarPort;
 #if ((CFG_SISO_SW_DEVELOP == 1) || (CFG_SUPPORT_SPE_IDX_CONTROL == 1))
 	enum ENUM_WF_PATH_FAVOR_T eWfPathFavor;
 #endif
@@ -331,33 +331,13 @@ void nic_txd_v2_compose(
 		ucEtherTypeOffsetInWord);
 
 	ucTarPort = nicTxGetTxDestPortIdxByTc(prMsduInfo->ucTC);
-#if defined(SOC3_0)
 	if (ucTarPort == PORT_INDEX_MCU &&
 		prMsduInfo->ucControlFlag & MSDU_CONTROL_FLAG_FORCE_TX) {
 		/* To MCU packet with always tx flag */
 		ucTarQueue = MAC_TXQ_ALTX_0_INDEX;
-	} else
-#endif
-	{
-		ucWmmQueSet = prBssInfo->ucWmmQueSet;
-#if CFG_SUPPORT_DROP_INVALID_MSDUINFO
-		if (fgIsTemplate != TRUE
-			&& prMsduInfo->ucPacketType == TX_PACKET_TYPE_DATA
-			&& ucWmmQueSet != prMsduInfo->ucWmmQueSet) {
-			prMsduInfo->fgDrop = TRUE;
-			DBGLOG(RSN, ERROR,
-				"WmmQueSet mismatch[%u,%u,%u,%u]\n",
-				prMsduInfo->ucBssIndex,
-				prMsduInfo->ucStaRecIndex,
-				ucWmmQueSet,
-				prMsduInfo->ucWmmQueSet);
-		}
-#endif /* CFG_SUPPORT_DROP_INVALID_MSDUINFO */
-
+	} else {
 		ucTarQueue = nicTxGetTxDestQIdxByTc(prMsduInfo->ucTC);
-		if (ucTarPort == PORT_INDEX_LMAC)
-			ucTarQueue +=
-				(ucWmmQueSet * WMM_AC_INDEX_NUM);
+		ucTarQueue += (prBssInfo->ucWmmQueSet * WMM_AC_INDEX_NUM);
 	}
 
 #if (CFG_SUPPORT_DMASHDL_SYSDVT)
@@ -397,8 +377,6 @@ void nic_txd_v2_compose(
 #endif
 	HAL_MAC_CONNAC2X_TXD_SET_WLAN_INDEX(
 		prTxDesc, prMsduInfo->ucWlanIndex);
-
-	HAL_MAC_CONNAC2X_TXD_SET_VTA(prTxDesc, 1);
 
 	/* Header format */
 	if (prMsduInfo->fgIs802_11) {

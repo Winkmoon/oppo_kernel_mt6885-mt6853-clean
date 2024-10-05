@@ -93,6 +93,7 @@
 #if CFG_SUPPORT_802_11V_TIMING_MEASUREMENT
 static uint8_t ucTimingMeasToken;
 #endif
+static uint8_t ucBtmMgtToken = 1;
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -147,19 +148,14 @@ void wnmWNMAction(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb)
 		wnmTimingMeasRequest(prAdapter, prSwRfb);
 		break;
 #endif
-	case ACTION_WNM_BSS_TRANSITION_MANAGEMENT_REQ:
 #if CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT
-#if CFG_SUPPORT_802_11V_BTM_OFFLOAD
-		/* btm offload */
-		wnmRecvBTMRequest(prAdapter, prSwRfb);
-#else
-		DBGLOG(RX, INFO,
-		       "WNM: action frame %d, try to send to supplicant\n",
-		       prRxFrame->ucAction);
-		aisFuncValidateRxActionFrame(prAdapter, prSwRfb);
-#endif
-#endif /* CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT */
+	case ACTION_WNM_BSS_TRANSITION_MANAGEMENT_REQ:
+#if CFG_TC3_FEATURE
+		/* Ignore BTM REQ for TC3 */
+		DBGLOG(RX, TRACE, "WNM: BTM request is ignored");
 		break;
+#endif
+#endif
 	case ACTION_WNM_NOTIFICATION_REQUEST:
 	default:
 		DBGLOG(RX, INFO,
@@ -373,6 +369,11 @@ void wnmTimingMeasUnitTest1(struct ADAPTER *prAdapter, uint8_t ucStaRecIndex)
 
 #endif /* CFG_SUPPORT_802_11V_TIMING_MEASUREMENT */
 
+uint8_t wnmGetBtmToken(void)
+{
+	return ucBtmMgtToken++;
+}
+
 static uint32_t wnmBTMQueryTxDone(IN struct ADAPTER *prAdapter,
 				  IN struct MSDU_INFO *prMsduInfo,
 				  IN enum ENUM_TX_RESULT_CODE rTxDoneStatus)
@@ -387,13 +388,24 @@ static uint32_t wnmBTMResponseTxDone(IN struct ADAPTER *prAdapter,
 				     IN enum ENUM_TX_RESULT_CODE rTxDoneStatus)
 {
 	uint8_t ucBssIndex = 0;
+	struct BSS_TRANSITION_MGT_PARAM_T *prBtm;
 	struct AIS_FSM_INFO *prAisFsmInfo;
 
-	DBGLOG(WNM, INFO, "BTM Resp Tx Done Status %d\n", rTxDoneStatus);
-	ucBssIndex = prMsduInfo->ucBssIndex;
-	prAisFsmInfo = aisGetAisFsmInfo(prAdapter, ucBssIndex);
-	cnmTimerStopTimer(prAdapter, &prAisFsmInfo->rBtmRespTxDoneTimer);
-	aisFsmBtmRespTxDoneTimeout(prAdapter, ucBssIndex);
+	ucBssIndex =
+		prMsduInfo->ucBssIndex;
+	prBtm =
+		aisGetBTMParam(prAdapter, ucBssIndex);
+	prAisFsmInfo =
+		aisGetAisFsmInfo(prAdapter, ucBssIndex);
+
+	DBGLOG(WNM, INFO, "BTM: Response Frame Tx Done Status %d\n",
+	       rTxDoneStatus);
+	if (prBtm->fgPendingResponse &&
+	    prAisFsmInfo->eCurrentState == AIS_STATE_SEARCH) {
+		prBtm->fgPendingResponse = FALSE;
+		aisFsmSteps(prAdapter, AIS_STATE_REQ_CHANNEL_JOIN,
+			ucBssIndex);
+	}
 	return WLAN_STATUS_SUCCESS;
 }
 
@@ -407,39 +419,38 @@ static uint32_t wnmBTMResponseTxDone(IN struct ADAPTER *prAdapter,
  * @return (none)
  */
 /*----------------------------------------------------------------------------*/
-void wnmSendBTMResponseFrame(IN struct ADAPTER *adapter,
-	IN struct STA_RECORD *staRec, IN uint8_t dialogToken,
-	IN uint8_t status, IN uint8_t reason, IN uint8_t delay,
-	IN const uint8_t *bssid)
+void wnmSendBTMResponseFrame(IN struct ADAPTER *prAdapter,
+			     IN struct STA_RECORD *prStaRec)
 {
 	struct MSDU_INFO *prMsduInfo = NULL;
 	struct BSS_INFO *prBssInfo = NULL;
 	struct ACTION_BTM_RSP_FRAME *prTxFrame = NULL;
 	uint16_t u2PayloadLen = 0;
-	struct BSS_TRANSITION_MGT_PARAM *prBtmParam;
+	struct BSS_TRANSITION_MGT_PARAM_T *prBtmParam;
 	uint8_t *pucOptInfo = NULL;
 
-	if (!staRec) {
+	if (!prStaRec) {
 		DBGLOG(WNM, INFO, "BTM: No station record found\n");
 		return;
 	}
 
-	prBssInfo = GET_BSS_INFO_BY_INDEX(adapter, staRec->ucBssIndex);
-	prBtmParam = aisGetBTMParam(adapter, staRec->ucBssIndex);
-	prBtmParam->ucStatusCode = status;
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
+	prBtmParam =
+		aisGetBTMParam(prAdapter, prStaRec->ucBssIndex);
 
 	/* 1 Allocate MSDU Info */
 	prMsduInfo = (struct MSDU_INFO *)cnmMgtPktAlloc(
-		adapter, MAC_TX_RESERVED_FIELD + PUBLIC_ACTION_MAX_LEN);
+		prAdapter, MAC_TX_RESERVED_FIELD + PUBLIC_ACTION_MAX_LEN);
 	if (!prMsduInfo)
 		return;
-	prTxFrame = (struct ACTION_BTM_RSP_FRAME *)
-		((unsigned long)(prMsduInfo->prPacket) + MAC_TX_RESERVED_FIELD);
+	prTxFrame = (struct ACTION_BTM_RSP_FRAME
+			     *)((unsigned long)(prMsduInfo->prPacket) +
+				MAC_TX_RESERVED_FIELD);
 
 	/* 2 Compose The Mac Header. */
 	prTxFrame->u2FrameCtrl = MAC_FRAME_ACTION;
 
-	COPY_MAC_ADDR(prTxFrame->aucDestAddr, staRec->aucMacAddr);
+	COPY_MAC_ADDR(prTxFrame->aucDestAddr, prStaRec->aucMacAddr);
 	COPY_MAC_ADDR(prTxFrame->aucSrcAddr, prBssInfo->aucOwnMacAddr);
 	COPY_MAC_ADDR(prTxFrame->aucBSSID, prBssInfo->aucBSSID);
 
@@ -447,58 +458,34 @@ void wnmSendBTMResponseFrame(IN struct ADAPTER *adapter,
 	prTxFrame->ucAction = ACTION_WNM_BSS_TRANSITION_MANAGEMENT_RSP;
 
 	/* 3 Compose the frame body's frame. */
-	prTxFrame->ucDialogToken = dialogToken;
-	prTxFrame->ucStatusCode = status;
-	prTxFrame->ucBssTermDelay = delay;
+	prTxFrame->ucDialogToken = prBtmParam->ucDialogToken;
+	prBtmParam->ucDialogToken = 0;	/* reset dialog token */
+	prTxFrame->ucStatusCode = prBtmParam->ucStatusCode;
+	prTxFrame->ucBssTermDelay = prBtmParam->ucTermDelay;
 	pucOptInfo = &prTxFrame->aucOptInfo[0];
-
-	if (bssid) {
-		COPY_MAC_ADDR(pucOptInfo, bssid);
-		pucOptInfo += MAC_ADDR_LEN;
-		u2PayloadLen += MAC_ADDR_LEN;
-	} else if (status == WNM_BSS_TM_ACCEPT) {
-		/*
-		 * P802.11-REVmc clarifies that the Target BSSID field is always
-		 * present when status code is zero, so use a fake value here if
-		 * no BSSID is yet known.
-		 */
-		COPY_MAC_ADDR(pucOptInfo, "\0\0\0\0\0\0");
+	if (prBtmParam->ucStatusCode == BSS_TRANSITION_MGT_STATUS_ACCEPT) {
+		COPY_MAC_ADDR(pucOptInfo, prBtmParam->aucTargetBssid);
 		pucOptInfo += MAC_ADDR_LEN;
 		u2PayloadLen += MAC_ADDR_LEN;
 	}
-
-	/* TODO: add candidates list */
-
-#ifdef CFG_SUPPORT_MBO
-	if (status != WNM_BSS_TM_ACCEPT && prBtmParam->fgIsMboPresent) {
-		/*
-		 * MBO IE requires 6 bytes without the attributes: EID (1),
-		 * length (1), OUI (3), OUI type (1).
-		 */
-		*pucOptInfo++ = ELEM_ID_VENDOR;
-		*pucOptInfo++ = 7;
-		WLAN_SET_FIELD_BE32(pucOptInfo, MBO_IE_VENDOR_TYPE);
-		pucOptInfo += 4;
-		*pucOptInfo++ = MBO_ATTR_ID_TRANSITION_REJECT_REASON;
-		*pucOptInfo++ = 1;
-		*pucOptInfo++ = reason;
-		u2PayloadLen += 9;
+	if (prBtmParam->u2OurNeighborBssLen > 0) {
+		kalMemCopy(pucOptInfo, prBtmParam->pucOurNeighborBss,
+			   prBtmParam->u2OurNeighborBssLen);
+		kalMemFree(prBtmParam->pucOurNeighborBss, VIR_MEM_TYPE,
+			   prBtmParam->u2OurNeighborBssLen);
+		prBtmParam->u2OurNeighborBssLen = 0;
+		u2PayloadLen += prBtmParam->u2OurNeighborBssLen;
 	}
-#endif
 
 	/* 4 Update information of MSDU_INFO_T */
-	TX_SET_MMPDU(adapter, prMsduInfo, staRec->ucBssIndex,
-		     staRec->ucIndex, WLAN_MAC_MGMT_HEADER_LEN,
+	TX_SET_MMPDU(prAdapter, prMsduInfo, prStaRec->ucBssIndex,
+		     prStaRec->ucIndex, WLAN_MAC_MGMT_HEADER_LEN,
 		     OFFSET_OF(struct ACTION_BTM_RSP_FRAME, aucOptInfo) +
 			     u2PayloadLen,
 		     wnmBTMResponseTxDone, MSDU_RATE_MODE_AUTO);
 
 	/* 5 Enqueue the frame to send this action frame. */
-	nicTxEnqueueMsdu(adapter, prMsduInfo);
-
-	DBGLOG(WNM, INFO,
-		"BTM: response token=%d, status=%d, reason=%d, delay=%d, bssid=%p\n",
-		dialogToken, status, reason, delay, bssid);
+	nicTxEnqueueMsdu(prAdapter, prMsduInfo);
 }				/* end of wnmComposeBTMResponseFrame() */
 
 /*----------------------------------------------------------------------------*/
@@ -512,18 +499,16 @@ void wnmSendBTMResponseFrame(IN struct ADAPTER *adapter,
  */
 /*----------------------------------------------------------------------------*/
 void wnmSendBTMQueryFrame(IN struct ADAPTER *prAdapter,
-		IN struct STA_RECORD *prStaRec, IN uint8_t ucQueryReason)
+			  IN struct STA_RECORD *prStaRec)
 {
 	struct MSDU_INFO *prMsduInfo = NULL;
 	struct BSS_INFO *prBssInfo = NULL;
 	struct ACTION_BTM_QUERY_FRAME *prTxFrame = NULL;
-	struct BSS_TRANSITION_MGT_PARAM *prBtmParam;
-	static uint8_t ucToken = 1;
+	struct BSS_TRANSITION_MGT_PARAM_T *prBtmParam;
 
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
-	prBtmParam = aisGetBTMParam(prAdapter, prStaRec->ucBssIndex);
-	prBtmParam->ucQueryDialogToken = ucToken++;
-	prBtmParam->fgWaitBtmRequest = TRUE;
+	prBtmParam =
+		aisGetBTMParam(prAdapter, prStaRec->ucBssIndex);
 
 	/* 1 Allocate MSDU Info */
 	prMsduInfo = (struct MSDU_INFO *)cnmMgtPktAlloc(
@@ -543,116 +528,27 @@ void wnmSendBTMQueryFrame(IN struct ADAPTER *prAdapter,
 	prTxFrame->ucAction = ACTION_WNM_BSS_TRANSITION_MANAGEMENT_QUERY;
 
 	/* 3 Compose the frame body's frame. */
-	prTxFrame->ucDialogToken = prBtmParam->ucQueryDialogToken;
-	prTxFrame->ucQueryReason = ucQueryReason;
+	prTxFrame->ucDialogToken = prBtmParam->ucDialogToken;
+	prTxFrame->ucQueryReason = prBtmParam->ucQueryReason;
+	if (prBtmParam->u2OurNeighborBssLen > 0) {
+		kalMemCopy(prTxFrame->pucNeighborBss,
+			   prBtmParam->pucOurNeighborBss,
+			   prBtmParam->u2OurNeighborBssLen);
+		kalMemFree(prBtmParam->pucOurNeighborBss, VIR_MEM_TYPE,
+			   prBtmParam->u2OurNeighborBssLen);
+		prBtmParam->u2OurNeighborBssLen = 0;
+	}
 
 	/* 4 Update information of MSDU_INFO_T */
 	TX_SET_MMPDU(prAdapter, prMsduInfo, prStaRec->ucBssIndex,
 		     prStaRec->ucIndex, WLAN_MAC_MGMT_HEADER_LEN,
-		     WLAN_MAC_MGMT_HEADER_LEN + 4,
+		     WLAN_MAC_MGMT_HEADER_LEN + 4 +
+			     prBtmParam->u2OurNeighborBssLen,
 		     wnmBTMQueryTxDone, MSDU_RATE_MODE_AUTO);
 
 	/* 5 Enqueue the frame to send this action frame. */
 	nicTxEnqueueMsdu(prAdapter, prMsduInfo);
-
-	DBGLOG(WNM, INFO, "BTM: Query token %d, reason %d\n",
-	       prTxFrame->ucDialogToken, prTxFrame->ucQueryReason);
 }				/* end of wnmComposeBTMQueryFrame() */
-
-#if CFG_SUPPORT_MBO
-void wnmMboIeTransReq(IN struct ADAPTER *adapter, IN uint8_t wnmMode,
-		IN const uint8_t *ie, IN uint16_t len, IN uint8_t bssIndex)
-{
-	const uint8_t *pos;
-	uint8_t id, elen;
-	struct BSS_TRANSITION_MGT_PARAM *btm;
-
-	pos = kalFindIeMatchMask(ELEM_ID_VENDOR,
-		ie, len, "\x50\x6f\x9a\x16",
-		4, 2, NULL);
-
-	if (!pos)
-		return;
-
-	btm = aisGetBTMParam(adapter, bssIndex);
-	btm->fgIsMboPresent = TRUE;
-
-	/* MBO IE */
-	len = pos[1] - 4;
-	pos = pos + 6;
-
-	DBGLOG_MEM8(WNM, INFO, pos, len);
-
-	while (len >= 2) {
-		id = *pos++;
-		elen = *pos++;
-		len -= 2;
-
-		if (elen > len)
-			goto fail;
-
-		switch (id) {
-		case MBO_ATTR_ID_CELL_DATA_PREF:
-			if (elen != 1)
-				goto fail;
-
-			DBGLOG(WNM, INFO, "cell preference=%d", *pos);
-			break;
-		case MBO_ATTR_ID_TRANSITION_REASON:
-			if (elen != 1)
-				goto fail;
-
-			DBGLOG(WNM, INFO, "transition reason=%d", *pos);
-			break;
-		case MBO_ATTR_ID_ASSOC_RETRY_DELAY:
-			if (elen != 2)
-				goto fail;
-
-			if (wnmMode & WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
-				DBGLOG(WNM, WARN,
-					   "Unexpected association retry delay, BSS is terminating");
-				goto fail;
-			} else if (wnmMode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
-				struct BSS_DESC *bssDesc =
-					aisGetTargetBssDesc(adapter, bssIndex);
-				struct AIS_BLACKLIST_ITEM *blk =
-					aisAddBlacklist(adapter, bssDesc);
-
-				if (blk) {
-					blk->fgDisallowed = TRUE;
-					WLAN_GET_FIELD_16(pos,
-						&blk->u2DisallowSec);
-					DBGLOG(WNM, INFO,
-						"Association retry delay: %d",
-						blk->u2DisallowSec);
-				}
-			}
-			break;
-		case MBO_ATTR_ID_AP_CAPA_IND:
-		case MBO_ATTR_ID_NON_PREF_CHAN_REPORT:
-		case MBO_ATTR_ID_CELL_DATA_CAPA:
-		case MBO_ATTR_ID_ASSOC_DISALLOW:
-		case MBO_ATTR_ID_TRANSITION_REJECT_REASON:
-			DBGLOG(WNM, WARN,
-				   "Attribute %d should not be included in BTM Request frame",
-				   id);
-			break;
-		default:
-			DBGLOG(WNM, WARN, "Unknown attribute id %u", id);
-			return;
-		}
-
-		pos += elen;
-		len -= elen;
-	}
-
-	return;
-fail:
-	DBGLOG(WNM, WARN, "MBO IE parsing failed (id=%u len=%u left=%zu)",
-		   id, elen, len);
-}
-#endif
-
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -667,14 +563,13 @@ fail:
 void wnmRecvBTMRequest(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb)
 {
 	struct ACTION_BTM_REQ_FRAME *prRxFrame = NULL;
-	struct BSS_TRANSITION_MGT_PARAM *prBtmParam;
+	struct BSS_TRANSITION_MGT_PARAM_T *prBtmParam;
 	uint8_t *pucOptInfo = NULL;
 	uint8_t ucRequestMode = 0;
 	uint16_t u2TmpLen = 0;
-	struct MSG_AIS_BSS_TRANSITION *prMsg = NULL;
+	struct MSG_AIS_BSS_TRANSITION_T *prMsg = NULL;
+	enum WNM_AIS_BSS_TRANSITION eTransType = BSS_TRANSITION_NO_MORE_ACTION;
 	uint8_t ucBssIndex = secGetBssIdxByRfb(prAdapter, prSwRfb);
-	uint8_t fgNeedResponse = FALSE;
-	uint8_t ucStatus;
 
 	prRxFrame = (struct ACTION_BTM_REQ_FRAME *) prSwRfb->pvHeader;
 	if (!prRxFrame)
@@ -685,31 +580,27 @@ void wnmRecvBTMRequest(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb)
 		       "BTM: Request frame length is less than a standard BTM frame\n");
 		return;
 	}
-
-	prBtmParam = aisGetBTMParam(prAdapter, ucBssIndex);
-
-	DBGLOG(WNM, INFO,
-	       "BTM: Req 0x%x, VInt %d, DiscTimer %d, Token %d\n",
-	       prRxFrame->ucRequestMode, prRxFrame->ucValidityInterval,
-	       prRxFrame->u2DisassocTimer, prRxFrame->ucDialogToken);
-
-	if (prBtmParam->fgWaitBtmRespDone) {
-		DBGLOG(WNM, WARN, "BTM: pending btm response is handling\n");
+	prMsg = (struct MSG_AIS_BSS_TRANSITION_T *)cnmMemAlloc(
+		prAdapter, RAM_TYPE_MSG,
+		sizeof(struct MSG_AIS_BSS_TRANSITION_T));
+	if (!prMsg) {
+		DBGLOG(WNM, WARN, "BTM: Msg Hdr is NULL\n");
 		return;
 	}
 
-	/* if BTM Request is for broadcast, don't send BTM Response */
-	fgNeedResponse = !!(kalMemCmp(prRxFrame->aucDestAddr,
-		"\xff\xff\xff\xff\xff\xff", MAC_ADDR_LEN));
-	prBtmParam->ucDialogToken = prRxFrame->ucDialogToken;
+	prBtmParam =
+		aisGetBTMParam(prAdapter, ucBssIndex);
+	kalMemZero(prMsg, sizeof(*prMsg));
 	prBtmParam->ucRequestMode = prRxFrame->ucRequestMode;
+	prMsg->ucToken = prRxFrame->ucDialogToken;
 	prBtmParam->u2DisassocTimer = prRxFrame->u2DisassocTimer;
-	prBtmParam->fgIsMboPresent = FALSE;
-	prBtmParam->fgPendingResponse = fgNeedResponse;
+	prBtmParam->ucDialogToken = prRxFrame->ucDialogToken;
 	pucOptInfo = &prRxFrame->aucOptInfo[0];
 	ucRequestMode = prBtmParam->ucRequestMode;
 	u2TmpLen = OFFSET_OF(struct ACTION_BTM_REQ_FRAME, aucOptInfo);
-	if (ucRequestMode & WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
+	if (ucRequestMode & BTM_REQ_MODE_DISC_IMM)
+		eTransType = BSS_TRANSITION_REQ_ROAMING;
+	if (ucRequestMode & BTM_REQ_MODE_BSS_TERM_INCLUDE) {
 		struct SUB_IE_BSS_TERM_DURATION *prBssTermDuration =
 			(struct SUB_IE_BSS_TERM_DURATION *)pucOptInfo;
 
@@ -718,123 +609,43 @@ void wnmRecvBTMRequest(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb)
 			   prBssTermDuration->aucTermTsf, 8);
 		pucOptInfo += sizeof(*prBssTermDuration);
 		u2TmpLen += sizeof(*prBssTermDuration);
+		eTransType = BSS_TRANSITION_REQ_ROAMING;
 	}
-	if (ucRequestMode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT) {
+	if (ucRequestMode & BTM_REQ_MODE_ESS_DISC_IMM) {
 		kalMemCopy(prBtmParam->aucSessionURL, &pucOptInfo[1],
 			   pucOptInfo[0]);
 		prBtmParam->ucSessionURLLen = pucOptInfo[0];
-		u2TmpLen += prBtmParam->ucSessionURLLen + 1;
-		pucOptInfo += prBtmParam->ucSessionURLLen + 1;
+		u2TmpLen += pucOptInfo[0];
+		pucOptInfo += pucOptInfo[0] + 1;
+		eTransType = BSS_TRANSITION_DISASSOC;
 	}
-
-#if CFG_SUPPORT_MBO
-	if (prSwRfb->u2PacketLen > u2TmpLen) {
-		wnmMboIeTransReq(prAdapter, ucRequestMode, pucOptInfo,
-			prSwRfb->u2PacketLen - u2TmpLen, ucBssIndex);
-	}
-#endif
-
-	if (ucRequestMode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED) {
-#if CFG_SUPPORT_802_11K
-		if (prSwRfb->u2PacketLen <= u2TmpLen ||
-		    !aisCollectNeighborAP(prAdapter, pucOptInfo,
-					prSwRfb->u2PacketLen - u2TmpLen,
-					prRxFrame->ucValidityInterval,
-					ucBssIndex)) {
+	if (ucRequestMode & BTM_REQ_MODE_CAND_INCLUDED_BIT) {
+		if (!(ucRequestMode & BTM_REQ_MODE_ESS_DISC_IMM))
+			eTransType = BSS_TRANSITION_REQ_ROAMING;
+		if (prSwRfb->u2PacketLen > u2TmpLen) {
+			prMsg->u2CandListLen = prSwRfb->u2PacketLen - u2TmpLen;
+			prMsg->pucCandList = pucOptInfo;
+			prMsg->ucValidityInterval =
+				prRxFrame->ucValidityInterval;
+		} else
 			DBGLOG(WNM, WARN,
 			       "BTM: Candidate Include bit is set, but no candidate list\n");
-			ucStatus = WNM_BSS_TM_REJECT_NO_SUITABLE_CANDIDATES;
-			goto send_response;
-
-		}
-#endif
 	}
 
-	if (prBtmParam->fgWaitBtmRequest) {
-		prBtmParam->fgWaitBtmRequest = FALSE;
-		/* solicited btm already collects neighbor report so send resp*/
-		if (prBtmParam->ucQueryDialogToken ==
-				prBtmParam->ucDialogToken) {
-			DBGLOG(WNM, INFO, "WNM: solicited btm token=%d\n",
-				prBtmParam->ucDialogToken);
-			ucStatus = WNM_BSS_TM_REJECT_UNSPECIFIED;
-			goto send_response;
-		}
-	}
+	DBGLOG(WNM, INFO,
+	       "BTM: Req %d, VInt %d, DiscTimer %d, Token %d, TransType %d\n",
+	       prBtmParam->ucRequestMode, prRxFrame->ucValidityInterval,
+	       prBtmParam->u2DisassocTimer, prMsg->ucToken, eTransType);
 
-	if ((!(ucRequestMode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT) &&
-	     (ucRequestMode & WNM_BSS_TM_REQ_ABRIDGED) &&
-	     !(ucRequestMode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED)) ||
-	    ((ucRequestMode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT) &&
-	     (ucRequestMode & WNM_BSS_TM_REQ_ABRIDGED) &&
-	     !(ucRequestMode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED))) {
-		DBGLOG(WNM, WARN,
-			"WNM: Invalid Frame mode (d,a,p)=(%d,%d,%d)\n",
-			ucRequestMode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT,
-			ucRequestMode & WNM_BSS_TM_REQ_ABRIDGED,
-			ucRequestMode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED);
-		ucStatus = WNM_BSS_TM_REJECT_UNSPECIFIED;
-		goto send_response;
-	}
-
-	prMsg = (struct MSG_AIS_BSS_TRANSITION *)cnmMemAlloc(
-		prAdapter, RAM_TYPE_MSG, sizeof(struct MSG_AIS_BSS_TRANSITION));
-	if (!prMsg) {
-		DBGLOG(WNM, WARN, "BTM: Msg Hdr is NULL\n");
-		ucStatus = WNM_BSS_TM_REJECT_UNSPECIFIED;
-		goto send_response;
-	}
-
-	kalMemZero(prMsg, sizeof(*prMsg));
+	prMsg->eTransitionType = eTransType;
 	prMsg->rMsgHdr.eMsgId = MID_WNM_AIS_BSS_TRANSITION;
 	prMsg->ucBssIndex = ucBssIndex;
+	/* if BTM Request is dest for broadcast, don't send BTM Response */
+	if (kalMemCmp(prRxFrame->aucDestAddr, "\xff\xff\xff\xff\xff\xff",
+		      MAC_ADDR_LEN))
+		prMsg->fgNeedResponse = TRUE;
+	else
+		prMsg->fgNeedResponse = FALSE;
 	mboxSendMsg(prAdapter, MBOX_ID_0, (struct MSG_HDR *)prMsg,
 		    MSG_SEND_METHOD_BUF);
-
-	return;
-send_response:
-	if (prBtmParam->fgPendingResponse) {
-		prBtmParam->fgPendingResponse = false;
-		wnmSendBTMResponseFrame(prAdapter,
-			aisGetStaRecOfAP(prAdapter, ucBssIndex),
-			prBtmParam->ucDialogToken,
-			ucStatus, MBO_TRANSITION_REJECT_REASON_UNSPECIFIED,
-			0, NULL);
-	}
 }
-
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief Send btm response with accept code
- *
- * @param[in]
- *
- * @return (none)
- */
-/*----------------------------------------------------------------------------*/
-uint8_t wnmSendBTMResponse(IN struct ADAPTER *prAdapter,
-	IN const uint8_t *aucBssid, IN uint8_t ucStatus,
-	IN uint8_t ucReason, IN uint8_t ucBssIndex)
-{
-#if CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT
-	struct BSS_INFO *prAisBssInfo;
-	struct BSS_TRANSITION_MGT_PARAM *prBtmParam;
-
-	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
-	prBtmParam = aisGetBTMParam(prAdapter, ucBssIndex);
-	if (prBtmParam->fgPendingResponse) {
-		prBtmParam->fgPendingResponse = FALSE;
-		prBtmParam->fgWaitBtmRespDone = (ucReason == WNM_BSS_TM_ACCEPT);
-		wnmSendBTMResponseFrame(
-			prAdapter,
-			prAisBssInfo->prStaRecOfAP,
-			prBtmParam->ucDialogToken,
-			ucStatus,
-			ucReason,
-			0, aucBssid);
-		return TRUE;
-	}
-#endif
-	return FALSE;
-}
-

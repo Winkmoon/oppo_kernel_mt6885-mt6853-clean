@@ -2,10 +2,9 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-#include <linux/rtc.h>
 
-#include "btmtk_chip_if.h"
-#include "btmtk_main.h"
+ #include "btmtk_btif.h"
+ #include <linux/rtc.h>
 
  /*******************************************************************************
  *			       D A T A	 T Y P E S
@@ -23,7 +22,7 @@ struct delayed_work work;
  *			     P R I V A T E   D A T A
  ********************************************************************************
  */
-extern struct btmtk_dev *g_sbdev;
+extern struct btmtk_dev *g_bdev;
 extern struct bt_dbg_st g_bt_dbg_st;
 
 /*******************************************************************************
@@ -33,8 +32,7 @@ extern struct bt_dbg_st g_bt_dbg_st;
 #if (USE_DEVICE_NODE == 1)
 uint8_t is_rx_queue_empty(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_ring_buffer_mgmt *p_ring = &cif_dev->rx_buffer;
+	struct bt_ring_buffer_mgmt *p_ring = &g_bdev->rx_buffer;
 
 	spin_lock(&p_ring->lock);
 	if (p_ring->read_idx == p_ring->write_idx) {
@@ -49,8 +47,7 @@ uint8_t is_rx_queue_empty(void)
 static uint8_t is_rx_queue_res_available(uint32_t length)
 {
 	uint32_t room_left;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_ring_buffer_mgmt *p_ring = &cif_dev->rx_buffer;
+	struct bt_ring_buffer_mgmt *p_ring = &g_bdev->rx_buffer;
 
 	/*
 	 * Get available space of RX Queue
@@ -72,8 +69,7 @@ static uint8_t is_rx_queue_res_available(uint32_t length)
 static int32_t rx_pkt_enqueue(uint8_t *buffer, uint32_t length)
 {
 	uint32_t tail_len;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_ring_buffer_mgmt *p_ring = &cif_dev->rx_buffer;
+	struct bt_ring_buffer_mgmt *p_ring = &g_bdev->rx_buffer;
 
 	if (length > HCI_MAX_FRAME_SIZE) {
 		BTMTK_ERR("Abnormal packet length %u, not enqueue!", length);
@@ -101,12 +97,10 @@ int32_t rx_skb_enqueue(struct sk_buff *skb)
 	#define WAIT_TIMES 40
 	int8_t i = 0;
 	int32_t ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
 
-	if ( !skb || skb->len == 0) {
-		BTMTK_WARN("Inavlid data event, skip, skb = NULL or skb len = 0");
-		ret = -1;
-		goto end;
+	if (skb->len == 0) {
+		BTMTK_WARN("Inavlid data event, skip, length = %d", skb->len);
+		return -1;
 	}
 
 	/* FW will block the data if it's buffer is full,
@@ -114,34 +108,29 @@ int32_t rx_skb_enqueue(struct sk_buff *skb)
 	if(g_bt_dbg_st.rx_buf_ctrl == TRUE) {
 		for(i = 0; i < WAIT_TIMES; i++) {
 			if (!is_rx_queue_res_available(skb->len + 1)) {
-				usleep_range(USLEEP_5MS_L, USLEEP_5MS_H);
+				msleep(5);
 			} else
 				break;
 		}
 	}
 	if (!is_rx_queue_res_available(skb->len + 1)) {
 		BTMTK_WARN("rx packet drop!!!");
-		ret = -1;
-		goto end;
+		return -1;
 	}
 
 	memcpy(skb_push(skb, 1), &bt_cb(skb)->pkt_type, 1);
 	ret = rx_pkt_enqueue(skb->data, skb->len);
 
-	if (!is_rx_queue_empty() && cif_dev->rx_event_cb)
-		cif_dev->rx_event_cb();
+	if (!is_rx_queue_empty())
+		g_bdev->rx_event_cb();
 
-end:
-	if (skb)
-		kfree_skb(skb);
 	return ret;
 }
 
 void rx_dequeue(uint8_t *buffer, uint32_t size, uint32_t *plen)
 {
 	uint32_t copy_len = 0, tail_len;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_ring_buffer_mgmt *p_ring = &cif_dev->rx_buffer;
+	struct bt_ring_buffer_mgmt *p_ring = &g_bdev->rx_buffer;
 
 	spin_lock(&p_ring->lock);
 	if (p_ring->read_idx != p_ring->write_idx) {
@@ -183,16 +172,13 @@ void rx_dequeue(uint8_t *buffer, uint32_t size, uint32_t *plen)
 
 void rx_queue_flush(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_ring_buffer_mgmt *p_ring = &cif_dev->rx_buffer;
-
+	struct bt_ring_buffer_mgmt *p_ring = &g_bdev->rx_buffer;
 	p_ring->read_idx = p_ring->write_idx = 0;
 }
 
 void rx_queue_initialize(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_ring_buffer_mgmt *p_ring = &cif_dev->rx_buffer;
+	struct bt_ring_buffer_mgmt *p_ring = &g_bdev->rx_buffer;
 
 	p_ring->read_idx = p_ring->write_idx = 0;
 	spin_lock_init(&p_ring->lock);
@@ -202,48 +188,15 @@ void rx_queue_destroy(void)
 {
 	rx_queue_flush();
 }
-
-/* Interface for device node mechanism */
-void btmtk_rx_flush(void)
-{
-	rx_queue_flush();
-}
-
-uint8_t btmtk_rx_data_valid(void)
-{
-	return !is_rx_queue_empty();
-}
-
-void btmtk_register_rx_event_cb(struct hci_dev *hdev, BT_RX_EVENT_CB cb)
-{
-	struct btmtk_dev *bdev = hci_get_drvdata(hdev);
-	struct btmtk_btif_dev *cif_dev = bdev->cif_dev;
-
-	cif_dev->rx_event_cb = cb;
-	btmtk_rx_flush();
-}
-
-int32_t btmtk_receive_data(struct hci_dev *hdev, uint8_t *buf, uint32_t count)
-{
-	uint32_t read_bytes;
-
-	rx_dequeue(buf, count, &read_bytes);
-	/* TODO: disable quick PS mode by traffic density */
-	return read_bytes;
-}
-
 #endif // (USE_DEVICE_NODE == 1)
 
 #if (DRIVER_CMD_CHECK == 1)
 
 void cmd_list_initialize(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
-
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 	BTMTK_DBG("%s", __func__);
 
-	p_queue = &cif_dev->cmd_queue;
 	p_queue->head = NULL;
 	p_queue->tail = NULL;
 	p_queue->size = 0;
@@ -252,11 +205,9 @@ void cmd_list_initialize(void)
 
 struct bt_cmd_node* cmd_free_node(struct bt_cmd_node* node)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
-	struct bt_cmd_node* next = node->next;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 
-	p_queue = &cif_dev->cmd_queue;
+	struct bt_cmd_node* next = node->next;
 	kfree(node);
 	p_queue->size--;
 
@@ -265,10 +216,7 @@ struct bt_cmd_node* cmd_free_node(struct bt_cmd_node* node)
 
 bool cmd_list_isempty(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
-
-	p_queue = &cif_dev->cmd_queue;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 
 	spin_lock(&p_queue->lock);
 	if(p_queue->size == 0) {
@@ -282,11 +230,9 @@ bool cmd_list_isempty(void)
 
 bool cmd_list_append (uint16_t opcode)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 	struct bt_cmd_node *node = kzalloc(sizeof(struct bt_cmd_node),GFP_KERNEL);
 
-	p_queue = &cif_dev->cmd_queue;
 	if (!node) {
 		BTMTK_ERR("%s create node fail",__func__);
 		return FALSE;
@@ -311,11 +257,8 @@ bool cmd_list_append (uint16_t opcode)
 
 bool cmd_list_check(uint16_t opcode)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 	struct bt_cmd_node* curr = NULL;
-
-	p_queue = &cif_dev->cmd_queue;
 
 	if (cmd_list_isempty() == TRUE) return FALSE;
 	spin_lock(&p_queue->lock);
@@ -336,12 +279,9 @@ bool cmd_list_check(uint16_t opcode)
 
 bool cmd_list_remove(uint16_t opcode)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 	struct bt_cmd_node* prev = NULL;
 	struct bt_cmd_node* curr = NULL;
-
-	p_queue = &cif_dev->cmd_queue;
 
 	if (cmd_list_isempty() == TRUE) return FALSE;
 
@@ -375,62 +315,45 @@ bool cmd_list_remove(uint16_t opcode)
 
 void cmd_list_destory(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
-	struct bt_cmd_node* curr= NULL;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
+	struct bt_cmd_node* curr = p_queue->head;
 	BTMTK_DBG("%s",__func__);
 
-	p_queue = &cif_dev->cmd_queue;
-	spin_lock(&p_queue->lock);
-	curr = p_queue->head;
 	while(curr){
 		curr = cmd_free_node(curr);
 	}
 	p_queue->head = NULL;
 	p_queue->tail = NULL;
 	p_queue->size = 0;
-	spin_unlock(&p_queue->lock);
 }
 
 void command_response_timeout(struct work_struct *pwork)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 
-	p_queue = &cif_dev->cmd_queue;
 	if (p_queue->size != 0) {
-		cif_dev->cmd_timeout_count++;
+		g_bdev->cmd_timeout_count++;
 
 		BTMTK_INFO("[%s] timeout [%d] sleep [%d] force_on [%d]", __func__,
-							cif_dev->cmd_timeout_count,
-							cif_dev->psm.sleep_flag,
-							cif_dev->psm.force_on);
+							g_bdev->cmd_timeout_count,
+							g_bdev->psm.sleep_flag,
+							g_bdev->psm.force_on);
 		btmtk_cif_dump_rxd_backtrace();
 		btmtk_cif_dump_fw_no_rsp(BT_BTIF_DUMP_REG);
-		if (cif_dev->cmd_timeout_count == 4) {
-			spin_lock(&p_queue->lock);
-			if (p_queue->head)
-				BTMTK_ERR("%s,  !!!! Command Timeout !!!!  opcode 0x%4X", __func__, p_queue->head->opcode);
-			else
-				BTMTK_ERR("%s,  p_queue head is NULL", __func__);
-			spin_unlock(&p_queue->lock);
+		if (g_bdev->cmd_timeout_count == 4) {
+			BTMTK_ERR("%s,  !!!! Command Timeout !!!!  opcode 0x%4X", __func__, p_queue->head->opcode);
 			// To-do : Need to consider if it has any condition to check
-			cif_dev->cmd_timeout_count = 0;
+			g_bdev->cmd_timeout_count = 0;
+
+			btmtk_cif_dump_fw_no_rsp(BT_BTIF_DUMP_LOG);
 			bt_trigger_reset();
-		} else {
-			down(&cif_dev->cmd_tout_sem);
-			if(workqueue_task != NULL) {
-				queue_delayed_work(workqueue_task, &work, HZ>>1);
-			}
-			up(&cif_dev->cmd_tout_sem);
-		}
+		} else
+			queue_delayed_work(workqueue_task, &work, HZ>>1);
 	}
 }
 
 bool cmd_workqueue_init(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
 	BTMTK_INFO("init workqueue");
 	workqueue_task = create_singlethread_workqueue("workqueue_task");
 	if(!workqueue_task){
@@ -438,50 +361,32 @@ bool cmd_workqueue_init(void)
 		return FALSE;
 	}
 	INIT_DELAYED_WORK(&work, command_response_timeout);
-	cif_dev->cmd_timeout_count = 0;
+	g_bdev->cmd_timeout_count = 0;
 	return TRUE;
 }
 
-void update_command_response_workqueue(void)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_cmd_queue *p_queue = NULL;
-
-	p_queue = &cif_dev->cmd_queue;
+void update_command_response_workqueue(void) {
+	struct bt_cmd_queue *p_queue = &g_bdev->cmd_queue;
 	if (p_queue->size == 0){
 		BTMTK_DBG("command queue size = 0");
 		cancel_delayed_work(&work);
 	} else {
-		spin_lock(&p_queue->lock);
-		if (p_queue->head)
-			BTMTK_DBG("update new command queue : %4X" , p_queue->head->opcode);
-		else
-			BTMTK_ERR("%s,  p_queue head is NULL", __func__);
-		spin_unlock(&p_queue->lock);
-		cif_dev->cmd_timeout_count = 0;
+		BTMTK_DBG("update new command queue : %4X" , p_queue->head->opcode);
+		g_bdev->cmd_timeout_count = 0;
 		cancel_delayed_work(&work);
-		down(&cif_dev->cmd_tout_sem);
-		if(workqueue_task != NULL) {
-			queue_delayed_work(workqueue_task, &work, HZ>>1);
-		}
-		up(&cif_dev->cmd_tout_sem);
+		queue_delayed_work(workqueue_task, &work, HZ>>1);
 	}
 }
 
 void cmd_workqueue_exit(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	int ret_a = 0, ret_b = 0;
-	if(workqueue_task != NULL) {
-		ret_b = cancel_delayed_work(&work);
-		flush_workqueue(workqueue_task);
-		ret_a = cancel_delayed_work(&work);
-		BTMTK_INFO("cancel workqueue before[%d] after[%d] flush", ret_b, ret_a);
-		down(&cif_dev->cmd_tout_sem);
-		destroy_workqueue(workqueue_task);
-		workqueue_task = NULL;
-		up(&cif_dev->cmd_tout_sem);
-	}
+	BTMTK_INFO("exit workqueue");
+	if(workqueue_task == NULL)
+		return;
+	cancel_delayed_work(&work);
+	flush_workqueue(workqueue_task);
+	destroy_workqueue(workqueue_task);
+	workqueue_task = NULL;
 }
 
 #endif // (DRIVER_CMD_CHECK == 1)
@@ -494,11 +399,9 @@ const char* direction_tostring (enum bt_direction_type direction_type) {
 
 void dump_queue_initialize(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_dump_queue *d_queue = NULL;
+	struct bt_dump_queue *d_queue = &g_bdev->dump_queue;
 	BTMTK_INFO("init dumpqueue");
 
-	d_queue = &cif_dev->dump_queue;
 	d_queue->index = 0;
 	d_queue->full = 0;
 	spin_lock_init(&d_queue->lock);
@@ -507,15 +410,10 @@ void dump_queue_initialize(void)
 
 
 void add_dump_packet(const uint8_t *buffer,const uint32_t length, enum bt_direction_type type){
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_dump_queue *d_queue = NULL;
-	uint32_t index = 0;
-	struct bt_dump_packet *p_packet = NULL;
+	struct bt_dump_queue *d_queue = &g_bdev->dump_queue;
+	uint32_t index = d_queue->index;
+	struct bt_dump_packet *p_packet = &d_queue->queue[index];
 	uint32_t copysize;
-
-	d_queue = &cif_dev->dump_queue;
-	index = d_queue->index;
-	p_packet = &d_queue->queue[index];
 
 	spin_lock(&d_queue->lock);
 	if (length > MAX_DUMP_DATA_SIZE)
@@ -523,8 +421,8 @@ void add_dump_packet(const uint8_t *buffer,const uint32_t length, enum bt_direct
 	else
 		copysize = length;
 
-	ktime_get_real_ts64(&p_packet->time);
-	ktime_get_ts64(&p_packet->kerneltime);
+	do_gettimeofday(&p_packet->time);
+	ktime_get_ts(&p_packet->kerneltime);
 	memcpy(p_packet->data,buffer,copysize);
 	p_packet->data_length = length;
 	p_packet->direction_type = type;
@@ -542,12 +440,12 @@ void print_dump_packet(struct bt_dump_packet *p_packet){
 	struct rtc_time tm;
 
 	sec = p_packet->time.tv_sec;
-	usec = p_packet->time.tv_nsec/1000;
+	usec = p_packet->time.tv_usec;
 
 	ksec = p_packet->kerneltime.tv_sec;
 	knsec = p_packet->kerneltime.tv_nsec;
 
-	rtc_time64_to_tm(sec, &tm);
+	rtc_time_to_tm(sec, &tm);
 
 	if (p_packet->data_length > MAX_DUMP_DATA_SIZE)
 		copysize = MAX_DUMP_DATA_SIZE;
@@ -560,12 +458,9 @@ void print_dump_packet(struct bt_dump_packet *p_packet){
 }
 
 void show_all_dump_packet(void) {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_dump_queue *d_queue = NULL;
+	struct bt_dump_queue *d_queue = &g_bdev->dump_queue;
 	int32_t i, j, showsize;
 	struct bt_dump_packet *p_packet;
-
-	d_queue = &cif_dev->dump_queue;
 
 	spin_lock(&d_queue->lock);
 	if (d_queue->full == TRUE) {

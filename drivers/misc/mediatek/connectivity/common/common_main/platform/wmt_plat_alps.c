@@ -261,8 +261,6 @@ static INT32 wmt_plat_assert_ctrl(VOID)
 {
 	INT32 ret = 0;
 
-	mtk_wcn_consys_ipi_timeout_dump();
-
 	if (wmt_plat_trigger_assert_cb)
 		ret = (*wmt_plat_trigger_assert_cb)(WMTDRV_TYPE_WMT, 45);
 
@@ -299,7 +297,6 @@ static VOID wmt_plat_bgf_eirq_cb(VOID)
 irqreturn_t wmt_plat_bgf_irq_isr(INT32 irq, PVOID arg)
 {
 #if CFG_WMT_PS_SUPPORT
-	mtk_wcn_consys_wakeup_btif_irq_pull_low();
 	wmt_plat_eirq_ctrl(PIN_BGF_EINT, PIN_STA_EINT_DIS);
 	wmt_plat_bgf_eirq_cb();
 #else
@@ -381,7 +378,9 @@ INT32 wmt_plat_init(P_PWR_SEQ_TIME pPwrSeqTime, UINT32 co_clock_type)
 	osal_sleepable_lock_init(&gOsSLock);
 
 	/* init hw */
-	if (wmt_detect_get_chip_type() != WMT_CHIP_TYPE_SOC)
+	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC)
+		iret += mtk_wcn_consys_hw_init();
+	else
 		iret += mtk_wcn_cmb_hw_init(pPwrSeqTime);
 
 	spin_lock_init(&g_bgf_irq_lock.lock);
@@ -1804,15 +1803,6 @@ EXPORT_SYMBOL(wmt_plat_get_soc_chipid);
 INT32 wmt_plat_get_adie_chipid(VOID)
 {
 	return mtk_wcn_consys_detect_adie_chipid(gCoClockFlag);
-}
-
-INT32 wmt_plat_consys_hw_init(VOID)
-{
-#ifndef MTK_WCN_COMBO_CHIP_SUPPORT
-	return mtk_wcn_consys_hw_init();
-#else
-	return 0;
-#endif
 }
 
 #if CFG_WMT_LTE_COEX_HANDLING

@@ -1,102 +1,100 @@
+MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 ###############################################################################
 # Bluetooth character device driver
 
 ###############################################################################
+$(warning connac20 bt driver: _MTK_BT_CHIP = $(_MTK_BT_CHIP))
+CONNAC20_CHIPID=$(subst MTK_CONSYS_MT,,$(_MTK_BT_CHIP))
+ccflags-y += -D CONNAC20_CHIPID=$(CONNAC20_CHIPID)
+$(warning connac20 bt driver: CONNAC20_CHIPID = $(CONNAC20_CHIPID))
 
-# ---------------------------------------------------
-# Compile Options
-# ---------------------------------------------------
+# only for sw-ready-go
+ifeq ($(_MTK_BT_CHIP), MTK_CONSYS_MT6893)
+ifneq ($(filter yes, $(_MTK_PLAT_MT6885_EMULATION)),)
+    $(warning connac20 bt driver: 6885 emulation is set!)
+    ccflags-y += -D CONNAC20_CHIPID=6885
+endif
+endif
 
 ifndef TOP
     TOP := $(srctree)/..
 endif
 
-ifneq ($(KERNEL_OUT),)
-    ccflags-y += -imacros $(KERNEL_OUT)/include/generated/autoconf.h
-endif
+USE_DEVICE_NODE := y
+#CUSTOMER_FW_UPDATE := y
 
-# Force build fail on modpost warning
-KBUILD_MODPOST_FAIL_ON_WARNINGS := y
-
-# platform
-
-
-  BT_PLATFORM = $(patsubst MTK_CONSYS_MT%,%,$(strip $(_MTK_BT_CHIP)))
-
-
-$(info $(LOG_TAG) TARGET_BUILD_VARIANT = $(TARGET_BUILD_VARIANT))
-ifeq ("$(TARGET_BUILD_VARIANT)","user")
-    ccflags-y += -D FW_LOG_DEFAULT_ON=0
-else
-    ccflags-y += -D FW_LOG_DEFAULT_ON=1
-endif
-
-
-ccflags-y += -D CONNAC20_CHIPID=$(BT_PLATFORM)
-$(info $(LOG_TAG) BT_PLATFORM = $(BT_PLATFORM))
-$(info $(LOG_TAG) srctree = $(srctree))
-
-# ---------------------------------------------------
-# Compile Options: set feature flag (1: enable, 0: disable)
-# ---------------------------------------------------
-
-# build btif interface
-ccflags-y += -D CHIP_IF_BTIF
-
-# Use device node or hci_dev as native interface
-ccflags-y += -D USE_DEVICE_NODE=1
-
-# Customized fw update feature
-#ifndef OPLUS_FEATURE_BT_FW_SAU_MTK
-#Add for fw sau
-#ccflags-y += -D CUSTOMER_FW_UPDATE=0
-
-#else /* OPLUS_FEATURE_BT_FW_SAU_MTK */
-ccflags-y += -D CUSTOMER_FW_UPDATE=1
-ccflags-y += -D OPLUS_FEATURE_BT_FW_SAU_MTK=1
-#endif /* OPLUS_FEATURE_BT_FW_SAU_MTK */
-
-# pm_qos control
-ccflags-y += -D PM_QOS_CONTROL=0
-
-# No function, only for build pass
-ccflags-y += -D CONFIG_MP_WAKEUP_SOURCE_SYSFS_STAT=1
+ccflags-y += -DCHIP_IF_BTIF
 
 # Customized feature, load 1b fw bin
 #ccflags-y += -D BT_CUS_FEATURE
 
+# Force build fail on modpost warning
+KBUILD_MODPOST_FAIL_ON_WARNINGS := y
+###############################################################################
+
+# ---------------------------------------------------
+# Compile Options
+# ---------------------------------------------------
+ccflags-y += -D CREATE_NODE_DYNAMIC=1
+
+ifeq ($(CUSTOMER_FW_UPDATE), y)
+ccflags-y += -D CUSTOMER_FW_UPDATE=1
+else
+ccflags-y += -D CUSTOMER_FW_UPDATE=0
+endif
+
+ifneq ($(CFG_BT_PM_QOS_CONTROL),)
+    $(warning set PM_QOS_CONTROL=1)
+    ccflags-y += -D PM_QOS_CONTROL=1
+else
+    ccflags-y += -D PM_QOS_CONTROL=0
+endif
+
 # ---------------------------------------------------
 # Include Path
 # ---------------------------------------------------
-CONN_INFRA_SRC := $(TOP)/vendor/mediatek/kernel_modules/connectivity/conninfra
-CONNFEM_SRC := $(TOP)/vendor/mediatek/kernel_modules/connectivity/connfem
-WMT_SRC := $(TOP)/vendor/mediatek/kernel_modules/connectivity/common
+CONN_INFRA_SRC := $(srctree)/drivers/misc/mediatek/connectivity/conninfra
+WMT_SRC := $(srctree)/drivers/misc/mediatek/connectivity/common
 BTIF_SRC := $(srctree)/drivers/misc/mediatek/btif
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/power_throttling
-ccflags-y += -I$(srctree)/drivers/gpu/drm/mediatek/mediatek_v2/
 ccflags-y += -I$(CONN_INFRA_SRC)/include
 ccflags-y += -I$(CONN_INFRA_SRC)/debug_utility/include
-ccflags-y += -I$(CONN_INFRA_SRC)/debug_utility/metlog
 ccflags-y += -I$(CONN_INFRA_SRC)/debug_utility/
-ccflags-y += -I$(CONNFEM_SRC)/include
+ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
 ccflags-y += -I$(WMT_SRC)/debug_utility
+endif
 ccflags-y += -I$(BTIF_SRC)/common/inc
 
 ccflags-y += -I$(src)/core/include
 ccflags-y += -I$(src)/connsys/connac_2_0
-ccflags-y += -I$(src)/../include
-ccflags-y += -I$(src)/../include/btif
+
+ifeq ($(USE_DEVICE_NODE), y)
+ccflags-y += -DUSE_DEVICE_NODE=1
+else
+ccflags-y += -DUSE_DEVICE_NODE=0
+endif
 
 # ---------------------------------------------------
 # Objects List
 # ---------------------------------------------------
-MODULE_NAME := bt_drv_$(BT_PLATFORM)
-  obj-y += $(MODULE_NAME).o
-CORE_OBJS := btmtk_dbg.o btmtk_dbg_tp_evt_if.o btmtk_irq.o btmtk_char_dev.o ../btmtk_fw_log.o ../btmtk_main.o
+MODULE_NAME := bt_drv
+obj-y += $(MODULE_NAME).o
+
+#PLAT_DIR  := plat/$(MTK_PLATFORM)
+
+CORE_OBJS := btmtk_main.o btmtk_dbg.o btmtk_irq.o
+
+ifeq ($(USE_DEVICE_NODE), y)
+CORE_OBJS += btmtk_char_dev.o btmtk_queue.o
+endif
+
 CHIP_OBJS := btmtk_mt66xx.o
-HIF_OBJS := btmtk_btif_main.o btmtk_queue.o
+HIF_OBJS := btmtk_btif_main.o btmtk_fw_log.o
+
+#$(MODULE_NAME)-objs += bt_char_dev.o
+#ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
+#$(MODULE_NAME)-objs += fw_log_bt.o
+#endif
 
 $(MODULE_NAME)-objs  += $(CORE_OBJS)
 $(MODULE_NAME)-objs  += $(HIF_OBJS)

@@ -75,8 +75,7 @@
  *                              C O N S T A N T S
  *******************************************************************************
  */
-/* 0: unicast, 1-3: GTK, 4-5: IGTK*/
-#define MAX_KEY_NUM                             6
+#define MAX_KEY_NUM                             4
 #define WEP_40_LEN                              5
 #define WEP_104_LEN                             13
 #define WEP_128_LEN                             16

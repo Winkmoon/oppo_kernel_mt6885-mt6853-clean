@@ -287,12 +287,6 @@ struct patch_dl_target {
 
 #endif
 
-enum ENUM_WLAN_POWER_ON_DOWNLOAD {
-	ENUM_WLAN_POWER_ON_DOWNLOAD_EMI = 0,
-	ENUM_WLAN_POWER_ON_DOWNLOAD_ROM_PATCH = 1,
-	ENUM_WLAN_POWER_ON_DOWNLOAD_WIFI_RAM_CODE = 2
-};
-
 /*******************************************************************************
  *                  F U N C T I O N   D E C L A R A T I O N S
  *******************************************************************************
@@ -337,8 +331,7 @@ uint32_t wlanCompressedImageSectionDownloadStage(IN struct ADAPTER *prAdapter,
 uint32_t wlanImageSectionDownloadStage(IN struct ADAPTER *prAdapter,
 	IN void *pvFwImageMapFile,
 	IN uint32_t u4FwImageFileLength, IN uint8_t ucSectionNumber,
-	IN enum ENUM_IMG_DL_IDX_T eDlIdx,
-	OUT u_int8_t *pfgIsDynamicMemMap);
+	IN enum ENUM_IMG_DL_IDX_T eDlIdx);
 
 uint32_t wlanPatchSendComplete(IN struct ADAPTER *prAdapter);
 
@@ -417,7 +410,7 @@ void fwDlGetReleaseManifest(struct ADAPTER *prAdapter,
 #endif
 
 #if (CFG_SUPPORT_CONNINFRA == 1)
-extern void conninfra_get_phy_addr(phys_addr_t *addr, unsigned int *size);
+extern void conninfra_get_phy_addr(unsigned int *addr, unsigned int *size);
 #endif
 
 #endif /* _FW_DL_H */

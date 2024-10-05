@@ -287,6 +287,7 @@ extern INT32 mtk_wcn_stp_register_tx_has_pending_data(ENUM_STP_TX_IF_TYPE stp_if
 *****************************************************************************/
 extern INT32 mtk_wcn_stp_register_rx_thread_get(ENUM_STP_TX_IF_TYPE stp_if, MTK_WCN_STP_RX_THREAD_GET func);
 
+extern INT32 mtk_stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd);
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

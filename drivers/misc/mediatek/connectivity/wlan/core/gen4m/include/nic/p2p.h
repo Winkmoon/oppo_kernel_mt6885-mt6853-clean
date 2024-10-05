@@ -116,7 +116,6 @@
 
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 #define P2P_AP_CAC_WEATHER_CHNL_HOLD_TIME_MS (600*1000)
-#define P2P_AP_CAC_MIN_CAC_TIME_MS (60*1000)
 #endif
 
 #define P2P_DEAUTH_TIMEOUT_TIME_MS 1000
@@ -125,9 +124,6 @@
 
 #define AP_DEFAULT_CHANNEL_2G     6
 #define AP_DEFAULT_CHANNEL_5G     36
-#if (CFG_SUPPORT_WIFI_6G == 1)
-#define AP_DEFAULT_CHANNEL_6G     5
-#endif
 
 /******************************************************************************
  *                                 M A C R O S
@@ -252,23 +248,6 @@ struct P2P_SCAN_REQ_INFO {
 	struct P2P_SSID_STRUCT arSsidStruct[SCN_SSID_MAX_NUM];
 };
 
-enum P2P_CHANNEL_SWITCH_POLICY {
-	P2P_CHANNEL_SWITCH_POLICY_SCC,
-	P2P_CHANNEL_SWITCH_POLICY_SKIP_DFS,
-	P2P_CHANNEL_SWITCH_POLICY_SKIP_DFS_USER,
-};
-
-enum P2P_CONCURRENCY_POLICY {
-	P2P_CONCURRENCY_POLICY_REMOVE,
-	P2P_CONCURRENCY_POLICY_KEEP,
-};
-
-enum P2P_AUTH_POLICY {
-	P2P_AUTH_POLICY_NONE = 0,
-	P2P_AUTH_POLICY_RESET = 1,
-	P2P_AUTH_POLICY_IGNORE = 2,
-};
-
 enum P2P_VENDOR_ACS_HW_MODE {
 	P2P_VENDOR_ACS_HW_MODE_11B,
 	P2P_VENDOR_ACS_HW_MODE_11G,
@@ -288,12 +267,8 @@ struct P2P_ACS_REQ_INFO {
 	uint32_t u4LteSafeChnMask_2G;
 	uint32_t u4LteSafeChnMask_5G_1;
 	uint32_t u4LteSafeChnMask_5G_2;
-	uint32_t u4LteSafeChnMask_6G;
-	u_int8_t fgIsAis;
 
 	/* output only */
-	uint8_t ucBand;
-	enum ENUM_BAND eBand;
 	uint8_t ucPrimaryCh;
 	uint8_t ucSecondCh;
 	uint8_t ucCenterFreqS1;
@@ -401,12 +376,6 @@ struct P2P_SPECIFIC_BSS_INFO {
 
 	uint16_t u2RsnIeLen;
 	uint8_t aucRsnIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_RSN];
-
-	uint16_t u2RsnxIeLen;
-	uint8_t aucRsnxIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_RSN];
-
-	uint16_t u2OweIeLen;
-	uint8_t aucOweIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_WPA];
 };
 
 struct P2P_QUEUED_ACTION_FRAME {

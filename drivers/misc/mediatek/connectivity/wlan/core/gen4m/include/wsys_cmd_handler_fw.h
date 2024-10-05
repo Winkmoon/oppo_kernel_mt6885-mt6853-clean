@@ -163,9 +163,6 @@
 #define HE_OP_BYTE_NUM                          3
 #define HE_MAC_CAP_BYTE_NUM                     6
 #define HE_PHY_CAP_BYTE_NUM                     11
-#define EHT_OP_BYTE_NUM                          (1)
-#define EHT_MAC_CAP_BYTE_NUM                    (2)
-#define EHT_PHY_CAP_BYTE_NUM                    (8)
 
 /*****************************************************************************
 *                             D A T A   T Y P E S
@@ -217,7 +214,6 @@ enum ENUM_CMD_ID {
 	CMD_ID_SET_DBDC_PARMS,              /* 0x28 (Set) */
 	CMD_ID_SET_FILTER_COEFFICIENT,      /* 0x29 (Set) */
 
-	CMD_ID_SET_ACL_POLICY       = 0x2A, /* 0x2A (Set) */
 	/* SLT commands */
 	CMD_ID_RANDOM_RX_RESET_EN   = 0x2C, /* 0x2C (Set ) */
 	CMD_ID_RANDOM_RX_RESET_DE   = 0x2D, /* 0x2D (Set ) */
@@ -303,7 +299,6 @@ enum ENUM_CMD_ID {
 	CMD_ID_GET_LINK_QUALITY,            /* 0x81 (Query) */
 	CMD_ID_GET_STATISTICS,              /* 0x82 (Query) */
 	CMD_ID_GET_CONNECTION_STATUS,       /* 0x83 (Query) */
-	CMD_ID_GET_STATS_LLS,               /* 0x84 (Query) */
 	CMD_ID_GET_STA_STATISTICS = 0x85,   /* 0x85 (Query) */
 	CMD_ID_GET_LTE_CHN = 0x87,          /* 0x87 (Query) */
 	CMD_ID_GET_BUG_REPORT = 0x89,       /* 0x89 (Query) */
@@ -316,16 +311,8 @@ enum ENUM_CMD_ID {
 	CMD_ID_SET_OSHARE_MODE = 0x8E,
 	CMD_ID_RDD_ON_OFF_CTRL = 0x8F,      /* 0x8F(Set) */
 	CMD_ID_SET_FORCE_RTS = 0x90,
-#if (CFG_SUPPORT_ICS == 1)
-	CMD_ID_SET_ICS_SNIFFER = 0x93,
-#endif /* CFG_SUPPORT_ICS */
 	CMD_ID_WFC_KEEP_ALIVE = 0xA0,       /* 0xA0 (Set) */
 	CMD_ID_RSSI_MONITOR = 0xA1,         /* 0xA1 (Set) */
-#if (CFG_SUPPORT_PKT_OFLD == 1)
-	CMD_ID_PKT_OFLD = 0xA2,	            /* 0xA2 (Set) */
-#endif /* CFG_SUPPORT_PKT_OFLD */
-
-
 	CMD_ID_CAL_BACKUP_IN_HOST_V2 = 0xAE,    /* 0xAE (Set / Query) */
 
 	CMD_ID_MQM_UPDATE_MU_EDCA_PARMS = 0xB0,   /* 0xB0 (Set) */
@@ -340,21 +327,16 @@ enum ENUM_CMD_ID {
 	CMD_ID_DUMP_MEM,                    /* 0xc6 (Query) */
 	CMD_ID_RESOURCE_CONFIG,             /* 0xc7 (Set / Query) */
 	CMD_ID_ACCESS_RX_STAT,              /* 0xc8 (Query) */
-	CMD_ID_LIST_MODE,                   /* 0xc9 (Set / Query) */
 
 	CMD_ID_CHIP_CONFIG          = 0xCA, /* 0xca (Set / Query) */
+	CMD_ID_STATS_LOG            = 0xCB,
 
 	CMD_ID_WTBL_INFO        = 0xCD, /* 0xcd (Query) */
 	CMD_ID_MIB_INFO     = 0xCE, /* 0xce (Query) */
 
 	CMD_ID_SET_TXBF_BACKOFF = 0xD1,
-	CMD_ID_FAST_PATH = 0xD5,
 
 	CMD_ID_SET_RDD_CH           = 0xE1,
-
-#if CFG_SUPPORT_NAN
-	CMD_ID_NAN_EXT_CMD = 0XEB,
-#endif
 
 	CMD_ID_LAYER_0_EXT_MAGIC_NUM    = 0xED,
 	/* magic number for Extending MT6630 original CMD header  */
@@ -461,7 +443,6 @@ enum ENUM_EVENT_ID {
 	/* 0x44 (Query - CMD_ID_CHIP_CONFIG) */
 	EVENT_ID_ACCESS_RX_STAT = 0x45,
 	/* 0x45 (Query - CMD_ID_ACCESS_RX_STAT) */
-	EVENT_ID_LIST_MODE = 0x48,
 
 	EVENT_ID_RDD_SEND_PULSE = 0x50,
 	EVENT_ID_PFMU_TAG_READ = 0x51,
@@ -495,9 +476,6 @@ enum ENUM_EVENT_ID {
 	EVENT_ID_BSS_ER_TX_MODE = 0x66,  /* 0x66 BSS Extend Rage (ER) mode */
 #endif
 
-	EVENT_ID_REPORT_U_EVENT = 0x68,
-	EVENT_ID_STATS_LLS      = 0x69,
-
 	EVENT_ID_GET_CMD_INFO = 0x70,
 	/* 0x70 (Query - EVENT_ID_GET_CMD_INFO) */
 	/*query info from cmd.*/
@@ -510,29 +488,14 @@ enum ENUM_EVENT_ID {
 
 	EVENT_ID_LOG_UI_INFO  = 0x8D,           /* 0x8D (Set / Query) */
 	EVENT_ID_UPDATE_COEX_PHYRATE = 0x90,    /* 0x90 (Unsolicited) */
-	EVENT_ID_UPDATE_COEX_STATUS = 0x91,
 
 	EVENT_ID_RSSI_MONITOR = 0xA1,       /* Event ID for Rssi monitoring */
-#if (CFG_SUPPORT_PKT_OFLD == 1)
-	EVENT_ID_PKT_OFLD = 0xA2,
-#endif /* CFG_SUPPORT_PKT_OFLD */
 	EVENT_ID_CAL_BACKUP_IN_HOST_V2 = 0xAE,
 	/* 0xAE (Query - CMD_ID_CAL_BACKUP) */
 	EVENT_ID_CAL_ALL_DONE = 0xAF,   /* 0xAF (FW Cal All Done Event) */
 
-#if CFG_SUPPORT_BAR_DELAY_INDICATION
-	EVENT_ID_RXM_DELAY_BAR = 0xB5,
-#endif /* CFG_SUPPORT_BAR_DELAY_INDICATION */
-
-	EVENT_ID_TPUT_INFO = 0xCB,
 	EVENT_ID_WTBL_INFO = 0xCD,              /* 0xCD (Query) */
 	EVENT_ID_MIB_INFO = 0xCE,               /* 0xCE (Query) */
-
-#if CFG_SUPPORT_NAN
-	EVENT_ID_NAN_EXT_EVENT = 0xEB,
-#endif
-
-	EVENT_ID_FAST_PATH = 0xD5,
 
 	EVENT_ID_NIC_CAPABILITY_V2 = 0xEC,
 	/* 0xEC (Query - CMD_ID_GET_NIC_CAPABILITY_V2) */
@@ -657,7 +620,7 @@ enum ENUM_WEP_STATUS {
 	ENUM_ENCRYPTION2_KEY_ABSENT,
 	ENUM_ENCRYPTION3_ENABLED, /* CCMP(WPA/WPA2) */
 	ENUM_ENCRYPTION3_KEY_ABSENT,
-	ENUM_ENCRYPTION4_ENABLED, /* GCMP256/GCMP128(WPA2/WPA3) */
+	ENUM_ENCRYPTION4_ENABLED, /* GCMP256(WPA2/WPA3) */
 	ENUM_ENCRYPTION4_KEY_ABSENT,
 	ENUM_ENCRYPTION_NUM
 };
@@ -866,11 +829,6 @@ struct CMD_HE_BA_SIZE {
 	uint16_t u2RxBaSize;
 };
 
-struct CMD_EHT_BA_SIZE {
-	uint16_t u2TxBaSize;
-	uint16_t u2RxBaSize;
-};
-
 struct CMD_UPDATE_STA_RECORD {
 	uint8_t  ucStaIndex;
 	uint8_t  ucStaType;
@@ -952,7 +910,6 @@ struct CMD_UPDATE_STA_RECORD {
 	union BA_SIZE {
 		struct CMD_HTVHT_BA_SIZE rHtVhtBaSize;
 		struct CMD_HE_BA_SIZE rHeBaSize;
-		struct CMD_EHT_BA_SIZE rEhtBaSize;
 	} rBaSize;
 
 	uint16_t   u2PfmuId;   /* 0xFFFF means no access right for PFMU*/
@@ -1000,16 +957,8 @@ struct CMD_UPDATE_STA_RECORD {
 	uint16_t u2HeTxMcsMapBW160;
 	uint16_t u2HeRxMcsMapBW80P80;
 	uint16_t u2HeTxMcsMapBW80P80;
-	uint16_t u2He6gBandCapInfo;
-	uint8_t  aucPadding4[2];
-	uint8_t  aucPadding5[28];
-#if (CFG_SUPPORT_802_11BE == 1)
-	uint8_t ucEhtMacCapInfo[EHT_MAC_CAP_BYTE_NUM];
-	uint8_t ucEhtPhyCapInfo[EHT_PHY_CAP_BYTE_NUM];
 #endif
-#else
 	uint8_t  aucPadding4[32];
-#endif
 };
 
 struct CMD_REMOVE_STA_RECORD {
@@ -1121,10 +1070,6 @@ struct PARAM_SSID {
 /* use 6*4 = 24 bytes as bssid of being scanned ap */
 #define CMD_SCAN_REQ_V2_FUNC_USE_PADDING_AS_BSSID	BIT(3)
 #define CMD_SCAN_REQ_V2_FUNC_RANDOM_PROBE_REQ_SN_MASK	BIT(4)
-#define CMD_SCAN_REQ_V2_FUNC_SPLIT_SCAN_MASK		BIT(5)
-#define CMD_SCAN_REQ_V2_FUNC_FENCE_SCAN_MASK		BIT(6)
-#define CMD_SCAN_REQ_V2_FUNC_OCE_SCAN_MASK		BIT(7)
-
 
 struct CMD_SCAN_REQ_V2 {
 	uint8_t          ucSeqNum;
@@ -1151,12 +1096,7 @@ struct CMD_SCAN_REQ_V2 {
 	struct PARAM_SSID    arSSIDExtend[6];
 	uint8_t          aucBSSID[MAC_ADDR_LEN];
 	uint8_t          aucRandomMac[MAC_ADDR_LEN];
-	uint8_t          aucExtBSSID[CFG_SCAN_OOB_MAX_NUM][MAC_ADDR_LEN];
-	uint8_t          ucShortSSIDNum;
-	uint8_t		 ucBssidMatchCh[CFG_SCAN_OOB_MAX_NUM];
-	uint8_t		 ucBssidMatchSsidInd[CFG_SCAN_OOB_MAX_NUM];
-	uint8_t          aucPadding_3[31];
-
+	uint8_t          aucPadding_3[64];
 };
 
 /* TLV for CMD_ID_SCAN_REQ_V2*/
@@ -1377,21 +1317,6 @@ struct CMD_MDDP_FILTER_RULE {
 	uint8_t  aucWhPfClsFilterMddp[0];
 };
 
-struct CMD_MONITOR_SET_INFO
-{
-    uint8_t  ucEnable;
-    uint8_t  ucBand;
-    uint8_t  ucPriChannel;
-    uint8_t  ucSco;
-    uint8_t  ucChannelWidth;
-    uint8_t  ucChannelS1;
-    uint8_t  ucChannelS2;
-    uint8_t  ucBandIdx;
-    uint16_t u2Aid;
-    uint8_t  fgDropFcsErrorFrame;
-    uint8_t  aucResv[5];
-};
-
 /*---------------------------------------------------------------------------*/
 /* EVENT Packets                                                          */
 /*---------------------------------------------------------------------------*/
@@ -1408,30 +1333,6 @@ struct EVENT_ADD_KEY_DONE_INFO {
 	uint8_t      ucReserved;
 	uint8_t      aucStaAddr[6];
 };
-
-#if CFG_SUPPORT_BAR_DELAY_INDICATION
-/*
- * CFG_NUM_OF_RX_BA_AGREEMENTS = 80
- * cannot use CFG_NUM_OF_RX_BA_AGREEMENTS directly,
- * because we must ensure event structure no change
- */
-#define BAR_DELAY_INDICATION_BA_MAX 80
-struct EVENT_STORED_BA_REQUEST {
-	uint16_t u2SSN;
-	uint8_t ucTid;
-	uint8_t ucStaRecIdx;
-	uint8_t ucStoredBARCount;
-	uint8_t aucPadding[3];
-};
-
-struct EVENT_BAR_DELAY {
-	uint8_t ucEvtVer;
-	uint8_t ucBaNum;
-	uint8_t aucPadding[2];
-	struct EVENT_STORED_BA_REQUEST
-		rBAR[BAR_DELAY_INDICATION_BA_MAX];
-};
-#endif /* CFG_SUPPORT_BAR_DELAY_INDICATION */
 
 struct LINK_QUALITY {
 	int8_t       cRssi; /* AIS Network. */
@@ -1980,8 +1881,7 @@ struct CMD_DOMAIN_CHANNEL {
 struct CMD_DOMAIN_ACTIVE_CHANNEL_LIST {
 	uint8_t u1ActiveChNum2g;
 	uint8_t u1ActiveChNum5g;
-	uint8_t u1ActiveChNum6g;
-	uint8_t aucPadding[1];
+	uint8_t aucPadding[2];
 	struct CMD_DOMAIN_CHANNEL arChannels[0];
 };
 
@@ -1992,8 +1892,7 @@ struct CMD_SET_DOMAIN_INFO_V2 {
 	/* DWORD_1 - 2.4G & 5G BW info*/
 	uint8_t  uc2G4Bandwidth; /* CONFIG_BW_20_40M or CONFIG_BW_20M */
 	uint8_t  uc5GBandwidth;  /* CONFIG_BW_20_40M or CONFIG_BW_20M */
-	uint8_t  uc6GBandwidth;  /* CONFIG_BW_20_40M or CONFIG_BW_20M */
-	uint8_t  aucPadding[1];
+	uint8_t  aucPadding[2];
 
 	/* DWORD_2 ~ - 2.4G & 5G active channel info*/
 	struct CMD_DOMAIN_ACTIVE_CHANNEL_LIST arActiveChannels;
@@ -2071,8 +1970,6 @@ enum ENUM_EVENT_OPMODE_CHANGE_REASON {
 	EVENT_OPMODE_CHANGE_REASON_SMARTGEAR    = 3,
 	EVENT_OPMODE_CHANGE_REASON_COEX         = 4,
 	EVENT_OPMODE_CHANGE_REASON_SMARTGEAR_1T2R    = 5,
-	EVENT_OPMODE_CHANGE_REASON_ANT_CTRL    = 6,
-	EVENT_OPMODE_CHANGE_REASON_ANT_CTRL_1T2R    = 7,
 };
 
 struct EVENT_OPMODE_CHANGE {
@@ -2131,29 +2028,6 @@ struct CMD_SET_FORCE_RTS {
 	uint8_t aucReserved[2];
 };
 
-struct CMD_FAST_PATH {
-	/* DWORD_0 - Common Part */
-	uint8_t  ucCmdVer;
-	uint8_t  aucPadding0[1];
-	uint16_t u2CmdLen;
-
-	/* DWORD_1 - afterwards */
-	uint8_t  aucOwnMac[6]; /* Own Mac address*/
-	uint16_t u2RandomNum; /* Random number genetate by Driver*/
-	uint32_t u4Keybitmap[4]; /* Keybitmap send from AP */
-};
-
-struct EVENT_FAST_PATH {
-	/* DWORD_0 - Common Part */
-	uint8_t  ucEvtVer;
-	uint8_t  aucPadding0[1];
-	uint16_t u2EvtLen;
-
-	/* DWORD_1 - afterwards */
-	uint16_t u2Mic; /* message integrity check */
-	uint8_t  ucKeynum; /* To tell AP side about STA use which key */
-	uint8_t  ucKeyBitmapMatchStatus; /* Tell if Keybitmap match */
-};
 #endif /* _WSYS_CMD_HANDLER_FW_H */
 
 

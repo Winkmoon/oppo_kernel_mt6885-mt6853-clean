@@ -1,9 +1,17 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ *  Copyright (c) 2016,2017 MediaTek Inc.
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *  See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-
+#include <linux/spinlock_types.h>
 #include <linux/kthread.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
@@ -11,19 +19,20 @@
 #include <linux/notifier.h>
 #include <linux/fb.h>
 #include <linux/timer.h>
-#include <linux/suspend.h>
-#include <linux/module.h>
 
-#include "btmtk_define.h"
-#include "btmtk_chip_if.h"
-#include "btmtk_dbg_tp_evt_if.h"
 #include "conninfra.h"
 #include "mtk_btif_exp.h"
 #include "connectivity_build_in_adapter.h"
+#include "btmtk_config.h"
+#include "btmtk_define.h"
+#include "btmtk_main.h"
+#include "btmtk_btif.h"
+#include "btmtk_mt66xx_reg.h"
+
+#if SUPPORT_COREDUMP
 #include "connsys_debug_utility.h"
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-#include "mtk_disp_notify.h"
 #endif
+
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -31,10 +40,14 @@
 */
 #define LOG TRUE
 #define MTKBT_BTIF_NAME			"mtkbt_btif"
+
+
+#define BTIF_TX_RTY_DLY			(5) /*ms*/
 #define BTIF_OWNER_NAME 		"CONSYS_BT"
 
 #define LPCR_POLLING_RTY_LMT		4096 /* 16*n */
 #define LPCR_MASS_DUMP_LMT		4000
+
 #define BTIF_IDLE_WAIT_TIME		32 /* ms */
 
 #define MAX_RESET_COUNT			(3)
@@ -54,14 +67,9 @@
 */
 uint8_t *p_conn_infra_base_addr;
 uint8_t *p_bgfsys_base_addr;
-extern bool g_bt_trace_pt;
-extern struct btmtk_dev *g_sbdev;
-
+struct btmtk_dev *g_bdev;
 static unsigned long g_btif_id; /* The user identifier to operate btif */
 struct task_struct *g_btif_rxd_thread;
-struct btmtk_btif_dev g_btif_dev;
-struct bt_dbg_st g_bt_dbg_st;
-static struct work_struct internal_trx_work;
 
 static struct platform_driver mtkbt_btif_driver = {
 	.driver = {
@@ -151,83 +159,39 @@ int32_t bt_reg_deinit(void)
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-int btmtk_disp_notify_cb(struct notifier_block *nb, unsigned long value, void *v)
-{
-	int *data = (int *)v;
-	int32_t new_state = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	/*
-		MTK_DISP_EARLY_EVENT_BLANK: This event will happen before lcm suspend/resume
-		MTK_DISP_EVENT_BLANK: This event will happen after lcm suspend/resume
-		MTK_DISP_BLANK_UNBLANK: which means display resume (power on), 0x0
-		MTK_DISP_BLANK_POWERDOWN: which mean display suspend (power off), 0x1
-	*/
-
-	BTMTK_INFO("%s: value[%ld], data[%d]", __func__, value, *data);
-	if (value == MTK_DISP_EARLY_EVENT_BLANK) {
-		switch (*data) {
-			case MTK_DISP_BLANK_UNBLANK:
-				new_state = WMT_PARA_SCREEN_ON;
-				break;
-			case MTK_DISP_BLANK_POWERDOWN:
-				new_state = WMT_PARA_SCREEN_OFF;
-				break;
-			default:
-				goto end;
-		}
-
-		if(cif_dev->bt_state == FUNC_ON) {
-			BTMTK_INFO("%s: blank state [%ld]->[%ld], and send cmd", __func__, cif_dev->blank_state, new_state);
-			cif_dev->blank_state = new_state;
-			btmtk_intcmd_wmt_blank_status(g_sbdev->hdev, cif_dev->blank_state);
-		} else {
-			BTMTK_INFO("%s: blank state [%ld]->[%ld]", __func__, cif_dev->blank_state, new_state);
-			cif_dev->blank_state = new_state;
-		}
-	}
-end:
-	BTMTK_DBG("%s: end", __func__);
-	return 0;
-}
-
-struct notifier_block btmtk_disp_notifier = {
-	.notifier_call = btmtk_disp_notify_cb,
-};
-
-#else
 static struct notifier_block bt_fb_notifier;
 static int btmtk_fb_notifier_callback(struct notifier_block
 				*self, unsigned long event, void *data)
 {
 	struct fb_event *evdata = data;
-	int32_t blank = *(int32_t *)evdata->data;
-	int32_t new_state = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
+	int32_t blank = 0;
+	int32_t val = 0;
 
 	if ((event != FB_EVENT_BLANK))
 		return 0;
 
+	blank = *(int32_t *)evdata->data;
 	switch (blank) {
-		case FB_BLANK_UNBLANK:
-			new_state = WMT_PARA_SCREEN_ON;
-			break;
-		case FB_BLANK_POWERDOWN:
-			new_state = WMT_PARA_SCREEN_OFF;
-			break;
-		default:
-			goto end;
+	case FB_BLANK_UNBLANK:
+	case FB_BLANK_POWERDOWN:
+		if(g_bdev->bt_state == FUNC_ON) {
+			if (conninfra_reg_readable()) {
+				val = REG_READL(CON_REG_SPM_BASE_ADDR + 0x26C);
+				BTMTK_INFO("%s: HOST_MAILBOX_BT_ADDR[0x1806026C] read[0x%08x]", __func__, val);
+			}
+
+			BTMTK_INFO("%s: blank state [%ld]->[%ld], and send cmd", __func__, g_bdev->blank_state, blank);
+			g_bdev->blank_state = blank;
+			btmtk_send_blank_status_cmd(g_bdev->hdev, blank);
+		} else {
+			BTMTK_INFO("%s: blank state [%ld]->[%ld]", __func__, g_bdev->blank_state, blank);
+			g_bdev->blank_state = blank;
+		}
+		break;
+	default:
+		break;
 	}
 
-	if(cif_dev->bt_state == FUNC_ON) {
-		BTMTK_INFO("%s: blank state [%ld]->[%ld], and send cmd", __func__, cif_dev->blank_state, new_state);
-		cif_dev->blank_state = new_state;
-		btmtk_intcmd_wmt_blank_status(g_sbdev->hdev, cif_dev->blank_state);
-	} else {
-		BTMTK_INFO("%s: blank state [%ld]->[%ld]", __func__, cif_dev->blank_state, new_state);
-		cif_dev->blank_state = new_state;
-	}
-end:
 	return 0;
 }
 
@@ -250,52 +214,6 @@ static void btmtk_fb_notify_unregister(void)
 {
 	fb_unregister_client(&bt_fb_notifier);
 }
-#endif
-
-static struct notifier_block bt_pm_notifier;
-static int btmtk_pm_notifier_callback(struct notifier_block *nb,
-		unsigned long event, void *dummy)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-
-	switch (event) {
-		case PM_SUSPEND_PREPARE:
-			BTMTK_INFO("%s: bt_state[%d], event[%ld]",
-					__func__, cif_dev->bt_state, event);
-		case PM_POST_SUSPEND:
-			if(cif_dev->bt_state == FUNC_ON) {
-				bt_dump_bgfsys_suspend_wakeup_debug();
-				/* bt_dump_bgfsys_top_common_flag(); */
-				bthost_debug_print();
-			}
-			break;
-		default:
-			break;
-	}
-	return 0;
-}
-
-static int btmtk_pm_notify_register(void)
-{
-	int32_t ret;
-
-	bt_pm_notifier.notifier_call = btmtk_pm_notifier_callback;
-
-	ret = register_pm_notifier(&bt_pm_notifier);
-	if (ret)
-		BTMTK_ERR("Register bt_pm_notifier failed:%d\n", ret);
-	else
-		BTMTK_DBG("Register bt_pm_notifier succeed\n");
-
-	return ret;
-}
-
-static void btmtk_pm_notify_unregister(void)
-{
-	unregister_pm_notifier(&bt_pm_notifier);
-}
-
 
 /* btmtk_cif_dump_fw_no_rsp
  *
@@ -323,9 +241,6 @@ void btmtk_cif_dump_fw_no_rsp(unsigned int flag)
 
 		if (flag & BT_BTIF_DUMP_LOG)
 			mtk_wcn_btif_dbg_ctrl(g_btif_id, BTIF_DUMP_LOG);
-
-		if (flag & BT_BTIF_DUMP_DMA)
-			mtk_wcn_btif_dbg_ctrl(g_btif_id, BTIF_DUMP_DMA_VFIFO);
 	}
 }
 
@@ -360,21 +275,6 @@ void btmtk_cif_dump_btif_tx_no_rsp(void)
 	}
 }
 
-/*
-Sample Code to get time diff:
-
-	struct timeval time_cur, time_pre;
-	unsigned long time_ms_val;
-	do_gettimeofday(&time_pre);
-
-	...do the task you want to calculate time diff...
-
-	do_gettimeofday(&time_cur);
-	time_ms_val = (time_cur.tv_sec - time_pre.tv_sec) * 1000;
-	time_ms_val += ((time_cur.tv_usec - time_pre.tv_usec) / 1000);
-	BTMTK_DBG("time_ms_val[%ld]", time_ms_val);
-*/
-
 /* btmtk_cif_fw_own_clr()
  *
  *    Ask FW to wakeup from sleep state, driver should invoke this function
@@ -391,22 +291,20 @@ static int32_t btmtk_cif_fw_own_clr(void)
 	uint32_t lpctl_cr;
 	int32_t retry = LPCR_POLLING_RTY_LMT;
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_DRVOWN_IN, 0, 0, NULL);
 	do {
 		/* assume wait interval 0.5ms each time,
 		 * wait maximum total 7ms to query status
 		 */
 		if ((retry & 0xF) == 0) { /* retry % 16 == 0 */
-			if (((retry < LPCR_POLLING_RTY_LMT && retry >= LPCR_MASS_DUMP_LMT) || (retry == 2048) || (retry == 32)) &&
-				((retry & 0x1F) == 0)) {
-				BTMTK_WARN("[DRV_OWN] failed in %d ms, retry[%d]", (LPCR_POLLING_RTY_LMT - retry) / 2, retry);
+			REG_WRITEL(BGF_LPCTL, BGF_HOST_CLR_FW_OWN_B);
+			if (retry < LPCR_POLLING_RTY_LMT && retry >= LPCR_MASS_DUMP_LMT) {
+				BTMTK_WARN("FW own clear failed in %d us, write again, rety = %d", 500 << 4, retry);
+				if ((retry & 0x1F) == 0) /* retry % 32 == 0 */
+					bt_dump_cif_own_cr();
+			} else if (retry == 2048) {
+				BTMTK_WARN("FW own clear failed at 1s");
 				bt_dump_cif_own_cr();
-				REG_WRITEL(BGF_LPCTL, BGF_HOST_CLR_FW_OWN_B);
-				BTMTK_WARN("[DRV_OWN] dump after write:");
-				bt_dump_cif_own_cr();
-			} else
-				REG_WRITEL(BGF_LPCTL, BGF_HOST_CLR_FW_OWN_B);
+			}
 		}
 
 		lpctl_cr = REG_READL(BGF_LPCTL);
@@ -420,9 +318,7 @@ static int32_t btmtk_cif_fw_own_clr(void)
 	} while (retry > 0);
 
 	if (retry == 0) {
-		BTMTK_ERR("[DRV_OWN] (Wakeup) failed!");
-		if (g_bt_trace_pt)
-			bt_dbg_tp_evt(TP_ACT_DRVOWN_OUT, TP_PAR_FAIL, 0, NULL);
+		BTMTK_ERR("FW own clear (Wakeup) failed!");
 		bt_dump_cif_own_cr();
 
 		/* dump cpupcr, 10 times with 1ms interval */
@@ -430,9 +326,7 @@ static int32_t btmtk_cif_fw_own_clr(void)
 		return -1;
 	}
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_DRVOWN_OUT, TP_PAR_PASS, 0, NULL);
-	BTMTK_DBG("[DRV_OWN] (Wakeup) success, retry[%d]", retry);
+	BTMTK_DBG("FW own clear (Wakeup) succeed");
 	return 0;
 }
 
@@ -452,19 +346,17 @@ static int32_t btmtk_cif_fw_own_set(void)
 	uint32_t irqstat_cr;
 	int32_t retry = LPCR_POLLING_RTY_LMT;
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_FWOWN_IN, 0, 0, NULL);
 	do {
 		if ((retry & 0xF) == 0) { /* retry % 16 == 0 */
-			if (((retry < LPCR_POLLING_RTY_LMT && retry >= LPCR_MASS_DUMP_LMT) || (retry == 2048) || (retry == 32)) &&
-				((retry & 0x1F) == 0)) {
-				BTMTK_WARN("[FW_OWN] failed in %d ms, retry[%d]", (LPCR_POLLING_RTY_LMT - retry) / 2, retry);
+			REG_WRITEL(BGF_LPCTL, BGF_HOST_SET_FW_OWN_B);
+			if (retry < LPCR_POLLING_RTY_LMT && retry >= LPCR_MASS_DUMP_LMT) {
+				BTMTK_WARN("FW own set failed in %d us, write again, rety = %d", 500 << 4, retry);
+				if ((retry & 0x1F) == 0) /* retry % 32 == 0 */
+					bt_dump_cif_own_cr();
+			} else if (retry == 2048) {
+				BTMTK_WARN("FW own set failed at 1s");
 				bt_dump_cif_own_cr();
-				REG_WRITEL(BGF_LPCTL, BGF_HOST_SET_FW_OWN_B);
-				BTMTK_WARN("[FW_OWN] dump after write:");
-				bt_dump_cif_own_cr();
-			} else
-				REG_WRITEL(BGF_LPCTL, BGF_HOST_SET_FW_OWN_B);
+			}
 		}
 
 		/*
@@ -488,9 +380,7 @@ static int32_t btmtk_cif_fw_own_set(void)
 	} while (retry > 0);
 
 	if (retry == 0) {
-		BTMTK_ERR("[FW_OWN] (Sleep) failed!");
-		if (g_bt_trace_pt)
-			bt_dbg_tp_evt(TP_ACT_FWOWN_OUT, TP_PAR_FAIL, 0, NULL);
+		BTMTK_ERR("FW own set (Sleep) failed!");
 		bt_dump_cif_own_cr();
 
 		/* dump cpupcr, 10 times with 1ms interval */
@@ -498,61 +388,21 @@ static int32_t btmtk_cif_fw_own_set(void)
 		return -1;
 	}
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_FWOWN_OUT, TP_PAR_PASS, 0, NULL);
-	BTMTK_DBG("[FW_OWN] (Sleep) success, retry[%d]", retry);
+	BTMTK_DBG("FW own set (Sleep) succeed");
 	return 0;
 }
-
-void bt_notify_state(void)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	int32_t i = 0;
-
-	for(i = 0; i < MAX_STATE_MONITORS; i++)
-		if (cif_dev->state_change_cb[i])
-			cif_dev->state_change_cb[i](cif_dev->bt_state);
-}
-
-#if (USE_DEVICE_NODE == 0)
-/* bt_report_hw_error()
- *
- *    Insert an event to stack to report error while recovering from chip reset
- *
- * Arguments:
- *     N/A
- *
- * Return Value:
- *     0 if success, otherwise error code
- *
- */
-void bt_report_hw_error()
-{
-	const uint8_t HCI_EVT_HW_ERROR[] = {0x04, 0x10, 0x01, 0x00};
-	btmtk_recv(g_sbdev->hdev, HCI_EVT_HW_ERROR, sizeof(HCI_EVT_HW_ERROR));
-}
-#endif
 
 int bt_chip_reset_flow(enum bt_reset_level rst_level,
 			     enum consys_drv_type drv,
 			     char *reason)
 {
-	u_int8_t is_1st_reset = 0;
+	u_int8_t is_1st_reset = (g_bdev->rst_count == 0) ? TRUE : FALSE;
 	uint8_t retry = 15;
 	int32_t dump_property = 0; /* default = 0 */
 	int32_t ret = 0;
-	struct btmtk_dev *bdev = hci_get_drvdata(g_sbdev->hdev);
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
 
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_RST, TP_PAR_RST_START, 0, NULL);
-	/* dump debug message */
-	show_all_dump_packet();
-	btmtk_cif_dump_fw_no_rsp(BT_BTIF_DUMP_ALL);
-
-	is_1st_reset = (cif_dev->rst_count == 0) ? TRUE : FALSE;
-	cif_dev->rst_count++;
-	while (cif_dev->rst_level != RESET_LEVEL_NONE && retry > 0) {
+	g_bdev->rst_count++;
+	while (g_bdev->rst_level != RESET_LEVEL_NONE && retry > 0) {
 		msleep(200);
 		retry--;
 	}
@@ -562,8 +412,7 @@ int bt_chip_reset_flow(enum bt_reset_level rst_level,
 		return -1;
 	}
 
-	cif_dev->rst_level = rst_level;
-	cif_dev->rst_flag = TRUE;
+	g_bdev->rst_level = rst_level;
 
 	if (is_1st_reset) {
 		/*
@@ -575,7 +424,7 @@ int bt_chip_reset_flow(enum bt_reset_level rst_level,
 		bt_enable_irq(BGF2AP_SW_IRQ);
 
 		/* 2. Wait for IRQ */
-		if (!wait_for_completion_timeout(&cif_dev->rst_comp, msecs_to_jiffies(2000))) {
+		if (!wait_for_completion_timeout(&g_bdev->rst_comp, msecs_to_jiffies(2000))) {
 #if SUPPORT_COREDUMP
 			dump_property = CONNSYS_DUMP_PROPERTY_NO_WAIT;
 #endif
@@ -586,15 +435,14 @@ int bt_chip_reset_flow(enum bt_reset_level rst_level,
 		SET_BIT(BGF_PAD_EINT, BIT(9));
 #if SUPPORT_COREDUMP
 		/* 4. Do coredump, only do this while BT is on */
-		down(&cif_dev->halt_sem);
-		if (cif_dev->bt_state != RESET_START && cif_dev->bt_state != FUNC_OFF) {
-			if (g_bt_trace_pt)
-				bt_dbg_tp_evt(TP_ACT_RST, TP_PAR_RST_DUMP, 0, NULL);
+		down(&g_bdev->halt_sem);
+		if (g_bdev->bt_state == FUNC_ON) {
 			bt_dump_bgfsys_debug_cr();
-			connsys_coredump_start(cif_dev->coredump_handle, dump_property, drv, reason);
+			connsys_coredump_start(g_bdev->coredump_handle, dump_property, drv, reason);
 		} else
-			BTMTK_WARN("BT state [%d], skip coredump", cif_dev->bt_state);
-		up(&cif_dev->halt_sem);
+			BTMTK_WARN("BT is not at on state, skip coredump: [%d]",
+					g_bdev->bt_state);
+		up(&g_bdev->halt_sem);
 #endif
 	}
 
@@ -604,9 +452,10 @@ int bt_chip_reset_flow(enum bt_reset_level rst_level,
 		uint8_t *dump_msg_addr;
 		uint8_t msg[256] = {0};
 
-		conninfra_get_phy_addr(&emi_ap_phy_base, NULL);
+		conninfra_get_phy_addr((uint32_t*)&emi_ap_phy_base, NULL);
+		emi_ap_phy_base &= 0xFFFFFFFF;
 
-		dump_msg_addr = ioremap(emi_ap_phy_base + 0x3B000, 0x100);
+		dump_msg_addr = ioremap_nocache(emi_ap_phy_base + 0x3B000, 0x100);
 		if (dump_msg_addr) {
 			memcpy(msg, dump_msg_addr, 0xFF);
 			iounmap(dump_msg_addr);
@@ -617,28 +466,21 @@ int bt_chip_reset_flow(enum bt_reset_level rst_level,
 		}
 	}
 
-	/* set flag for reset during bt on/off */
-	cif_dev->rst_flag = FALSE;
-	wake_up_interruptible(&cif_dev->rst_onoff_waitq);
-
 	/* directly return if following cases
 	 * 1. BT is already off
 	 * 2. another reset is already done whole procdure and back to normal
 	 */
-	if (cif_dev->bt_state == FUNC_OFF || cif_dev->rst_level == RESET_LEVEL_NONE) {
+	if (g_bdev->bt_state == FUNC_OFF || g_bdev->rst_level == RESET_LEVEL_NONE) {
 		BTMTK_INFO("BT is already off or reset success, skip power off [%d, %d]",
-			cif_dev->bt_state, cif_dev->rst_level);
+			g_bdev->bt_state, g_bdev->rst_level);
 		return 0;
 	}
 
-	cif_dev->bt_state = RESET_START;
-	bt_notify_state();
+	g_bdev->bt_state = RESET_START;
+	bt_notify_state(g_bdev);
 
 	/* 5. Turn off BT */
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_RST, TP_PAR_RST_OFF, 0, NULL);
-	btmtk_fops_set_state(bdev, BTMTK_FOPS_STATE_OPENED); // to comform to the common part state
-	ret = g_sbdev->hdev->close(g_sbdev->hdev);
+	ret = g_bdev->hdev->close(g_bdev->hdev);
 #if (USE_DEVICE_NODE == 0)
 	bt_report_hw_error();
 #endif
@@ -664,10 +506,8 @@ int bt_chip_reset_flow(enum bt_reset_level rst_level,
  */
 static int bt_pre_chip_rst_handler(enum consys_drv_type drv, char *reason)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
 	// skip reset flow if bt is not on
-	if (cif_dev->bt_state == FUNC_OFF)
+	if (g_bdev->bt_state == FUNC_OFF)
 		return 0;
 	else
 		return bt_chip_reset_flow(RESET_LEVEL_0, drv, reason);
@@ -686,7 +526,7 @@ static int bt_pre_chip_rst_handler(enum consys_drv_type drv, char *reason)
  */
 static int bt_post_chip_rst_handler(void)
 {
-	bt_notify_state();
+	bt_notify_state(g_bdev);
 	return 0;
 }
 
@@ -703,7 +543,7 @@ static int bt_post_chip_rst_handler(void)
  */
 static int bt_do_pre_power_on(void)
 {
-	return btmtk_set_power_on(g_sbdev->hdev, TRUE);
+	return btmtk_set_power_on(g_bdev->hdev, TRUE);
 }
 
 /* bt_do_calibration()
@@ -723,39 +563,78 @@ static int bt_do_pre_power_on(void)
 static int32_t bt_do_calibration(void)
 {
 	int32_t ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
 
-	if(cif_dev->bt_state != FUNC_ON) {
+	if(g_bdev->bt_state != FUNC_ON) {
 		BTMTK_ERR("%s: bt is not on, skip calibration", __func__);
 		return CONNINFRA_CB_RET_CAL_FAIL_POWER_OFF;
 	}
 
-	ret = btmtk_cif_send_calibration(g_sbdev);
-	/* return -1 means driver unable to recv calibration event and reseting
-	 * In such case, we don't have to turn off bt, it will be handled by
-	 * reset thread */
-	if (ret != -1 && cif_dev->bt_precal_state == FUNC_OFF)
-		btmtk_set_power_off(g_sbdev->hdev, TRUE);
+	ret = btmtk_calibration_flow(g_bdev->hdev);
+	if (g_bdev->bt_precal_state == FUNC_OFF)
+		btmtk_set_power_off(g_bdev->hdev, TRUE);
 
-	if (ret == -1) {
-		BTMTK_ERR("%s: error return in recving calibration event, reset", __func__);
-		return CONNINFRA_CB_RET_CAL_FAIL_POWER_ON;
-	} else if (ret) {
+	if (ret) {
 		BTMTK_ERR("%s: error return in sent calibration cmd", __func__);
-		return (cif_dev->bt_precal_state) ? CONNINFRA_CB_RET_CAL_FAIL_POWER_ON :
+		return (g_bdev->bt_precal_state) ? CONNINFRA_CB_RET_CAL_FAIL_POWER_ON :
 						   CONNINFRA_CB_RET_CAL_FAIL_POWER_OFF;
 	} else
-		return (cif_dev->bt_precal_state) ? CONNINFRA_CB_RET_CAL_PASS_POWER_ON :
+		return (g_bdev->bt_precal_state) ? CONNINFRA_CB_RET_CAL_PASS_POWER_ON :
 						   CONNINFRA_CB_RET_CAL_PASS_POWER_OFF;
 
 }
 
-void btmtk_time_change_notify(void)
+/* btmtk_send_thermal_query_cmd
+ *
+ *    Send query thermal (a-die) command to FW
+ *
+ * Arguments:
+ *    [IN] hdev     - hci_device as control structure during BT life cycle
+ *
+ * Return Value:
+ *    Thermal value
+ *
+ */
+static int32_t bt_query_thermal(void)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
+	uint8_t cmd[] = { 0x01, 0x91, 0xFD, 0x00 };
+	struct bt_internal_cmd *p_inter_cmd = &g_bdev->internal_cmd;
+	struct wmt_pkt_param *evt = &p_inter_cmd->wmt_event_params;
+	uint8_t *evtbuf = NULL;
+	int32_t ret = 0;
+	int32_t thermal = 0;
+	/* To-Do, for event check */
+	/* u8 event[] = { 0x04, 0x0E, 0x08, 0x01, 0x91, 0xFD, 0x00, 0x00, 0x00, 0x00, 0x00 }; */
 
-	if(cif_dev->bt_state == FUNC_ON)
-		btmtk_intcmd_wmt_utc_sync();
+	BTMTK_INFO("[InternalCmd] %s", __func__);
+	down(&g_bdev->internal_cmd_sem);
+	g_bdev->event_intercept = TRUE;
+
+	p_inter_cmd->waiting_event = 0xE4;
+	p_inter_cmd->pending_cmd_opcode = 0xFD91;
+	p_inter_cmd->wmt_opcode = WMT_OPCODE_RF_CAL;
+	p_inter_cmd->result = WMT_EVT_INVALID;
+
+	ret = btmtk_main_send_cmd(g_bdev->hdev, cmd, sizeof(cmd),
+						BTMTKUART_TX_WAIT_VND_EVT);
+
+	if (ret <= 0) {
+		BTMTK_ERR("Unable to send thermal cmd");
+		return -1;
+	}
+
+	if (p_inter_cmd->result == WMT_EVT_SUCCESS) {
+		evtbuf = &evt->u.evt_buf[6];
+		thermal =  evtbuf[3] << 24 |
+			   evtbuf[2] << 16 |
+			   evtbuf[1] << 8 |
+			   evtbuf[0];
+	}
+
+	g_bdev->event_intercept = FALSE;
+	up(&g_bdev->internal_cmd_sem);
+	BTMTK_INFO("[InternalCmd] %s done, result = %s, thermal = %d",
+		__func__,  _internal_evt_result(p_inter_cmd->result), thermal);
+	return thermal;
 }
 
 /* sub_drv_ops_cb
@@ -772,8 +651,7 @@ static struct sub_drv_ops_cb bt_drv_cbs =
 	.rst_cb.post_whole_chip_rst = bt_post_chip_rst_handler,
 	.pre_cal_cb.pwr_on_cb = bt_do_pre_power_on,
 	.pre_cal_cb.do_cal_cb = bt_do_calibration,
-	.thermal_qry = btmtk_intcmd_query_thermal,
-	.time_change_notify = btmtk_time_change_notify,
+	.thermal_qry = bt_query_thermal,
 };
 
 /* bt_receive_data_cb
@@ -790,15 +668,10 @@ static struct sub_drv_ops_cb bt_drv_cbs =
  */
 static int32_t bt_receive_data_cb(uint8_t *buf, uint32_t count)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	BTMTK_LIMIT("%s: get Rx", __func__);
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_RD_CB, 0, count, buf);
-	BTMTK_DBG_RAW(buf, count, "%s: len[%d] RX: ", __func__, count);
+	BTMTK_DBG_RAW(buf, count, "%s, len = %d rx data: ", __func__, count);
 	add_dump_packet(buf, count, RX);
-	cif_dev->psm.sleep_flag = FALSE;
-	return btmtk_recv(g_sbdev->hdev, buf, count);
+	g_bdev->psm.sleep_flag = FALSE;
+	return btmtk_recv(g_bdev->hdev, buf, count);
 }
 
 #if SUPPORT_COREDUMP
@@ -810,74 +683,11 @@ static int32_t bt_receive_data_cb(uint8_t *buf, uint32_t count)
  */
 static struct coredump_event_cb bt_coredump_cb =
 {
-	.reg_readable = conninfra_reg_readable_for_coredump,
+	.reg_readable = conninfra_reg_readable,
 	.poll_cpupcr = bt_dump_cpupcr,
 };
 #endif
 
-
-/*******************************************************************************
-*                        bt power throttling feature
-********************************************************************************
-*/
-bool bt_pwrctrl_support(void)
-{
-	return TRUE;
-}
-
-int bt_pwrctrl_level_change_cb(enum conn_pwr_event_type type, void *data)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	int8_t set_val = cif_dev->dy_pwr.dy_max_dbm;
-
-	BTMTK_INFO("%s", __func__);
-	switch(type) {
-	case CONN_PWR_EVENT_LEVEL:
-		cif_dev->dy_pwr.lp_cur_lv = *((int *) data);
-		BTMTK_INFO("%s: lp_cur_bat_lv = %d", __func__, cif_dev->dy_pwr.lp_cur_lv);
-		btmtk_inttrx_DynamicAdjustTxPower(HCI_CMD_DY_ADJ_PWR_SET, set_val, NULL, FALSE);
-		break;
-	case CONN_PWR_EVENT_MAX_TEMP:
-		BTMTK_ERR("Unsupport now");
-		break;
-	default:
-		BTMTK_ERR("Uknown type for power throttling callback");
-		break;
-	}
-
-	return 0;
-}
-
-void bt_pwrctrl_pre_on(void)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	if (!bt_pwrctrl_support())
-		return;
-
-	memset(&cif_dev->dy_pwr, 0x00, sizeof(cif_dev->dy_pwr));
-	cif_dev->dy_pwr.lp_cur_lv = CONN_PWR_THR_LV_0;
-	conn_pwr_drv_pre_on(CONN_PWR_DRV_BT, &cif_dev->dy_pwr.lp_cur_lv);
-	BTMTK_INFO("%s: lp_cur_bat_lv = %d", __func__, cif_dev->dy_pwr.lp_cur_lv);
-}
-
-void bt_pwrctrl_post_off(void)
-{
-	if (!bt_pwrctrl_support())
-		return;
-
-	conn_pwr_drv_post_off(CONN_PWR_DRV_BT);
-}
-
-void bt_pwrctrl_register_evt(void)
-{
-	if (!bt_pwrctrl_support())
-		return;
-
-	BTMTK_INFO("%s", __func__);
-	/* Register callbacks for power throttling feature */
-	conn_pwr_register_event_cb(CONN_PWR_DRV_BT, (CONN_PWR_EVENT_CB)bt_pwrctrl_level_change_cb);
-}
 
 /*******************************************************************************
 *                        B T I F  F U N C T I O N S
@@ -887,27 +697,123 @@ void bt_pwrctrl_register_evt(void)
 static void btmtk_btif_enter_deep_idle(struct work_struct *pwork)
 {
 	int32_t ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct btif_deepidle_ctrl *idle_ctrl = &cif_dev->btif_dpidle_ctrl;
+	struct btif_deepidle_ctrl *idle_ctrl = &g_bdev->btif_dpidle_ctrl;
 
 	down(&idle_ctrl->sem);
-	BTMTK_DBG("[DP_IDLE] idle = [%d]", idle_ctrl->is_dpidle);
+	BTMTK_DBG("%s idle = [%d]", __func__, idle_ctrl->is_dpidle);
 	if (idle_ctrl->is_dpidle) {
 		ret = mtk_wcn_btif_dpidle_ctrl(g_btif_id, BTIF_DPIDLE_ENABLE);
-		bt_release_wake_lock(&cif_dev->psm.wake_lock);
+		bt_release_wake_lock(&g_bdev->psm.wake_lock);
 		idle_ctrl->is_dpidle = (ret) ? FALSE : TRUE;
 
-		if (g_bt_trace_pt)
-			bt_dbg_tp_evt(TP_ACT_DPI_ENTER, (ret == 0 ? TP_PAR_PASS : TP_PAR_FAIL), 0, NULL);
 		if (ret)
-			BTMTK_ERR("[DP_IDLE] BTIF enter dpidle failed(%d)", ret);
+			BTMTK_ERR("BTIF enter dpidle failed(%d)", ret);
 		else
-			BTMTK_DBG("[DP_IDLE] BTIF enter dpidle success");
+			BTMTK_DBG("BTIF enter dpidle succeed");
 	} else
-		BTMTK_DBG("[DP_IDLE] idle is set to false, skip this time");
+		BTMTK_DBG("Deep idle is set to false, skip this time");
 	up(&idle_ctrl->sem);
 }
+#endif
 
+/* btmtk_btif_open
+
+ *
+ *     Called when line discipline changed to HCI_UART.
+ *
+ * Arguments:
+ *     tty    pointer to tty info structure
+ * Return Value:
+ *     0 if success, otherwise error code
+ */
+int32_t btmtk_btif_open(void)
+{
+	int32_t ret = 0;
+	struct btif_deepidle_ctrl *idle_ctrl = &g_bdev->btif_dpidle_ctrl;
+
+	/* 1. Open BTIF */
+	ret = mtk_wcn_btif_open(BTIF_OWNER_NAME, &g_btif_id);
+	if (ret) {
+		BTMTK_ERR("BT open BTIF failed(%d)", ret);
+		return -1;
+	}
+
+#if SUPPORT_BT_THREAD
+	idle_ctrl->is_dpidle = FALSE;
+	idle_ctrl->task = create_singlethread_workqueue("dpidle_task");
+	if (!idle_ctrl->task){
+		BTMTK_ERR("fail to idle_ctrl->task ");
+		return -1;
+	}
+	INIT_DELAYED_WORK(&idle_ctrl->work, btmtk_btif_enter_deep_idle);
+#endif
+
+	/* 2. Register rx callback */
+	ret = mtk_wcn_btif_rx_cb_register(g_btif_id, (MTK_WCN_BTIF_RX_CB)bt_receive_data_cb);
+	if (ret) {
+		BTMTK_ERR("Register rx cb to BTIF failed(%d)", ret);
+		mtk_wcn_btif_close(g_btif_id);
+		return -1;
+	}
+
+	g_btif_rxd_thread = mtk_btif_exp_rx_thread_get(g_btif_id);
+
+#if SUPPORT_BT_THREAD
+	/* 3. Enter deeple idle */
+	ret = mtk_wcn_btif_dpidle_ctrl(g_btif_id, TRUE);
+	if (ret) {
+		BTMTK_ERR("BTIF enter dpidle failed(%d)", ret);
+		mtk_wcn_btif_close(g_btif_id);
+		return -1;
+	}
+#endif
+
+	BTMTK_DBG("BT open BTIF OK");
+	return 0;
+}
+
+/* btmtk_btif_close()
+ *
+ *    Close btif
+ *
+ * Arguments:
+ *     N/A
+ *
+ * Return Value:
+ *     0 if success, otherwise error code
+ */
+int32_t btmtk_btif_close(void)
+{
+	int32_t ret = 0;
+
+	if (!g_btif_id) {
+		BTMTK_ERR("NULL BTIF ID reference!");
+		return 0;
+	}
+
+#if SUPPORT_BT_THREAD
+	if(&g_bdev->btif_dpidle_ctrl.task != NULL) {
+		cancel_delayed_work(&g_bdev->btif_dpidle_ctrl.work);
+		flush_workqueue(g_bdev->btif_dpidle_ctrl.task);
+		destroy_workqueue(g_bdev->btif_dpidle_ctrl.task);
+		g_bdev->btif_dpidle_ctrl.task = NULL;
+	}
+#endif
+
+	ret = mtk_wcn_btif_close(g_btif_id);
+	g_btif_id = 0;
+	bt_release_wake_lock(&g_bdev->psm.wake_lock);
+
+	if (ret) {
+		BTMTK_ERR("BT close BTIF failed(%d)", ret);
+		return -1;
+	}
+	BTMTK_DBG("BT close BTIF OK");
+	return 0;
+
+}
+
+#if SUPPORT_BT_THREAD
 /* btmtk_btif_dpidle_ctrl
  *
  *
@@ -922,59 +828,269 @@ static void btmtk_btif_enter_deep_idle(struct work_struct *pwork)
 static int32_t btmtk_btif_dpidle_ctrl(u_int8_t enable)
 {
 	int32_t ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct btif_deepidle_ctrl *idle_ctrl = &cif_dev->btif_dpidle_ctrl;
-	down(&idle_ctrl->sem);
+	struct btif_deepidle_ctrl *idle_ctrl = &g_bdev->btif_dpidle_ctrl;
 
 	if (!g_btif_id) {
-		BTMTK_ERR("[DP_IDLE] NULL BTIF ID reference!");
+		BTMTK_ERR("NULL BTIF ID reference!");
 		return -1;
 	}
 
-	if(idle_ctrl->task != NULL) {
-		BTMTK_DBG("[DP_IDLE] enable = %d", enable);
-		/* 1. Remove active timer, and remove a unschedule timer does no harm */
-		cancel_delayed_work(&idle_ctrl->work);
+	BTMTK_DBG("%s enable = %d", __func__, enable);
+	/* 1. Remove active timer, and remove a unschedule timer does no harm */
+	cancel_delayed_work(&idle_ctrl->work);
 
-		/* 2. Check enable or disable */
-		if (!enable) {
-			/* disable deep idle, call BTIF api directly */
-			bt_hold_wake_lock(&cif_dev->psm.wake_lock);
-			ret = mtk_wcn_btif_dpidle_ctrl(g_btif_id, BTIF_DPIDLE_DISABLE);
-			idle_ctrl->is_dpidle = (ret) ? TRUE : FALSE;
+	down(&idle_ctrl->sem);
+	/* 2. Check enable or disable */
+	if (!enable) {
+		/* disable deep idle, call BTIF api directly */
+		bt_hold_wake_lock(&g_bdev->psm.wake_lock);
+		ret = mtk_wcn_btif_dpidle_ctrl(g_btif_id, BTIF_DPIDLE_DISABLE);
+		idle_ctrl->is_dpidle = (ret) ? TRUE : FALSE;
 
-			if (g_bt_trace_pt)
-				bt_dbg_tp_evt(TP_ACT_DPI_EXIT, (ret == 0 ? TP_PAR_PASS : TP_PAR_FAIL), 0, NULL);
-			if (ret)
-				BTMTK_ERR("[DP_IDLE] BTIF exit dpidle failed(%d)", ret);
-			else
-				BTMTK_DBG("[DP_IDLE] BTIF exit dpidle success");
-		} else {
-			BTMTK_DBG("[DP_IDLE] create timer for enable deep idle");
-			idle_ctrl->is_dpidle = TRUE;
-			/* enable deep idle, schedule a timer */
-			queue_delayed_work(idle_ctrl->task, &idle_ctrl->work,
-						(BTIF_IDLE_WAIT_TIME * HZ) >> 10);
-		}
+		if (ret)
+			BTMTK_ERR("BTIF exit dpidle failed(%d)", ret);
+		else
+			BTMTK_DBG("BTIF exit dpidle succeed");
 	} else {
-		BTMTK_INFO("[DP_IDLE] idle_ctrl->task already cancelled!");
+		BTMTK_DBG("create timer for enable deep idle");
+		idle_ctrl->is_dpidle = TRUE;
+		/* enable deep idle, schedule a timer */
+		queue_delayed_work(idle_ctrl->task, &idle_ctrl->work,
+					(BTIF_IDLE_WAIT_TIME * HZ) >> 10);
 	}
-
 	up(&idle_ctrl->sem);
+
 	return ret;
 }
-
 #endif
 
-int btmtk_cif_rx_packet_handler(struct hci_dev *hdev, struct sk_buff *skb)
+/* btmtk_btif_probe
+ *
+ *     Probe function of BT driver with BTIF HAL, initialize variable after
+ *     driver installed
+ *
+ * Arguments:
+ *     [IN] pdev    platform device pointer after driver installed
+ *
+ * Return Value:
+ *     0 if success, otherwise error code
+ */
+static int btmtk_btif_probe(struct platform_device *pdev)
 {
-	int err = 0;
-#if (USE_DEVICE_NODE == 0)
-	err = hci_recv_frame(hdev, skb);
-#else
-	err = rx_skb_enqueue(skb);
+	/* 1. allocate global context data */
+	if (g_bdev == NULL) {
+		g_bdev = kzalloc(sizeof(struct btmtk_dev), GFP_KERNEL);
+		if (!g_bdev) {
+			BTMTK_ERR("%s: alloc memory fail (g_data)", __func__);
+			return -1;
+		}
+	}
+
+	g_bdev->pdev = pdev;
+
+	if (bt_reg_init()) {
+		BTMTK_ERR("%s: Error allocating memory remap");
+		return -1;
+	}
+
+	/* 2. Init HCI device */
+	btmtk_allocate_hci_device(g_bdev, HCI_UART);
+
+	/* 3. Init power manager */
+	bt_psm_init(&g_bdev->psm);
+
+	/* 4. Init reset completion */
+	init_completion(&g_bdev->rst_comp);
+
+	/* 5. Init fw log */
+	fw_log_bt_init(g_bdev->hdev);
+
+	/* 6. Init semaphore */
+	sema_init(&g_bdev->halt_sem, 1);
+	sema_init(&g_bdev->internal_cmd_sem, 1);
+	sema_init(&g_bdev->btif_dpidle_ctrl.sem, 1);
+
+#if SUPPORT_COREDUMP
+	/* 7. Init coredump */
+	g_bdev->coredump_handle = connsys_coredump_init(CONN_DEBUG_TYPE_BT, &bt_coredump_cb);
 #endif
-	return err;
+
+	/* 8. Register screen on/off notify callback */
+	g_bdev->blank_state = FB_BLANK_UNBLANK;
+	btmtk_fb_notify_register();
+
+	/* Finally register callbacks to conninfra driver */
+	conninfra_sub_drv_ops_register(CONNDRV_TYPE_BT, &bt_drv_cbs);
+
+	BTMTK_INFO("%s: Done", __func__);
+	return 0;
+}
+
+/* btmtk_btif_remove
+ *
+ *     Remove function of BT driver with BTIF HAL, de-initialize variable after
+ *     driver being removed
+ *
+ * Arguments:
+ *     [IN] pdev    platform device pointer
+ *
+ * Return Value:
+ *     0 if success, otherwise error code
+ */
+static int btmtk_btif_remove(struct platform_device *pdev)
+{
+	conninfra_sub_drv_ops_unregister(CONNDRV_TYPE_BT);
+
+	btmtk_fb_notify_unregister();
+
+	fw_log_bt_exit();
+
+	bt_psm_deinit(&g_bdev->psm);
+#if (USE_DEVICE_NODE == 0)
+	btmtk_free_hci_device(g_bdev, HCI_UART);
+#endif
+#if SUPPORT_COREDUMP
+	if (!g_bdev->coredump_handle)
+		connsys_coredump_deinit(g_bdev->coredump_handle);
+#endif
+
+	bt_reg_deinit();
+	kfree(g_bdev);
+	return 0;
+}
+
+/* btmtk_cif_register
+ *
+ *    BT driver with BTIF hal has its own device, this API should be invoked
+ *    by BT main driver when installed
+ *
+ * Arguments:
+ *     N/A
+ *
+ * Return Value:
+ *     0 if success, otherwise error code
+ */
+int btmtk_cif_register(void)
+{
+	int ret = -1;
+
+	mtkbt_btif_driver.probe = btmtk_btif_probe;
+	mtkbt_btif_driver.remove = btmtk_btif_remove;
+
+#if (USE_DEVICE_NODE == 1)
+	ret = btmtk_btif_probe(NULL);
+	rx_queue_initialize();
+#else
+	ret = platform_driver_register(&mtkbt_btif_driver);
+	BTMTK_INFO("platform_driver_register ret = %d", ret);
+
+	mtkbt_btif_device = platform_device_alloc(MTKBT_BTIF_NAME, 0);
+	if (mtkbt_btif_device == NULL) {
+		platform_driver_unregister(&mtkbt_btif_driver);
+		BTMTK_ERR("platform_device_alloc device fail");
+		return -1;
+	}
+	ret = platform_device_add(mtkbt_btif_device);
+	if (ret) {
+		platform_driver_unregister(&mtkbt_btif_driver);
+		BTMTK_ERR("platform_device_add fail");
+
+		return -1;
+	}
+#endif
+	BTMTK_INFO("%s: Done", __func__);
+	return 0;
+}
+
+/* btmtk_cif_register
+ *
+ *    BT driver with BTIF hal has its own device, this API should be invoked
+ *    by BT main driver when removed
+ *
+ * Arguments:
+ *     N/A
+ *
+ * Return Value:
+ *     0
+ */
+int btmtk_cif_deregister(void)
+{
+	btmtk_btif_close();
+#if (USE_DEVICE_NODE == 1)
+	rx_queue_destroy();
+#else
+	platform_driver_unregister(&mtkbt_btif_driver);
+	platform_device_unregister(mtkbt_btif_device);
+#endif
+
+	return 0;
+}
+
+/* btmtk_cif_send_cmd
+ *
+ *    Public API of BT TX
+ *
+ * Arguments:
+ *    [IN] hdev     - hci_device as control structure during BT life cycle
+ *    [IN] cmd      - sending data buffer
+ *    [IN] cmd_len  - data length
+ *    [IN] retry_limit - retry count
+ *    [IN] endpoint    - NOT USE in BTIF driver (ignore)
+ *    [IN] tx_state    - NOT USE in BTIF driver (ignore)
+ *
+ * Return Value:
+ *    write length of TX
+ */
+int32_t btmtk_cif_send_cmd(struct hci_dev *hdev, const uint8_t *cmd,
+		const int32_t cmd_len, int32_t retry_limit, int32_t endpoint, uint64_t tx_state)
+{
+	int32_t ret = -1;
+	uint32_t wr_count = 0;
+	int32_t tx_len = cmd_len;
+	int32_t retry = 0;
+	struct btmtk_dev *bdev = hci_get_drvdata(hdev);
+
+	BTMTK_DBG_RAW(cmd, cmd_len, "%s, len = %d, send cmd: ", __func__, cmd_len);
+
+	if (!g_btif_id) {
+		BTMTK_ERR("NULL BTIF ID reference!");
+		return -1;
+	}
+
+	add_dump_packet(cmd, cmd_len, TX);
+
+#if (DRIVER_CMD_CHECK == 1)
+		// To do: need to check if list_append will affect throughput
+		if (cmd[0] == 0x01) {
+			if ((cmd[1] == 0x5D && cmd[2] == 0xFC) ||
+				(cmd[1] == 0x6F && cmd[2] == 0xFC) ||
+				bdev->cmd_timeout_check == FALSE ) {
+				/* Skip these cmd:
+				fw will not return response, or response with other format */
+			} else {
+				u16 cmd_opcode = (cmd[1] << 8) | cmd[2];
+				BTMTK_DBG("%s add opcode %4X in cmd queue", __func__,cmd_opcode);
+				cmd_list_append(cmd_opcode);
+				update_command_response_workqueue();
+			}
+		}
+#endif
+
+	while (tx_len > 0 && retry < retry_limit) {
+		if (retry++ > 0)
+			msleep(BTIF_TX_RTY_DLY);
+
+		ret = mtk_wcn_btif_write(g_btif_id, cmd, tx_len);
+		if (ret < 0) {
+			BTMTK_ERR("BTIF write failed(%d) on retry(%d)", ret, retry-1);
+			return -1;
+		}
+
+		tx_len -= ret;
+		wr_count += ret;
+		cmd += ret;
+	}
+	return ret;
 }
 
 /* _check_wmt_evt_over_hci
@@ -1056,7 +1172,6 @@ static int32_t _check_wmt_evt_over_hci(
 		status = p_wmt_evt->params.u.rf_cal_evt.status;
 		break;
 	case WMT_OPCODE_0XF0:
-	case WMT_OPCODE_ANT_EFEM:
 		status = 0x00; // todo: need more check?
 		break;
 	default:
@@ -1074,7 +1189,7 @@ check_error:
 	return WMT_EVT_INVALID;
 }
 
-/* btmtk_dispatch_event
+/* btmtk_cif_dispatch_event
  *
  *    Handler of vendor event
  *
@@ -1086,16 +1201,15 @@ check_error:
  *    return check  - 0 for checking success, -1 otherwise
  *
  */
-int32_t btmtk_dispatch_event(struct sk_buff *skb)
+int32_t btmtk_cif_dispatch_event(struct hci_dev *hdev, struct sk_buff *skb)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_internal_cmd *p_inter_cmd = &cif_dev->internal_cmd;
+	struct btmtk_dev *bdev = hci_get_drvdata(hdev);
+	struct bt_internal_cmd *p_inter_cmd = &bdev->internal_cmd;
 	uint8_t event_code = skb->data[0];
 
+	/* WMT event */
 	BTMTK_DBG("%s: event code=[0x%02x], length = %d", __func__, event_code, skb->len);
-
 	if (event_code == 0xE4) {
-		/* WMT event */
 		p_inter_cmd->result = _check_wmt_evt_over_hci(skb->data,
 					      skb->len,
 					      p_inter_cmd->wmt_opcode,
@@ -1118,628 +1232,6 @@ int32_t btmtk_dispatch_event(struct sk_buff *skb)
 	return p_inter_cmd->result;
 }
 
-
-void btmtk_check_event_timeout(struct sk_buff *skb)
-{
-	u8 event_code = skb->data[0];
-	u16 cmd_opcode;
-
-	if (event_code == HCI_EVT_COMPLETE_EVT) {
-		cmd_opcode = (skb->data[3] << 8) | skb->data[4];
-
-		if (cmd_list_check(cmd_opcode) == FALSE) {
-			BTMTK_ERR("%s No match command %4X", __func__, cmd_opcode);
-		} else {
-			cmd_list_remove(cmd_opcode);
-			update_command_response_workqueue();
-		}
-	} else if (event_code == HCI_EVT_STATUS_EVT) {
-		cmd_opcode = (skb->data[4] << 8) | skb->data[5];
-
-		if (cmd_list_check(cmd_opcode) == FALSE) {
-			BTMTK_ERR("%s No match command %4X", __func__, cmd_opcode);
-		} else {
-			cmd_list_remove(cmd_opcode);
-			update_command_response_workqueue();
-		}
-	}
-}
-
-int32_t btmtk_send_data(struct hci_dev *hdev, uint8_t *buf, uint32_t count)
-{
-	struct sk_buff *skb = NULL;
-	struct btmtk_dev *bdev = hci_get_drvdata(hdev);
-	struct btmtk_btif_dev *cif_dev = bdev->cif_dev;
-
-	skb = alloc_skb(count + BT_SKB_RESERVE, GFP_KERNEL);
-	if (skb == NULL) {
-		BTMTK_ERR("%s allocate skb failed!!", __func__);
-		return -1;
-	}
-
-	/* Reserv for core and drivers use */
-	skb_reserve(skb, BT_SKB_RESERVE);
-	bt_cb(skb)->pkt_type = buf[0];
-	memcpy(skb->data, buf, count);
-	skb->len = count;
-
-	skb_queue_tail(&cif_dev->tx_queue, skb);
-	wake_up_interruptible(&cif_dev->tx_waitq);
-
-	return count;
-}
-
-/* btmtk_wcn_btif_open
-
- *
- *     Called when line discipline changed to HCI_UART.
- *
- * Arguments:
- *     tty    pointer to tty info structure
- * Return Value:
- *     0 if success, otherwise error code
- */
-int32_t btmtk_wcn_btif_open(void)
-{
-	int32_t ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct btif_deepidle_ctrl *idle_ctrl = &cif_dev->btif_dpidle_ctrl;
-
-	/* 1. Open BTIF */
-	ret = mtk_wcn_btif_open(BTIF_OWNER_NAME, &g_btif_id);
-	if (ret) {
-		BTMTK_ERR("BT open BTIF failed(%d)", ret);
-		return -1;
-	}
-
-#if SUPPORT_BT_THREAD
-	idle_ctrl->is_dpidle = FALSE;
-	idle_ctrl->task = create_singlethread_workqueue("dpidle_task");
-	if (!idle_ctrl->task){
-		BTMTK_ERR("fail to idle_ctrl->task ");
-		return -1;
-	}
-	INIT_DELAYED_WORK(&idle_ctrl->work, btmtk_btif_enter_deep_idle);
-#endif
-
-	/* 2. Register rx callback */
-	ret = mtk_wcn_btif_rx_cb_register(g_btif_id, (MTK_WCN_BTIF_RX_CB)bt_receive_data_cb);
-	if (ret) {
-		BTMTK_ERR("Register rx cb to BTIF failed(%d)", ret);
-		mtk_wcn_btif_close(g_btif_id);
-		return -1;
-	}
-
-	g_btif_rxd_thread = mtk_btif_exp_rx_thread_get(g_btif_id);
-
-#if SUPPORT_BT_THREAD
-	/* 3. Enter deeple idle */
-	ret = mtk_wcn_btif_dpidle_ctrl(g_btif_id, TRUE);
-	if (ret) {
-		BTMTK_ERR("BTIF enter dpidle failed(%d)", ret);
-		mtk_wcn_btif_close(g_btif_id);
-		return -1;
-	}
-#endif
-
-	BTMTK_DBG("BT open BTIF OK");
-	return 0;
-}
-
-/* btmtk_wcn_btif_close()
- *
- *    Close btif
- *
- * Arguments:
- *     N/A
- *
- * Return Value:
- *     0 if success, otherwise error code
- */
-int32_t btmtk_wcn_btif_close()
-{
-	int32_t ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	if (!g_btif_id) {
-		BTMTK_ERR("NULL BTIF ID reference!");
-		return 0;
-	}
-
-#if SUPPORT_BT_THREAD
-	if(cif_dev->btif_dpidle_ctrl.task != NULL) {
-		cancel_delayed_work(&cif_dev->btif_dpidle_ctrl.work);
-		flush_workqueue(cif_dev->btif_dpidle_ctrl.task);
-		down(&cif_dev->btif_dpidle_ctrl.sem);
-		destroy_workqueue(cif_dev->btif_dpidle_ctrl.task);
-		up(&cif_dev->btif_dpidle_ctrl.sem);
-		cif_dev->btif_dpidle_ctrl.task = NULL;
-	}
-#endif
-
-	ret = mtk_wcn_btif_close(g_btif_id);
-	g_btif_id = 0;
-	bt_release_wake_lock(&cif_dev->psm.wake_lock);
-
-	if (ret) {
-		BTMTK_ERR("BT close BTIF failed(%d)", ret);
-		return -1;
-	}
-	BTMTK_DBG("BT close BTIF OK");
-	return 0;
-
-}
-
-int btmtk_btif_open(struct hci_dev *hdev)
-{
-	int ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	bt_hold_wake_lock(&cif_dev->psm.wake_lock);
-	ret = btmtk_set_power_on(hdev, FALSE);
-	bt_release_wake_lock(&cif_dev->psm.wake_lock);
-	return ret;
-}
-
-int btmtk_btif_close(struct hci_dev *hdev)
-{
-	int ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	bt_hold_wake_lock(&cif_dev->psm.wake_lock);
-	ret = btmtk_set_power_off(hdev, FALSE);
-	bt_release_wake_lock(&cif_dev->psm.wake_lock);
-	return ret;
-}
-
-int btmtk_btif_send_cmd_if(struct btmtk_dev *bdev, struct sk_buff *skb, int delay, int retry, int pkt_type)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-#if SUPPORT_BT_THREAD
-	skb_queue_tail(&cif_dev->tx_queue, skb);
-	wake_up_interruptible(&cif_dev->tx_waitq);
-#else
-	btmtk_btif_send_cmd(bdev, skb, delay, retry, pkt_type);
-	kfree_skb(skb);
-#endif
-	return 0;
-}
-
-int btmtk_btif_send_and_recv(struct btmtk_dev *bdev,
-		struct sk_buff *skb,
-		const uint8_t *event, const int event_len,
-		int delay, int retry, int pkt_type)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	int ret = 0;
-	int tx_state = pkt_type; // use for tx_state control
-
-	set_bit(tx_state, &bdev->tx_state);
-#if SUPPORT_BT_THREAD
-	skb_queue_tail(&cif_dev->tx_queue, skb);
-	wake_up_interruptible(&cif_dev->tx_waitq);
-#else
-	btmtk_btif_send_cmd_if(bdev, skb, 0, 5, (int)BTMTK_TX_CMD_FROM_DRV);
-#endif
-	ret = wait_event_timeout(bdev->p_wait_event_q,
-				bdev->evt_skb != NULL || tx_state == BTMTK_TX_SKIP_VENDOR_EVT, 2*HZ);
-	BTMTK_INFO("%s, ret = %d", __func__, ret);
-
-	if (tx_state == BTMTK_TX_WAIT_VND_EVT) {
-		if (bdev->evt_skb)
-			kfree_skb(bdev->evt_skb);
-		bdev->evt_skb = NULL;
-	}
-	return ret;
-}
-
-/* btmtk_btif_send_cmd
- *
- *    Public API of BT TX
- *
- * Arguments:
- *    [IN] bdev     - hci_device as control structure during BT life cycle
- *    [IN] skb      - skb data buffer
- *    [IN] delay    - NOT USE in BTIF driver (ignore)
- *    [IN] retry    - retry count
- *    [IN] endpoint - NOT USE in BTIF driver (ignore)
- *
- * Return Value:
- *    write length of TX
- */
-int btmtk_btif_send_cmd(struct btmtk_dev *bdev, struct sk_buff *skb, int delay, int retry, int pkt_type)
-{
-	int32_t ret = -1;
-	uint32_t wr_count = 0;
-	uint8_t *cmd = skb->data;
-	int32_t cmd_len = skb->len;
-	int32_t tx_len = skb->len;
-	int32_t _retry = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)bdev->cif_dev;
-	uint8_t *tp_ptr = (uint8_t *)cmd;
-
-	BTMTK_DBG_RAW(cmd, cmd_len, "%s: len[%d] TX: ", __func__, cmd_len);
-
-	if (!g_btif_id) {
-		BTMTK_ERR("NULL BTIF ID reference!");
-		return -1;
-	}
-
-	add_dump_packet(cmd, cmd_len, TX);
-
-#if (DRIVER_CMD_CHECK == 1)
-		// To do: need to check if list_append will affect throughput
-		if (cmd[0] == 0x01) {
-			if ((cmd[1] == 0x5D && cmd[2] == 0xFC) ||
-				(cmd[1] == 0x6F && cmd[2] == 0xFC) ||
-				cif_dev->cmd_timeout_check == FALSE ) {
-				/* Skip these cmd:
-				fw will not return response, or response with other format */
-			} else {
-				u16 cmd_opcode = (cmd[1] << 8) | cmd[2];
-				BTMTK_DBG("%s add opcode %4X in cmd queue", __func__,cmd_opcode);
-				cmd_list_append(cmd_opcode);
-				update_command_response_workqueue();
-			}
-		}
-#endif
-
-	while (tx_len > 0 && _retry < retry) {
-		if (_retry++ > 0)
-			usleep_range(USLEEP_5MS_L, USLEEP_5MS_H);
-
-		ret = mtk_wcn_btif_write(g_btif_id, cmd, tx_len);
-		if (ret < 0) {
-			BTMTK_ERR("BTIF write failed(%d) on retry(%d)", ret, _retry-1);
-			return -1;
-		}
-		tx_len -= ret;
-		wr_count += ret;
-		cmd += ret;
-	}
-
-	if (g_bt_trace_pt)
-		bt_dbg_tp_evt(TP_ACT_WR_OUT, 0, cmd_len, tp_ptr);
-	return ret;
-}
-
-static void btmtk_btif_internal_trx_work(struct work_struct *work)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	btmtk_send_data(g_sbdev->hdev, cif_dev->internal_trx.buf, cif_dev->internal_trx.buf_len);
-	if (!wait_for_completion_timeout(&cif_dev->internal_trx.comp, msecs_to_jiffies(2000)))
-		BTMTK_ERR("[internal trx] wait event timeout!");
-	BTMTK_INFO("[internal trx] complete");
-	cif_dev->internal_trx.cb = NULL;
-}
-
-
-int btmtk_btif_internal_trx (uint8_t *buf, uint32_t count,
-									BT_RX_EVT_HANDLER_CB cb,
-									bool send_to_stack,
-									bool is_blocking)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	spin_lock_irqsave(&cif_dev->internal_trx.lock, cif_dev->internal_trx.flag);
-	if (cif_dev->internal_trx.cb) {
-		BTMTK_ERR("unable to do internal trx before previous trx done");
-		return -1;
-	}
-	cif_dev->internal_trx.cb = cb;
-	spin_unlock_irqrestore(&cif_dev->internal_trx.lock, cif_dev->internal_trx.flag);
-
-	cif_dev->internal_trx.opcode = *(buf + 1) + (*(buf + 2) << 8);
-	cif_dev->internal_trx.send_to_stack = send_to_stack;
-	if (count > 256) {
-		BTMTK_ERR("internal command buffer larger than provided");
-		return -1;
-	}
-	memcpy(cif_dev->internal_trx.buf, buf, count);
-	cif_dev->internal_trx.buf_len = count;
-	BTMTK_INFO_RAW(buf, count, "[internal trx] len[%d] TX: ", count);
-	if (is_blocking) {
-		btmtk_send_data(g_sbdev->hdev, cif_dev->internal_trx.buf, cif_dev->internal_trx.buf_len);
-		if (!wait_for_completion_timeout(&cif_dev->internal_trx.comp, msecs_to_jiffies(2000)))
-			BTMTK_ERR("[internal trx] wait event timeout!");
-		BTMTK_INFO("[internal trx] complete");
-		cif_dev->internal_trx.cb = NULL;
-	} else
-		schedule_work(&internal_trx_work);
-	return 0;
-}
-
-int btmtk_btif_event_filter(struct btmtk_dev *bdev, struct sk_buff *skb)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-#if (DRIVER_CMD_CHECK == 1)
-	if (cif_dev->cmd_timeout_check == TRUE)
-		btmtk_check_event_timeout(skb);
-#endif
-
-	/* When someone waits for the WMT event, the skb is being cloned
-	 * and being processed the events from there then.
-	 */
-	if (test_bit(BTMTK_TX_WAIT_VND_EVT, &bdev->tx_state)) {
-		/* check is corresponding wmt event */
-		if (btmtk_dispatch_event(skb) != WMT_EVT_SKIP) {
-			bdev->evt_skb = skb_copy(skb, GFP_KERNEL);
-			if (!bdev->evt_skb) {
-				BTMTK_ERR("%s: WMT event copy to evt_skb failed", __func__);
-				return 1; // this event is filtered
-			}
-
-			if (test_and_clear_bit(BTMTK_TX_WAIT_VND_EVT, &bdev->tx_state)) {
-				BTMTK_DBG("%s: clear bit BTMTK_TX_WAIT_VND_EVT", __func__);
-				wake_up(&bdev->p_wait_event_q);
-				BTMTK_DBG("%s: wake_up p_wait_event_q", __func__);
-			} else {
-				BTMTK_ERR("%s: test_and_clear_bit(BTMTK_TX_WAIT_VND_EVT) fail", __func__);
-				if (bdev->evt_skb)
-					kfree_skb(bdev->evt_skb);
-				bdev->evt_skb = NULL;
-			}
-			return 1; // this event is filtered
-		} else {
-			// may be normal packet, continue put skb to rx queue
-			BTMTK_INFO("%s: may be normal packet!", __func__);
-		}
-	}
-
-	/* handle command complete evt if callback is registered */
-	if (cif_dev->internal_trx.cb != NULL) {
-		if (skb->data[0] == HCI_EVT_COMPLETE_EVT && \
-			cif_dev->internal_trx.opcode == skb->data[3] + (skb->data[4] << 8)) {
-			BTMTK_INFO_RAW(skb->data, (int)skb->len, "[internal trx] len[%d] RX: ", (int)skb->len);
-			cif_dev->internal_trx.cb(skb->data, (int)skb->len);
-			complete(&cif_dev->internal_trx.comp);
-			if (!cif_dev->internal_trx.send_to_stack)
-				return -1; // do not send to stack
-		}
-	}
-
-	return 0;
-}
-
-static int btmtk_btif_flush(struct btmtk_dev *bdev)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)bdev->cif_dev;
-
-#if SUPPORT_BT_THREAD
-	skb_queue_purge(&cif_dev->tx_queue);
-#endif
-	return 0;
-}
-
-int btmtk_cif_send_calibration(struct btmtk_dev *bdev)
-{
-	return btmtk_intcmd_wmt_calibration(bdev->hdev);
-}
-
-/* btmtk_cif_probe
- *
- *     Probe function of BT driver with BTIF HAL, initialize variable after
- *     driver installed
- *
- * Arguments:
- *     [IN] pdev    platform device pointer after driver installed
- *
- * Return Value:
- *     0 if success, otherwise error code
- */
-static int btmtk_cif_probe(struct platform_device *pdev)
-{
-	struct btmtk_btif_dev *cif_dev = NULL;
-
-	/* 1. allocate global context data */
-	g_sbdev->cif_dev = &g_btif_dev;
-	cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	cif_dev->pdev = pdev;
-	g_sbdev->chip_id = 0x6631;
-	if (bt_reg_init()) {
-		BTMTK_ERR("%s: Error allocating memory remap");
-		return -1;
-	}
-
-	/* 2. Init HCI device */
-	btmtk_allocate_hci_device(g_sbdev, HCI_UART);
-#if (USE_DEVICE_NODE == 0)
-	SET_HCIDEV_DEV(g_sbdev->hdev, BTMTK_GET_DEV(cif_dev));
-	btmtk_register_hci_device(g_sbdev);
-#endif
-
-	/* 3. Init power manager */
-	bt_psm_init(&cif_dev->psm);
-
-	/* 4. Init completion */
-	init_completion(&cif_dev->rst_comp);
-	init_completion(&cif_dev->internal_trx.comp);
-
-	/* 5. Init semaphore */
-	sema_init(&cif_dev->halt_sem, 1);
-	sema_init(&cif_dev->internal_cmd_sem, 1);
-	sema_init(&cif_dev->btif_dpidle_ctrl.sem, 1);
-	sema_init(&cif_dev->cmd_tout_sem, 1);
-
-#if SUPPORT_BT_THREAD
-	/* 6. Init tx_queue of thread */
-	skb_queue_head_init(&cif_dev->tx_queue);
-#endif
-
-#if SUPPORT_COREDUMP
-	/* 7. Init coredump */
-	cif_dev->coredump_handle = connsys_coredump_init(CONN_DEBUG_TYPE_BT, &bt_coredump_cb);
-#endif
-
-	/* 8. Register screen on/off & suspend/wakup notify callback */
-	cif_dev->blank_state = WMT_PARA_SCREEN_ON;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-	mtk_disp_notifier_register("btmtk_disp_notifier", &btmtk_disp_notifier);
-#else
-	btmtk_fb_notify_register();
-#endif
-	btmtk_pm_notify_register();
-
-	/* 9. Init debug interface */
-	bt_dev_dbg_init();
-
-	/* 10. Init rst_onoff_waitq */
-	init_waitqueue_head(&cif_dev->rst_onoff_waitq);
-
-	/* 11. Init internal trx work */
-	INIT_WORK(&internal_trx_work, btmtk_btif_internal_trx_work);
-
-	/* Register callbacks to conninfra driver */
-	conninfra_sub_drv_ops_register(CONNDRV_TYPE_BT, &bt_drv_cbs);
-	bt_pwrctrl_register_evt();
-
-	/* Runtime malloc patch names */
-	fwp_get_patch_names();
-
-	/* Set ICB cif state */
-	btmtk_set_chip_state((void *)g_sbdev, BTMTK_STATE_WORKING);
-
-	BTMTK_INFO("%s: Done", __func__);
-	return 0;
-}
-
-/* btmtk_cif_remove
- *
- *     Remove function of BT driver with BTIF HAL, de-initialize variable after
- *     driver being removed
- *
- * Arguments:
- *     [IN] pdev    platform device pointer
- *
- * Return Value:
- *     0 if success, otherwise error code
- */
-static int btmtk_cif_remove(struct platform_device *pdev)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	conninfra_sub_drv_ops_unregister(CONNDRV_TYPE_BT);
-
-	bt_dev_dbg_deinit();
-
-	/* Unregister screen on/off & suspend/wakup notify callback */
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-	mtk_disp_notifier_unregister(&btmtk_disp_notifier);
-#else
-	btmtk_fb_notify_unregister();
-#endif
-	btmtk_pm_notify_unregister();
-
-	bt_psm_deinit(&cif_dev->psm);
-
-#if (USE_DEVICE_NODE == 0)
-	btmtk_deregister_hci_device(g_sbdev);
-	btmtk_free_hci_device(g_sbdev, HCI_UART);
-#endif
-
-#if SUPPORT_COREDUMP
-	if (!cif_dev->coredump_handle)
-		connsys_coredump_deinit(cif_dev->coredump_handle);
-#endif
-
-	bt_reg_deinit();
-
-	return 0;
-}
-
-/* btmtk_cif_register
- *
- *    BT driver with BTIF hal has its own device, this API should be invoked
- *    by BT main driver when installed
- *
- * Arguments:
- *     N/A
- *
- * Return Value:
- *     0 if success, otherwise error code
- */
-int btmtk_cif_register(void)
-{
-	int ret = -1;
-	struct hif_hook_ptr hook;
-
-	mtkbt_btif_driver.probe = btmtk_cif_probe;
-	mtkbt_btif_driver.remove = btmtk_cif_remove;
-
-	memset(&hook, 0, sizeof(struct hif_hook_ptr));
-	hook.init = BT_init;
-	hook.exit = BT_exit;
-	hook.open = btmtk_btif_open;
-	hook.close = btmtk_btif_close;
-	hook.send_cmd = btmtk_btif_send_cmd_if;
-	hook.send_and_recv = btmtk_btif_send_and_recv;
-	hook.event_filter = btmtk_btif_event_filter;
-	hook.flush = btmtk_btif_flush;
-	hook.log_init = btmtk_connsys_log_init;
-	hook.log_register_cb = btmtk_connsys_log_register_event_cb;
-	hook.log_read_to_user = btmtk_connsys_log_read_to_user;
-	hook.log_get_buf_size = btmtk_connsys_log_get_buf_size;
-	hook.log_deinit = btmtk_connsys_log_deinit;
-	hook.log_hold_sem = btmtk_connsys_log_hold_sem;
-	hook.log_release_sem = btmtk_connsys_log_release_sem;
-	btmtk_reg_hif_hook(&hook);
-
-#if (USE_DEVICE_NODE == 1)
-	ret = btmtk_cif_probe(NULL);
-	if (ret)
-		return -1;
-	rx_queue_initialize();
-#else
-	ret = platform_driver_register(&mtkbt_btif_driver);
-	BTMTK_INFO("platform_driver_register ret = %d", ret);
-
-	mtkbt_btif_device = platform_device_alloc(MTKBT_BTIF_NAME, 0);
-	if (mtkbt_btif_device == NULL) {
-		platform_driver_unregister(&mtkbt_btif_driver);
-		BTMTK_ERR("platform_device_alloc device fail");
-		return -1;
-	}
-	ret = platform_device_add(mtkbt_btif_device);
-	if (ret) {
-		platform_driver_unregister(&mtkbt_btif_driver);
-		BTMTK_ERR("platform_device_add fail");
-
-		return -1;
-	}
-#endif
-	BTMTK_INFO("%s: Done", __func__);
-	return 0;
-}
-
-/* btmtk_cif_deregister
- *
- *    BT driver with BTIF hal has its own device, this API should be invoked
- *    by BT main driver when removed
- *
- * Arguments:
- *     N/A
- *
- * Return Value:
- *     0
- */
-int btmtk_cif_deregister(void)
-{
-	btmtk_wcn_btif_close();
-
-#if (USE_DEVICE_NODE == 1)
-	rx_queue_destroy();
-#else
-	platform_driver_unregister(&mtkbt_btif_driver);
-	platform_device_unregister(mtkbt_btif_device);
-#endif
-
-	return 0;
-}
-
 #if SUPPORT_BT_THREAD
 /* bt_tx_wait_for_msg
  *
@@ -1754,24 +1246,20 @@ int btmtk_cif_deregister(void)
  */
 static u_int8_t bt_tx_wait_for_msg(struct btmtk_dev *bdev)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
 	/* Ignore other cases for reset situation, and wait for close */
-	if (cif_dev->bt_state == RESET_START)
+	if (bdev->bt_state == RESET_START)
 		return kthread_should_stop();
 	else {
-		BTMTK_DBG("skb [%d], rx_ind [%d], bgf2ap_ind [%d], bt_conn2ap_ind [%d], sleep_flag [%d], wakeup_flag [%d], force_on [%d]",
-				skb_queue_empty(&cif_dev->tx_queue), cif_dev->rx_ind,
-				cif_dev->bgf2ap_ind, cif_dev->bt_conn2ap_ind, 
-				cif_dev->psm.sleep_flag,
-				cif_dev->psm.wakeup_flag,
-				cif_dev->psm.force_on);
-		return (!skb_queue_empty(&cif_dev->tx_queue)
-			|| cif_dev->rx_ind
-			|| cif_dev->bgf2ap_ind
-			|| cif_dev->bt_conn2ap_ind
-			|| (!cif_dev->psm.force_on && cif_dev->psm.sleep_flag) // only check sleep_flag if force_on is FALSE
-			|| cif_dev->psm.wakeup_flag
+		BTMTK_DBG("skb [%d], rx_ind [%d], bgf2ap_ind [%d], sleep_flag [%d], wakeup_flag [%d], force_on [%d]",
+				skb_queue_empty(&bdev->tx_queue), bdev->rx_ind,
+				bdev->bgf2ap_ind, bdev->psm.sleep_flag,
+				bdev->psm.wakeup_flag,
+				bdev->psm.force_on);
+		return (!skb_queue_empty(&bdev->tx_queue)
+			|| bdev->rx_ind
+			|| bdev->bgf2ap_ind
+			|| (!bdev->psm.force_on && bdev->psm.sleep_flag) // only check sleep_flag if force_on is FALSE
+			|| bdev->psm.wakeup_flag
 			|| kthread_should_stop());
 	}
 }
@@ -1790,34 +1278,25 @@ static u_int8_t bt_tx_wait_for_msg(struct btmtk_dev *bdev)
 int32_t btmtk_tx_thread(void * arg)
 {
 	struct btmtk_dev *bdev = (struct btmtk_dev *)arg;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	struct bt_psm_ctrl *psm = &cif_dev->psm;
-	int32_t sleep_ret = 0, wakeup_ret = 0, ret, ii;
+	struct bt_psm_ctrl *psm = &bdev->psm;
+	int32_t sleep_ret = 0, wakeup_ret = 0, ret;
 	struct sk_buff *skb;
-	int skb_len;
-	char state_tag[20] = "";
+	int skb_len, btif_pending_data;
 
-	BTMTK_INFO("%s start running...", __func__);
+	BTMTK_INFO("btmtk_tx_thread start running...");
 	do {
-		strncpy(state_tag, (psm->state == PSM_ST_SLEEP ? "[ST_SLEEP]" : "[ST_NORMAL]"), 15);
-		BTMTK_DBG("%s -- wait_event_interruptible", state_tag);
-		wait_event_interruptible(cif_dev->tx_waitq, bt_tx_wait_for_msg(bdev));
-		BTMTK_DBG("%s -- wakeup", state_tag);
+		BTMTK_DBG("entering  wait_event_interruptible");
+		wait_event_interruptible(bdev->tx_waitq, bt_tx_wait_for_msg(bdev));
+		BTMTK_DBG("btmtk_tx_thread wakeup");
 		if (kthread_should_stop()) {
-			BTMTK_INFO("%s %s should stop now...", state_tag, __func__);
+			BTMTK_INFO("btmtk_tx_thread should stop now...");
 			if (psm->state == PSM_ST_NORMAL_TR)
 				bt_release_wake_lock(&psm->wake_lock);
 			break;
 		}
 
-		/* handling BUS SW IRQ */
-		if (cif_dev->bt_conn2ap_ind && BT_SSPM_TIMER != 0) {
-			bt_conn2ap_irq_handler();
-			continue;
-		}
-
 		/* handling SW IRQ */
-		if (cif_dev->bgf2ap_ind) {
+		if(bdev->bgf2ap_ind) {
 			bt_bgf2ap_irq_handler();
 			/* reset bgf2ap_ind flag move into bt_bgf2ap_irq_handler */
 			continue;
@@ -1854,11 +1333,12 @@ int32_t btmtk_tx_thread(void * arg)
 				/* check current bt_state to prevent from conflict
 				 * resetting b/w subsys reset & whole chip reset
 				 */
-				if (cif_dev->bt_state == FUNC_ON) {
-					BTMTK_ERR("%s FATAL: btmtk_cif_fw_own_clr error!! going to reset", state_tag);
+				if (bdev->bt_state == FUNC_ON) {
+					BTMTK_ERR("FATAL: bgfsys_fw_own_clr error!! going to reset");
 					bt_trigger_reset();
 				} else
-					BTMTK_WARN("%s bt_state[%d] is not FUNC_ON, skip reset", state_tag, cif_dev->bt_state);
+					BTMTK_WARN("bt_state [%d] is not FUNC_ON, skip reset", bdev->bt_state);
+
 				break;
 			} else {
 				/* BGFSYS is awake and ready for data transmission */
@@ -1873,17 +1353,17 @@ int32_t btmtk_tx_thread(void * arg)
 				psm->result = wakeup_ret;
 			}
 
-			if (cif_dev->rx_ind) {
-				BTMTK_DBG("%s wakeup by BTIF_WAKEUP_IRQ", state_tag);
+			if (bdev->rx_ind) {
+				BTMTK_DBG("wakeup by BTIF_WAKEUP_IRQ");
 				/* Just reset the flag, F/W will send data to host after FW own clear */
-				cif_dev->rx_ind = FALSE;
+				bdev->rx_ind = FALSE;
 			}
 
 			/*
 			 *  Dequeue and send TX pending packets to bus
 			 */
-			 while(!skb_queue_empty(&cif_dev->tx_queue)) {
-				skb = skb_dequeue(&cif_dev->tx_queue);
+			 while(!skb_queue_empty(&bdev->tx_queue)) {
+				skb = skb_dequeue(&bdev->tx_queue);
 				if(skb == NULL)
 					continue;
 
@@ -1896,31 +1376,30 @@ int32_t btmtk_tx_thread(void * arg)
 				if (skb_len >= 4 && skb->data[0] == 0x01 && skb->data[1] == 0x5B &&
 				    skb->data[2] == 0xFD && skb->data[3] == 0x00) {
 					kfree_skb(skb);
-					skb_queue_purge(&cif_dev->tx_queue);
+					skb_queue_purge(&bdev->tx_queue);
+					btmtk_cif_dump_fw_no_rsp(BT_BTIF_DUMP_ALL);
 					bt_trigger_reset();
 					break;
 				}
-
 #if (DRIVER_CMD_CHECK == 1)
 				// enable driver check command timeout mechanism
 				if (skb_len >= 3 && skb->data[0] == 0x01 && skb->data[1] == 0x1B &&
 					skb->data[2] == 0xFD ) {
 					kfree_skb(skb);
-					BTMTK_INFO("%s enable check command timeout function", state_tag);
-					cif_dev->cmd_timeout_check = TRUE;
+					BTMTK_INFO("enable check command timeout");
+					bdev->cmd_timeout_check = TRUE;
 					continue;
 				}
 #endif
-
-				ret = btmtk_btif_send_cmd(bdev, skb, 0, 5, 0);
+				ret = btmtk_cif_send_cmd(bdev->hdev, skb->data, skb->len, 5, 0, 0);
 				kfree_skb(skb);
 				if ((ret < 0) || (ret != skb_len)) {
-					BTMTK_ERR("%s FATAL: TX packet error!! (%u/%d)", state_tag, skb_len, ret);
+					BTMTK_ERR("FATAL: TX packet error!! (%u/%d)", skb_len, ret);
 					break;
 				}
 
 				if (psm->sleep_flag) {
-					BTMTK_DBG("%s more data to send and wait for event, ignore sleep", state_tag);
+					BTMTK_DBG("more data to send and wait for event, ignore sleep");
 					psm->sleep_flag = FALSE;
 				}
 			}
@@ -1938,31 +1417,19 @@ int32_t btmtk_tx_thread(void * arg)
 			 *  [20191119]
 			 *  - add check if btif has pending data
 			 */
-			if (cif_dev->bt_state == FUNC_ON && cmd_list_isempty() &&
+			if (bdev->bt_state == FUNC_ON && cmd_list_isempty() &&
 			   psm->sleep_flag && !psm->force_on) {
-
-				// wait if btif tx is not finish yet
-				for (ii = 0; ii < 5; ii++) {
-					if (mtk_btif_is_tx_complete(g_btif_id) > 0)
-						break;
-					else
-						usleep_range(USLEEP_1MS_L, USLEEP_1MS_H);
-					if (ii == 4)
-						BTMTK_INFO("%s mtk_btif_is_tx_complete run 5 times", state_tag);
-				}
-				// re-run while loop
-				if (ii == 4) {
-					BTMTK_INFO("%s mtk_btif_is_tx_complete run 5 times", state_tag);
-					break;
-				}
-
 				sleep_ret = btmtk_cif_fw_own_set();
+
+				// todo: analyze btif_pending_data problem and add back to sleep condition check
+				if(g_btif_id)
+					btif_pending_data = mtk_btif_exp_rx_has_pending_data(g_btif_id);
+				else
+					btif_pending_data = FALSE;
+				BTMTK_DBG("%s: btif_pending_data[%d]", __func__, btif_pending_data);
+
 				if (sleep_ret) {
-					if (cif_dev->bt_state == FUNC_ON) {
-						BTMTK_ERR("%s FATAL: btmtk_cif_fw_own_set error!! going to reset", state_tag);
-						bt_trigger_reset();
-					} else
-						BTMTK_WARN("%s bt_state [%d] is not FUNC_ON, skip reset", state_tag, cif_dev->bt_state);
+					BTMTK_ERR("FATAL: bgfsys_fw_own_set error!! remain on NORMAL_TR state");
 					break;
 				} else {
 					bt_enable_irq(BGF2AP_BTIF_WAKEUP_IRQ);
@@ -1981,46 +1448,3 @@ int32_t btmtk_tx_thread(void * arg)
 	return 0;
 }
 #endif
-
-/*******************************************************************************
-*                   BT FW LOG F U N C T I O N S
-********************************************************************************
-*/
-
-void btmtk_connsys_log_init(void)
-{
-	connsys_log_init(CONN_DEBUG_TYPE_BT);
-}
-
-void btmtk_connsys_log_register_event_cb(void (*func)(void))
-{
-	connsys_log_register_event_cb(CONN_DEBUG_TYPE_BT, func);
-}
-
-void btmtk_connsys_log_deinit(void)
-{
-	connsys_log_deinit(CONN_DEBUG_TYPE_BT);
-}
-
-ssize_t btmtk_connsys_log_read_to_user(char __user *buf, size_t count)
-{
-	return connsys_log_read_to_user(CONN_DEBUG_TYPE_BT, buf, count);
-}
-
-unsigned int btmtk_connsys_log_get_buf_size(void)
-{
-	return connsys_log_get_buf_size(CONN_DEBUG_TYPE_BT);
-}
-
-void btmtk_connsys_log_hold_sem(void)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	down(&cif_dev->halt_sem);
-}
-
-void btmtk_connsys_log_release_sem(void)
-{
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	up(&cif_dev->halt_sem);
-}
-

@@ -66,7 +66,7 @@ obj-$(CONFIG_GEN4M_SUPPORT) += $(MODULE_NAME).o
 endif
 #==============================================================================
 
-WLAN_CHIP_LIST:=-UMT6620 -UMT6628 -UMT5931 -UMT6630 -UMT6632 -UMT7663 -UCONNAC -USOC2_1X1 -USOC2_2X2 -UUT_TEST_MODE -UMT7915 -USOC3_0 -UMT7961
+WLAN_CHIP_LIST:=-UMT6620 -UMT6628 -UMT5931 -UMT6630 -UMT6632 -UMT7663 -UCONNAC -UCONNAC2X2 -UUT_TEST_MODE -UMT7915 -USOC3_0 -UMT7961
 # '-D' and '-U' options are processed in the order they are given on the command line.
 # All '-imacros file' and '-include file' options are processed after all '-D' and '-U' options.
 ccflags-y += $(WLAN_CHIP_LIST)
@@ -114,14 +114,9 @@ ccflags-y:=$(filter-out -UCONNAC,$(ccflags-y))
 ccflags-y += -DCONNAC
 endif
 
-ifneq ($(filter SOC2_1X1,$(MTK_COMBO_CHIP)),)
-ccflags-y:=$(filter-out -USOC2_1X1,$(ccflags-y))
-ccflags-y += -DSOC2_1X1
-endif
-
-ifneq ($(filter SOC2_2X2,$(MTK_COMBO_CHIP)),)
-ccflags-y:=$(filter-out -USOC2_2X2,$(ccflags-y))
-ccflags-y += -DSOC2_2X2
+ifneq ($(filter CONNAC2X2,$(MTK_COMBO_CHIP)),)
+ccflags-y:=$(filter-out -UCONNAC2X2,$(ccflags-y))
+ccflags-y += -DCONNAC2X2
 endif
 
 ifneq ($(findstring MT7915,$(MTK_COMBO_CHIP)),)
@@ -499,11 +494,8 @@ endif
 ifneq ($(filter CONNAC,$(MTK_COMBO_CHIP)),)
 CHIPS_OBJS += $(CHIPS)connac/connac.o
 endif
-ifneq ($(filter SOC2_1X1,$(MTK_COMBO_CHIP)),)
-CHIPS_OBJS += $(CHIPS)soc2_1x1/soc2_1x1.o
-endif
-ifneq ($(filter SOC2_2X2,$(MTK_COMBO_CHIP)),)
-CHIPS_OBJS += $(CHIPS)soc2_2x2/soc2_2x2.o
+ifneq ($(filter CONNAC2X2,$(MTK_COMBO_CHIP)),)
+CHIPS_OBJS += $(CHIPS)connac2x2/connac2x2.o
 endif
 ifneq ($(findstring MT7915,$(MTK_COMBO_CHIP)),)
 CHIPS_OBJS += $(CHIPS)mt7915/mt7915.o

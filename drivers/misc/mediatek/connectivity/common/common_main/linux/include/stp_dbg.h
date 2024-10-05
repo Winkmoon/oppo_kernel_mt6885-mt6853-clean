@@ -344,6 +344,10 @@ typedef struct stp_dbg_cpupcr_t {
 	UINT8 branchVer[STP_PATCH_BRANCH_SZIE];
 	UINT32 wifiVer;
 	UINT32 count;
+	UINT32 stop_flag;
+	UINT32 buffer[STP_DBG_CPUPCR_NUM];
+	UINT64 sec_buffer[STP_DBG_CPUPCR_NUM];
+	ULONG nsec_buffer[STP_DBG_CPUPCR_NUM];
 	UINT8 assert_info[STP_ASSERT_INFO_SIZE];
 	UINT32 fwTaskId;
 	UINT32 fwRrq;
@@ -354,6 +358,12 @@ typedef struct stp_dbg_cpupcr_t {
 	UINT8 keyword[STP_DBG_KEYWORD_SIZE];
 	OSAL_SLEEPABLE_LOCK lock;
 } STP_DBG_CPUPCR_T, *P_STP_DBG_CPUPCR_T;
+
+typedef struct stp_dbg_dmaregs_t {
+	UINT32 count;
+	UINT32 dmaIssue[DMA_REGS_MAX][STP_DBG_DMAREGS_NUM];
+	OSAL_SLEEPABLE_LOCK lock;
+} STP_DBG_DMAREGS_T, *P_STP_DBG_DMAREGS_T;
 
 typedef enum _ENUM_ASSERT_INFO_PARSER_TYPE_ {
 	STP_DBG_ASSERT_INFO = 0x0,
@@ -391,7 +401,8 @@ INT32 stp_dbg_dump_send_retry_handler(PINT8 tmp, INT32 len);
 VOID stp_dbg_set_coredump_timer_state(CORE_DUMP_STA state);
 INT32 stp_dbg_get_coredump_timer_state(VOID);
 INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd);
-
+INT32 stp_dbg_poll_dmaregs(UINT32 times, UINT32 sleep);
+INT32 stp_dbg_poll_cpupcr_ctrl(UINT32 en);
 INT32 stp_dbg_set_version_info(UINT32 chipid, PUINT8 pRomVer, PUINT8 pPatchVer, PUINT8 pPatchBrh);
 INT32 stp_dbg_set_wifiver(UINT32 wifiver);
 INT32 stp_dbg_set_host_assert_info(UINT32 drv_type, UINT32 reason, UINT32 en);
@@ -399,7 +410,8 @@ VOID stp_dbg_set_keyword(PINT8 keyword);
 UINT32 stp_dbg_get_host_trigger_assert(VOID);
 INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE issue_type);
 INT32 stp_dbg_cpupcr_infor_format(PUINT8 buf, UINT32 max_len);
-
+INT32 stp_dbg_dump_cpupcr_reg_info(PUINT8 buf, UINT32 consys_lp_reg);
+VOID stp_dbg_clear_cpupcr_reg_info(VOID);
 PUINT8 stp_dbg_id_to_task(UINT32 id);
 VOID stp_dbg_reset(VOID);
 

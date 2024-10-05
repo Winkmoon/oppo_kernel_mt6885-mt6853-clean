@@ -48,6 +48,7 @@
 #include "psm_core.h"
 #include "stp_sdio.h"
 #include "stp_dbg.h"
+#include "wmt_step.h"
 #include <linux/workqueue.h>
 #include <linux/rtc.h>
 
@@ -106,7 +107,6 @@ static struct assert_work_st wmt_assert_work;
 
 static INT32 g_bt_no_acl_link = 1;
 static INT32 g_bt_no_br_acl_link = 1;
-static atomic_t g_AdieWorkable = ATOMIC_INIT(1);
 
 #define CONSYS_MET_WAIT	(1000*10) /* ms */
 #define MET_DUMP_MAX_NUM (1)
@@ -411,8 +411,6 @@ INT32 wmt_lib_init(VOID)
 		WMT_INFO_FUNC("ldo(%d)rst(%d)on(%d)off(%d)rtc(%d)\n", pwrSeqTime.ldoStableTime,
 				pwrSeqTime.rstStableTime, pwrSeqTime.onStableTime,
 				pwrSeqTime.offStableTime, pwrSeqTime.rtcStableTime);
-		if (gDevWmt.rWmtGenConf.vcn33_1_voltage != 0)
-			mtk_wcn_consys_set_vcn33_1_voltage(gDevWmt.rWmtGenConf.vcn33_1_voltage);
 		iRet = wmt_plat_init(&pwrSeqTime, gDevWmt.rWmtGenConf.co_clock_flag & 0x0f);
 	} else {
 		WMT_ERR_FUNC("no pwr on seq and clk par found\n");
@@ -594,6 +592,8 @@ INT32 wmt_lib_deinit(VOID)
 		osal_free(table->active_version);
 		table->active_version = NULL;
 	}
+
+	WMT_STEP_DEINIT_FUNC();
 
 	return iResult;
 }
@@ -1077,11 +1077,6 @@ VOID wmt_lib_set_bt_link_status(INT32 type, INT32 value)
 		g_bt_no_br_acl_link = value;
 }
 
-PVOID wmt_lib_consys_clock_get_regmap(VOID)
-{
-	return mtk_wcn_consys_clock_get_regmap();
-}
-
 /*
  * Allow BT to reset as long as one of the conditions is true.
  * 1. no ACL link
@@ -1092,13 +1087,13 @@ static INT32 wmt_lib_is_bt_able_to_reset(VOID)
 	if (g_bt_no_acl_link)
 		return 1;
 	else if (g_bt_no_br_acl_link) {
-		struct timespec64 time;
+		struct timeval time;
 		ULONG local_time;
 		struct rtc_time tm;
 
 		osal_do_gettimeofday(&time);
 		local_time = (ULONG)(time.tv_sec - (sys_tz.tz_minuteswest * 60));
-		rtc_time64_to_tm(local_time, &tm);
+		rtc_time_to_tm(local_time, &tm);
 		if (tm.tm_hour == 2)
 			return 1;
 	}
@@ -1344,7 +1339,7 @@ static INT32 met_thread(void *pvData)
 	}
 	osal_memset(met_dump_buf, 0, MET_DUMP_SIZE);
 
-	emi_met_base = ioremap(emi_info->emi_ap_phy_addr + emi_met_offset, emi_met_size);
+	emi_met_base = ioremap_nocache(emi_info->emi_ap_phy_addr + emi_met_offset, emi_met_size);
 	if (!emi_met_base) {
 		osal_free(met_dump_buf);
 		WMT_ERR_FUNC("met emi ioremap fail\n");
@@ -1808,15 +1803,6 @@ UINT32 wmt_lib_get_icinfo(ENUM_WMT_CHIPINFO_TYPE_T index)
 
 }
 
-UINT32 wmt_lib_get_adie_workable(VOID)
-{
-	return atomic_read(&g_AdieWorkable);
-}
-
-VOID wmt_lib_set_adie_workable(UINT32 workable)
-{
-	atomic_set(&g_AdieWorkable, ((workable > 0) ? 1 : 0));
-}
 
 PUINT8 wmt_lib_def_patch_name(VOID)
 {
@@ -2409,7 +2395,6 @@ ENUM_WMTRSTRET_TYPE_T wmt_lib_cmb_rst(ENUM_WMTRSTSRC_TYPE_T src)
 		retval = WMTRSTRET_FAIL;
 		goto rstDone;
 	}
-
 	/* wakeup blocked opid */
 	pOp = wmt_lib_get_current_op(pDevWmt);
 	if (osal_op_is_wait_for_signal(pOp))
@@ -2461,7 +2446,6 @@ rstDone:
 	osal_clear_bit(WMT_STAT_RST_ON, &pDevWmt->state);
 	chip_reset_only = 0;
 	mtk_wcn_consys_sleep_info_restore();
-
 	return retval;
 }
 
@@ -2644,11 +2628,7 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset, UINT8 *buf, UI
 		if (!pAddr) {
 			WMT_ERR_FUNC("wmt-lib: get EMI virtual base address fail\n");
 		} else {
-			#ifndef OPLUS_BUG_STABILITY
-			//Pan.Zhang@CONNECTIVITY.WIFI.BASE.LOG.1120881, 2017/09/27,
-			//Remove for reduce useless log.
 			WMT_INFO_FUNC("vir addr(0x%p)\n", pAddr);
-			#endif /* OPLUS_BUG_STABILITY */
 			osal_memcpy_fromio(&buf[0], pAddr, len);
 		}
 	} else {
@@ -2682,11 +2662,7 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset, UINT8 *buf, UI
 			if (!pAddr) {
 				WMT_ERR_FUNC("wmt-lib: get EMI virtual base address fail\n");
 			} else {
-				#ifndef OPLUS_BUG_STABILITY
-				//Pan.Zhang@CONNECTIVITY.WIFI.BASE.LOG.1120881, 2017/09/27,
-				//Remove for reduce useless log.
 				WMT_INFO_FUNC("vir addr(0x%p)\n", pAddr);
-				#endif /* OPLUS_BUG_STABILITY */
 				osal_memcpy_fromio(&buf[0], pAddr, len);
 			}
 		}
@@ -2725,6 +2701,22 @@ PUINT8 wmt_lib_get_cpupcr_xml_format(PUINT32 pLen)
 
 	WMT_INFO_FUNC("%s", g_cpupcr_buf);
 
+	return &g_cpupcr_buf[0];
+}
+
+
+/**
+ * called by wmt_dev wmt_dev_proc_for_dump_info_read
+ */
+PUINT8 wmt_lib_get_cpupcr_reg_info(PUINT32 pLen, PUINT32 consys_reg)
+{
+	osal_memset(&g_cpupcr_buf[0], 0, WMT_STP_CPUPCR_BUF_SIZE);
+	if (consys_reg != NULL)
+		*pLen += stp_dbg_dump_cpupcr_reg_info(g_cpupcr_buf, consys_reg[1]);
+	else
+		*pLen += osal_sprintf(g_cpupcr_buf + *pLen, "0\n");
+	WMT_INFO_FUNC("print buffer,len(%d):\n\n", *pLen);
+	WMT_INFO_FUNC("%s", g_cpupcr_buf);
 	return &g_cpupcr_buf[0];
 }
 
@@ -2783,6 +2775,7 @@ INT32 wmt_lib_trigger_assert_keyword(ENUM_WMTDRV_TYPE_T type, UINT32 reason, PUI
 		WMT_INFO_FUNC("Can't lock assert mutex which might be held by another trigger assert procedure.\n");
 		return iRet;
 	}
+
 	wmt_core_set_coredump_state(DRV_STS_FUNC_ON);
 
 	ctrlData.ctrlId = (SIZE_T) WMT_CTRL_TRG_ASSERT;
@@ -3387,159 +3380,3 @@ INT32 wmt_lib_reg_readable_by_addr(SIZE_T addr)
 	return mtk_consys_check_reg_readable_by_addr(addr);
 }
 
-INT32 wmt_lib_dump_cpupcr(UINT32 times, UINT32 sleep_ms)
-{
-	P_OSAL_OP pOp;
-	MTK_WCN_BOOL bRet = MTK_WCN_BOOL_TRUE;
-	P_OSAL_SIGNAL pSignal;
-
-	pOp = wmt_lib_get_free_op();
-	if (!pOp) {
-		WMT_DBG_FUNC("get_free_op fail\n");
-		bRet = MTK_WCN_BOOL_FALSE;
-		return -1;
-	}
-
-	pSignal = &pOp->signal;
-	pOp->op.opId = WMT_OPID_DUMP_CPUPCR;
-	pOp->op.au4OpData[0] = (SIZE_T)times;
-	pOp->op.au4OpData[1] = (SIZE_T)sleep_ms;
-	pSignal->timeoutValue = MAX_WMT_OP_TIMEOUT;
-
-	bRet = wmt_lib_put_act_op(pOp);
-
-	if (bRet == MTK_WCN_BOOL_FALSE)
-		WMT_WARN_FUNC("WMT_OPID_DUMP_CPUPCR failed\n");
-
-	return 0;
-
-}
-
-INT32 wmt_lib_dump_pc_log(VOID)
-{
-	P_OSAL_OP pOp;
-	MTK_WCN_BOOL bRet = MTK_WCN_BOOL_TRUE;
-	P_OSAL_SIGNAL pSignal;
-
-	pOp = wmt_lib_get_free_op();
-	if (!pOp) {
-		WMT_DBG_FUNC("get_free_op fail\n");
-		bRet = MTK_WCN_BOOL_FALSE;
-		return -1;
-	}
-
-	pSignal = &pOp->signal;
-	pOp->op.opId = WMT_OPID_DUMP_PC_LOG;
-	pSignal->timeoutValue = MAX_WMT_OP_TIMEOUT;
-
-	bRet = wmt_lib_put_act_op(pOp);
-
-	if (bRet == MTK_WCN_BOOL_FALSE)
-		WMT_WARN_FUNC("WMT_OPID_DUMP_PC_LOG failed\n");
-
-	return 0;
-}
-
-INT32 wmt_lib_cmd_tx_timeout_dump(VOID)
-{
-	int ret;
-
-	ret = wmt_lib_power_lock_aquire();
-	if (ret != 0) {
-		WMT_ERR_FUNC("aquire power lock fail ret=[%d]", ret);
-		return -1;
-	}
-
-	if (wmt_lib_get_drv_status(WMTDRV_TYPE_WMT) == DRV_STS_POWER_OFF) {
-		wmt_lib_power_lock_release();
-		return 0;
-	}
-	WMT_INFO_FUNC("======================== ");
-	ret = mtk_wcn_consys_cmd_tx_timeout_dump();
-	wmt_lib_power_lock_release();
-
-	return ret;
-}
-
-INT32 wmt_lib_cmd_rx_timeout_dump(VOID)
-{
-	int ret;
-
-	ret = wmt_lib_power_lock_aquire();
-	if (ret != 0) {
-		WMT_ERR_FUNC("aquire power lock fail ret=[%d]", ret);
-		return -1;
-	}
-	if (wmt_lib_get_drv_status(WMTDRV_TYPE_WMT) == DRV_STS_POWER_OFF) {
-		wmt_lib_power_lock_release();
-		return 0;
-	}
-	WMT_INFO_FUNC("======================== ");
-	ret = mtk_wcn_consys_cmd_rx_timeout_dump();
-	wmt_lib_power_lock_release();
-
-	return ret;
-
-}
-
-INT32 wmt_lib_coredump_timeout_dump(VOID)
-{
-	int ret;
-
-	ret = wmt_lib_power_lock_aquire();
-	if (ret != 0) {
-		WMT_ERR_FUNC("aquire power lock fail ret=[%d]", ret);
-		return -1;
-	}
-	if (wmt_lib_get_drv_status(WMTDRV_TYPE_WMT) == DRV_STS_POWER_OFF) {
-		wmt_lib_power_lock_release();
-		return 0;
-	}
-	WMT_INFO_FUNC("======================== ");
-	ret = mtk_wcn_consys_coredump_timeout_dump();
-	wmt_lib_power_lock_release();
-
-	return ret;
-}
-
-INT32 wmt_lib_assert_timeout_dump(VOID)
-{
-	int ret;
-
-	ret = wmt_lib_power_lock_aquire();
-	if (ret != 0) {
-		WMT_ERR_FUNC("aquire power lock fail ret=[%d]", ret);
-		return -1;
-	}
-	if (wmt_lib_get_drv_status(WMTDRV_TYPE_WMT) == DRV_STS_POWER_OFF) {
-		wmt_lib_power_lock_release();
-		return 0;
-	}
-	WMT_INFO_FUNC("======================== ");
-	ret = mtk_wcn_consys_assert_timeout_dump();
-	wmt_lib_power_lock_release();
-
-	return ret;
-
-}
-
-INT32 wmt_lib_before_chip_reset_dump(VOID)
-{
-	int ret;
-
-	ret = wmt_lib_power_lock_aquire();
-	if (ret != 0) {
-		WMT_ERR_FUNC("aquire power lock fail ret=[%d]", ret);
-		return -1;
-	}
-
-	if (wmt_lib_get_drv_status(WMTDRV_TYPE_WMT) == DRV_STS_POWER_OFF) {
-		wmt_lib_power_lock_release();
-		return 0;
-	}
-	WMT_INFO_FUNC("======================== ");
-	ret = mtk_wnc_consys_before_chip_reset_dump();
-	wmt_lib_power_lock_release();
-
-	return ret;
-}

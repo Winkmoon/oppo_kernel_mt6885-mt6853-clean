@@ -16,13 +16,6 @@
 
 #include <linux/version.h>
 
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-#include <linux/device.h>
-#include <linux/pm_wakeup.h>
-#else
-#include <linux/wakelock.h>
-#endif
-
 #include "fm_typedef.h"
 
 /**
@@ -206,15 +199,6 @@ extern signed int fm_flag_event_put(struct fm_flag_event *thiz);
 })
 
 /*
- * FM wake lock
- */
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-#define FM_WAKE_LOCK_T struct wakeup_source
-#else
-#define FM_WAKE_LOCK_T struct wake_lock
-#endif
-
-/*
  * FM lock mechanism
  */
 struct fm_lock {
@@ -287,7 +271,6 @@ struct fm_timer {
 	unsigned char tx_pwr_ctrl_en;
 	unsigned char tx_rtc_ctrl_en;
 	unsigned char tx_desense_en;
-	struct fm_lock *lock;
 
 	/* timer methods */
 #if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
@@ -343,18 +326,6 @@ extern struct fm_workthread *fm_workthread_create(const signed char *name);
 extern signed int fm_workthread_get(struct fm_workthread *thiz);
 
 extern signed int fm_workthread_put(struct fm_workthread *thiz);
-
-/*
- * FM wake lock mechanism
- */
-
-extern FM_WAKE_LOCK_T *fm_wakelock_create(const signed char *name);
-
-extern void fm_wakelock_destroy(FM_WAKE_LOCK_T *lock);
-
-extern void fm_wakelock_get(FM_WAKE_LOCK_T *lock);
-
-extern void fm_wakelock_put(FM_WAKE_LOCK_T *lock);
 
 signed int fm_delayms(unsigned int data);
 

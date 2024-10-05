@@ -44,7 +44,7 @@
 
 
 #if (defined(CONFIG_MTK_GMO_RAM_OPTIMIZE) && !defined(CONFIG_MTK_ENG_BUILD))
-#define OSAL_OP_DATA_SIZE   16
+#define OSAL_OP_DATA_SIZE   8
 #else
 #define OSAL_OP_DATA_SIZE   32
 #endif
@@ -404,7 +404,7 @@ INT32 osal_test_and_clear_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData);
 INT32 osal_test_and_set_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData);
 
 INT32 osal_gettimeofday(PINT32 sec, PINT32 usec);
-void osal_do_gettimeofday(struct timespec64 *tv);
+void osal_do_gettimeofday(struct timeval *tv);
 INT32 osal_printtimeofday(const PUINT8 prefix);
 VOID osal_get_local_time(PUINT64 sec, PULONG nsec);
 UINT64 osal_elapsed_us(UINT64 ts, ULONG usec);

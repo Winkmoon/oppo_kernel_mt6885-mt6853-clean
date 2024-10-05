@@ -49,6 +49,7 @@
 UINT32 gStpDbgLogOut;
 UINT32 gStpDbgDumpType = STP_DBG_PKT;
 INT32 gStpDbgDbgLevel = STP_DBG_LOG_INFO;
+static CONSYS_STATE_DMP_INFO g_dmp_info;
 
 MTKSTP_DBG_T *g_stp_dbg;
 
@@ -97,6 +98,8 @@ static INT32 num_bind_process;
 static pid_t bind_pid[MAX_BIND_PROCESS];
 static P_WCN_CORE_DUMP_T g_core_dump;
 static P_STP_DBG_CPUPCR_T g_stp_dbg_cpupcr;
+/* just show in log at present */
+static P_STP_DBG_DMAREGS_T g_stp_dbg_dmaregs;
 
 static VOID stp_dbg_core_dump_timeout_handler(timer_handler_arg arg);
 static VOID stp_dbg_dump_emi_timeout_handler(timer_handler_arg arg);
@@ -129,6 +132,8 @@ static INT32 stp_dbg_nl_reset(struct sk_buff *skb, struct genl_info *info);
 static _osal_inline_ INT32 stp_dbg_parser_assert_str(PINT8 str, ENUM_ASSERT_INFO_PARSER_TYPE type);
 static _osal_inline_ P_STP_DBG_CPUPCR_T stp_dbg_cpupcr_init(VOID);
 static _osal_inline_ VOID stp_dbg_cpupcr_deinit(P_STP_DBG_CPUPCR_T pCpupcr);
+static _osal_inline_ P_STP_DBG_DMAREGS_T stp_dbg_dmaregs_init(VOID);
+static _osal_inline_ VOID stp_dbg_dmaregs_deinit(P_STP_DBG_DMAREGS_T pDmaRegs);
 
 INT32 __weak mtk_btif_rxd_be_blocked_flag_get(VOID)
 {
@@ -1454,7 +1459,7 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 			      INT32 crc, INT32 dir, INT32 len, INT32 dbg_type)
 {
 
-	struct timespec64 now;
+	struct timeval now;
 	UINT64 ts;
 	ULONG nsec;
 
@@ -1471,7 +1476,7 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 	hdr->ack = ack;
 	hdr->seq = seq;
 	hdr->sec = now.tv_sec;
-	hdr->usec = now.tv_nsec / NSEC_PER_USEC;
+	hdr->usec = now.tv_usec;
 	hdr->crc = crc;
 	hdr->dir = dir;	/* rx */
 	hdr->dmy = 0xffffffff;
@@ -1816,7 +1821,7 @@ static _osal_inline_ INT32 stp_dbg_parser_assert_str(PINT8 str, ENUM_ASSERT_INFO
 	INT32 remain_array_len = 0;
 
 	PUINT8 parser_sub_string[] = {
-		"{ASSERT} ",
+		"<ASSERT> ",
 		"id=",
 		"isr=",
 		"irq=",
@@ -2059,13 +2064,39 @@ static _osal_inline_ VOID stp_dbg_cpupcr_deinit(P_STP_DBG_CPUPCR_T pCpupcr)
 	}
 }
 
+static _osal_inline_ P_STP_DBG_DMAREGS_T stp_dbg_dmaregs_init(VOID)
+{
+	P_STP_DBG_DMAREGS_T pDmaRegs = NULL;
+
+	pDmaRegs = (P_STP_DBG_DMAREGS_T) osal_malloc(osal_sizeof(STP_DBG_DMAREGS_T));
+	if (!pDmaRegs) {
+		STP_DBG_PR_ERR("stp dbg dmareg allocate memory fail!\n");
+		return NULL;
+	}
+
+	osal_memset(pDmaRegs, 0, osal_sizeof(STP_DBG_DMAREGS_T));
+
+	osal_sleepable_lock_init(&pDmaRegs->lock);
+
+	return pDmaRegs;
+}
+
+static VOID stp_dbg_dmaregs_deinit(P_STP_DBG_DMAREGS_T pDmaRegs)
+{
+	if (pDmaRegs) {
+		osal_sleepable_lock_deinit(&pDmaRegs->lock);
+		osal_free(pDmaRegs);
+		pDmaRegs = NULL;
+	}
+}
+
 /*
  *	who call this ?
  *	- stp_dbg_soc_paged_dump
  *		generate coredump and coredump timeout
- *	- wmt_dbg_poll_cpupcr                          --> debug only, removed
+ *	- wmt_dbg_poll_cpupcr
  *		dump cpupcr through command
- *	- mtk_stp_dbg_poll_cpupcr (should remove this) --> removed
+ *	- mtk_stp_dbg_poll_cpupcr (should remove this)
  *		export to other drivers
  *	- _stp_btm_handler
  *		coredump timeout
@@ -2077,20 +2108,231 @@ static _osal_inline_ VOID stp_dbg_cpupcr_deinit(P_STP_DBG_CPUPCR_T pCpupcr)
  */
 INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 {
+	INT32 i = 0;
+	UINT32 value = 0x0;
 	ENUM_WMT_CHIP_TYPE chip_type;
+	UINT8 cccr_value = 0x0;
+	INT32 chip_id = -1;
+	INT32 i_ret = 0;
+	INT32 count = 0;
+
+	if (!g_stp_dbg_cpupcr) {
+		STP_DBG_PR_ERR("NULL reference pointer\n");
+		return -1;
+	}
 
 	chip_type = wmt_detect_get_chip_type();
 
+	if (times > STP_DBG_CPUPCR_NUM)
+		times = STP_DBG_CPUPCR_NUM;
+
 	switch (chip_type) {
 	case WMT_CHIP_TYPE_COMBO:
-		stp_dbg_combo_poll_cpupcr(times, sleep, cmd);
+		osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+		for (i = 0; i < times; i++) {
+			stp_sdio_rw_retry(HIF_TYPE_READL, STP_SDIO_RETRY_LIMIT,
+					g_stp_sdio_host_info.sdio_cltctx, SWPCDBGR, &value, 0);
+			g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count] = value;
+			osal_get_local_time(&(g_stp_dbg_cpupcr->sec_buffer[g_stp_dbg_cpupcr->count]),
+					&(g_stp_dbg_cpupcr->nsec_buffer[g_stp_dbg_cpupcr->count]));
+			if (sleep > 0)
+				osal_sleep_ms(sleep);
+			g_stp_dbg_cpupcr->count++;
+			if (g_stp_dbg_cpupcr->count >= STP_DBG_CPUPCR_NUM)
+				g_stp_dbg_cpupcr->count = 0;
+		}
+		osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 		break;
 	case WMT_CHIP_TYPE_SOC:
-		stp_dbg_soc_poll_cpupcr(times, sleep, cmd);
+		if (times > WMT_CORE_DMP_CPUPCR_NUM)
+			times = WMT_CORE_DMP_CPUPCR_NUM;
+		if (wmt_lib_dmp_consys_state(&g_dmp_info, times, sleep) == MTK_WCN_BOOL_TRUE) {
+			osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+			for (i = 0; i < times; i++) {
+				g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count] = g_dmp_info.cpu_pcr[i];
+				osal_get_local_time(&(g_stp_dbg_cpupcr->sec_buffer[g_stp_dbg_cpupcr->count]),
+					&(g_stp_dbg_cpupcr->nsec_buffer[g_stp_dbg_cpupcr->count]));
+				g_stp_dbg_cpupcr->count++;
+				if (g_stp_dbg_cpupcr->count >= STP_DBG_CPUPCR_NUM)
+					g_stp_dbg_cpupcr->count = 0;
+			}
+			osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+		}
 		break;
 	default:
 		STP_DBG_PR_INFO("error chip type(%d)\n", chip_type);
 	}
+
+	if (cmd) {
+		UINT8 str[DBG_LOG_STR_SIZE] = {""};
+		PUINT8 p = str;
+		INT32 str_len = 0;
+
+		for (i = 0; i < STP_DBG_CPUPCR_NUM; i++) {
+			if (g_stp_dbg_cpupcr->sec_buffer[i] == 0 &&
+			    g_stp_dbg_cpupcr->nsec_buffer[i] == 0)
+				continue;
+
+			count++;
+			if (count % 4 != 0) {
+				str_len = osal_sprintf(p, "%llu.%06lu/0x%08x;",
+						       g_stp_dbg_cpupcr->sec_buffer[i],
+						       g_stp_dbg_cpupcr->nsec_buffer[i],
+						       g_stp_dbg_cpupcr->buffer[i]);
+				p += str_len;
+			} else {
+				str_len = osal_sprintf(p, "%llu.%06lu/0x%08x;",
+						       g_stp_dbg_cpupcr->sec_buffer[i],
+						       g_stp_dbg_cpupcr->nsec_buffer[i],
+						       g_stp_dbg_cpupcr->buffer[i]);
+				STP_DBG_PR_INFO("TIME/CPUPCR: %s\n", str);
+				p = str;
+			}
+		}
+		if (count % 4 != 0)
+			STP_DBG_PR_INFO("TIME/CPUPCR: %s\n", str);
+
+		if (wmt_lib_power_lock_trylock()) {
+			if (chip_type == WMT_CHIP_TYPE_SOC && wmt_lib_reg_readable()) {
+				STP_DBG_PR_INFO("CONNSYS cpu:0x%x/bus:0x%x/dbg_cr1:0x%x/dbg_cr2:0x%x/EMIaddr:0x%x\n",
+					  stp_dbg_soc_read_debug_crs(CONNSYS_CPU_CLK),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_BUS_CLK),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR1),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR2),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_EMI_REMAP));
+			}
+			wmt_lib_power_lock_release();
+		}
+
+		chip_id = mtk_wcn_wmt_chipid_query();
+		if (chip_id == 0x6632) {
+			for (i = 0; i < 8; i++) {
+				i_ret = mtk_wcn_hif_sdio_f0_readb(g_stp_sdio_host_info.sdio_cltctx,
+						CCCR_F8 + i, &cccr_value);
+				if (i_ret)
+					STP_DBG_PR_ERR("read CCCR fail(%d), address(0x%x)\n",
+							i_ret, CCCR_F8 + i);
+				else
+					STP_DBG_PR_INFO("read CCCR value(0x%x), address(0x%x)\n",
+							cccr_value, CCCR_F8 + i);
+				cccr_value = 0x0;
+			}
+		}
+		/* Need in platform code - mtxxxx.c to provide function implementation */
+		mtk_wcn_consys_hang_debug();
+	}
+	if (chip_type == WMT_CHIP_TYPE_COMBO) {
+		STP_DBG_PR_INFO("dump sdio register for debug\n");
+		mtk_stp_dump_sdio_register();
+	}
+	return 0;
+}
+
+INT32 stp_dbg_dump_cpupcr_reg_info(PUINT8 buf, UINT32 consys_lp_reg)
+{
+	INT32 i = 0;
+	INT32 count = 0;
+	UINT32 len = 0;
+
+	/* never retrun negative value */
+	if (!g_stp_dbg_cpupcr || !buf) {
+		STP_DBG_PR_DBG("NULL pointer, g_stp_dbg_cpupcr:%p, buf:%p\n",
+				g_stp_dbg_cpupcr, buf);
+		return 0;
+	}
+
+	for (i = 0; i < STP_DBG_CPUPCR_NUM; i++) {
+		if (g_stp_dbg_cpupcr->sec_buffer[i] == 0 &&
+				g_stp_dbg_cpupcr->nsec_buffer[i] == 0)
+			continue;
+		count++;
+		if (count == 1)
+			len += osal_sprintf(buf + len, "0x%08x", g_stp_dbg_cpupcr->buffer[i]);
+		else
+			len += osal_sprintf(buf + len, ";0x%08x", g_stp_dbg_cpupcr->buffer[i]);
+	}
+
+	if (count == 0)
+		len += osal_sprintf(buf + len, "0x%08x\n", consys_lp_reg);
+	else
+		len += osal_sprintf(buf + len, ";0x%08x\n", consys_lp_reg);
+
+	stp_dbg_clear_cpupcr_reg_info();
+
+	return len;
+}
+
+VOID stp_dbg_clear_cpupcr_reg_info(VOID)
+{
+	if (osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock)) {
+		STP_DBG_PR_DBG("lock failed\n");
+		return;
+	}
+
+	osal_memset(&g_stp_dbg_cpupcr->buffer[0], 0, STP_DBG_CPUPCR_NUM);
+	g_stp_dbg_cpupcr->count = 0;
+	g_stp_dbg_cpupcr->host_assert_info.reason = 0;
+	g_stp_dbg_cpupcr->host_assert_info.drv_type = 0;
+	g_stp_dbg_cpupcr->issue_type = STP_FW_ISSUE_TYPE_INVALID;
+	g_stp_dbg_cpupcr->keyword[0] = '\0';
+	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+}
+
+INT32 stp_dbg_poll_dmaregs(UINT32 times, UINT32 sleep)
+{
+#if 0
+	INT32 i = 0;
+
+	if (!g_stp_dbg_dmaregs) {
+		STP_DBG_PR_ERR("NULL reference pointer\n");
+		return -1;
+	}
+
+	osal_lock_sleepable_lock(&g_stp_dbg_dmaregs->lock);
+
+	if (g_stp_dbg_dmaregs->count + times > STP_DBG_DMAREGS_NUM) {
+		if (g_stp_dbg_dmaregs->count > STP_DBG_DMAREGS_NUM) {
+			STP_DBG_PR_ERR("g_stp_dbg_dmaregs->count:%d must less than STP_DBG_DMAREGS_NUM:%d\n",
+				g_stp_dbg_dmaregs->count, STP_DBG_DMAREGS_NUM);
+			g_stp_dbg_dmaregs->count = 0;
+			STP_DBG_PR_ERR("g_stp_dbg_dmaregs->count be set default value 0\n");
+		}
+		times = STP_DBG_DMAREGS_NUM - g_stp_dbg_dmaregs->count;
+	}
+	if (times > STP_DBG_DMAREGS_NUM) {
+		STP_DBG_PR_ERR("times overflow, set default value:0\n");
+		times = 0;
+	}
+
+	for (i = 0; i < times; i++) {
+		INT32 k = 0;
+
+		for (; k < DMA_REGS_MAX; k++) {
+			STP_DBG_PR_INFO("times:%d,i:%d reg: %s, regs:%08x\n", times, i, dmaRegsStr[k],
+					  wmt_plat_read_dmaregs(k));
+			/* g_stp_dbg_dmaregs->dmaIssue[k][g_stp_dbg_dmaregs->count + i] =
+			 * wmt_plat_read_dmaregs(k);
+			 */
+		}
+		osal_sleep_ms(sleep);
+	}
+
+	g_stp_dbg_dmaregs->count += times;
+
+	osal_unlock_sleepable_lock(&g_stp_dbg_dmaregs->lock);
+#else
+	return 0;
+#endif
+}
+
+INT32 stp_dbg_poll_cpupcr_ctrl(UINT32 en)
+{
+	STP_DBG_PR_INFO("%s polling cpupcr\n", en == 0 ? "start" : "stop");
+
+	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+	g_stp_dbg_cpupcr->stop_flag = en;
+	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
 	return 0;
 }
 
@@ -2160,7 +2402,8 @@ VOID stp_dbg_set_keyword(PINT8 keyword)
 		else if (osal_strchr(keyword, '<') != NULL || osal_strchr(keyword, '>') != NULL)
 			STP_DBG_PR_INFO("Keyword has < or >, keywrod: %s\n", keyword);
 		else
-			osal_strncpy(&g_stp_dbg_cpupcr->keyword[0], keyword, osal_strlen(keyword));
+			osal_snprintf(g_stp_dbg_cpupcr->keyword,
+				sizeof(g_stp_dbg_cpupcr->keyword), "%s", keyword);
 	} else {
 		g_stp_dbg_cpupcr->keyword[0] = '\0';
 	}
@@ -2197,7 +2440,7 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 		return -1;
 	}
 
-	if (g_stp_dbg_cpupcr->issue_type != STP_FW_ISSUE_TYPE_INVALID &&
+	if (g_stp_dbg_cpupcr->issue_type &&
 	    g_stp_dbg_cpupcr->issue_type != STP_HOST_TRIGGER_COLLECT_FTRACE) {
 		STP_DBG_PR_ERR("assert information has been set up\n");
 		return -1;
@@ -2227,10 +2470,6 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 			for (i = 0; i < len; i++) {
 				if (tempbuf[i] == '\0')
 					tempbuf[i] = '?';
-				else if (tempbuf[i] == '<')
-					tempbuf[i] = '{';
-				else if (tempbuf[i] == '>')
-					tempbuf[i] = '}';
 			}
 
 			tempbuf[len] = '\0';
@@ -2342,6 +2581,7 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 INT32 stp_dbg_cpupcr_infor_format(PUINT8 buf, UINT32 max_len)
 {
 	UINT32 len = 0;
+	UINT32 i = 0;
 
 	/* never retrun negative value */
 	if (!g_stp_dbg_cpupcr || !buf) {
@@ -2453,8 +2693,15 @@ INT32 stp_dbg_cpupcr_infor_format(PUINT8 buf, UINT32 max_len)
 	}
 
 	len += osal_sprintf(buf + len, "<pctrace>");
-	STP_DBG_PR_INFO("stp-dbg:sub len2 for debug(%d)\n", len);
+	STP_DBG_PR_INFO("stp-dbg:sub len1 for debug(%d)\n", len);
 
+	if (!g_stp_dbg_cpupcr->count)
+		len += osal_sprintf(buf + len, "NULL");
+	else {
+		for (i = 0; i < g_stp_dbg_cpupcr->count; i++)
+			len += osal_sprintf(buf + len, "%08x,", g_stp_dbg_cpupcr->buffer[i]);
+	}
+	STP_DBG_PR_INFO("stp-dbg:sub len2 for debug(%d)\n", len);
 	len += osal_sprintf(buf + len, "</pctrace>\n\t\t\t");
 	len += osal_sprintf(buf + len,
 			"<extension>NULL</extension>\n\t\t</client>\n\t</hint>\n</main>\n");
@@ -2463,7 +2710,7 @@ INT32 stp_dbg_cpupcr_infor_format(PUINT8 buf, UINT32 max_len)
 	/* STP_DBG_PR_INFO("Format infor:\n%s\n",buf); */
 
 	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
-
+	osal_memset(&g_stp_dbg_cpupcr->buffer[0], 0, STP_DBG_CPUPCR_NUM);
 	g_stp_dbg_cpupcr->count = 0;
 	g_stp_dbg_cpupcr->host_assert_info.reason = 0;
 	g_stp_dbg_cpupcr->host_assert_info.drv_type = 0;
@@ -2498,6 +2745,16 @@ PUINT8 stp_dbg_id_to_task(UINT32 id)
 
 VOID stp_dbg_reset(VOID)
 {
+	if (g_stp_dbg_cpupcr) {
+		osal_memset(g_stp_dbg_cpupcr->buffer, 0, osal_sizeof(g_stp_dbg_cpupcr->buffer));
+		osal_memset(g_stp_dbg_cpupcr->sec_buffer, 0, osal_sizeof(g_stp_dbg_cpupcr->sec_buffer));
+		osal_memset(g_stp_dbg_cpupcr->nsec_buffer, 0, osal_sizeof(g_stp_dbg_cpupcr->nsec_buffer));
+	}
+
+	if (g_stp_dbg_dmaregs) {
+		g_stp_dbg_dmaregs->count = 0;
+		osal_memset(g_stp_dbg_dmaregs->dmaIssue, 0, osal_sizeof(g_stp_dbg_dmaregs->dmaIssue));
+	}
 }
 
 MTKSTP_DBG_T *stp_dbg_init(PVOID btm_half)
@@ -2541,6 +2798,11 @@ MTKSTP_DBG_T *stp_dbg_init(PVOID btm_half)
 		STP_DBG_PR_ERR("-ENOMEM stp_dbg_cpupcr_init fail!");
 		goto ERR_EXIT2;
 	}
+	g_stp_dbg_dmaregs = stp_dbg_dmaregs_init();
+	if (!g_stp_dbg_dmaregs) {
+		STP_DBG_PR_ERR("-ENOMEM stp_dbg_dmaregs_init fail!");
+		goto ERR_EXIT2;
+	}
 	return stp_dbg;
 
 ERR_EXIT2:
@@ -2557,7 +2819,7 @@ INT32 stp_dbg_deinit(MTKSTP_DBG_T *stp_dbg)
 	stp_dbg_core_dump_deinit(g_core_dump);
 
 	stp_dbg_cpupcr_deinit(g_stp_dbg_cpupcr);
-
+	stp_dbg_dmaregs_deinit(g_stp_dbg_dmaregs);
 	/* unbind with netlink */
 	stp_dbg_nl_deinit();
 

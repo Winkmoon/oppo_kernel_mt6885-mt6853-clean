@@ -6,16 +6,10 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/proc_fs.h>
-#include <linux/gpio.h>
-#include <linux/of.h>
-#include <linux/of_gpio.h>
-
 #include "btmtk_define.h"
+#include "btmtk_mt66xx_reg.h"
 #include "btmtk_chip_if.h"
-#include "btmtk_main.h"
 #include "conninfra.h"
-#include "connsys_debug_utility.h"
-#include "metlog.h"
 
 /*******************************************************************************
 *				 C O N S T A N T S
@@ -41,7 +35,6 @@ typedef struct {
 *			      P U B L I C   D A T A
 ********************************************************************************
 */
-bool g_bt_trace_pt = FALSE;
 
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S
@@ -72,31 +65,28 @@ static int bt_dbg_set_rt_thread(int par1, int par2, int par3);
 static int bt_dbg_get_bt_state(int par1, int par2, int par3);
 static int bt_dbg_rx_buf_control(int par1, int par2, int par3);
 static int bt_dbg_set_rt_thread_runtime(int par1, int par2, int par3);
-static int bt_dbg_fpga_test(int par1, int par2, int par3);
-static int bt_dbg_is_adie_work(int par1, int par2, int par3);
-static int bt_dbg_met_start_stop(int par1, int par2, int par3);
-static int bt_dbg_DynamicAdjustTxPower(int par1, int par2, int par3);
 static void bt_dbg_user_trx_proc(char *cmd_raw);
-static int bt_dbg_user_trx_cb(uint8_t *buf, int len);
-static int bt_dbg_trace_pt(int par1, int par2, int par3);
+static void bt_dbg_user_trx_cb(char *buf, int len);
 
-extern int32_t btmtk_set_wakeup(struct hci_dev *hdev, uint8_t need_wait);
+extern int32_t btmtk_send_data(struct hci_dev *hdev, uint8_t *buf, uint32_t count);
+extern int32_t btmtk_set_wakeup(struct hci_dev *hdev);
 extern int32_t btmtk_set_sleep(struct hci_dev *hdev, u_int8_t need_wait);
 extern void bt_trigger_reset(void);
-extern int32_t btmtk_set_power_on(struct hci_dev*, u_int8_t for_precal);
-extern int32_t btmtk_set_power_off(struct hci_dev*, u_int8_t for_precal);
+
+
 
 /*******************************************************************************
 *			     P R I V A T E   D A T A
 ********************************************************************************
 */
-extern struct btmtk_dev *g_sbdev;
+extern struct btmtk_dev *g_bdev;
 extern struct bt_dbg_st g_bt_dbg_st;
 static struct proc_dir_entry *g_bt_dbg_entry;
 static struct mutex g_bt_lock;
 static char g_bt_dump_buf[BT_DBG_DUMP_BUF_SIZE];
 static char *g_bt_dump_buf_ptr;
 static int g_bt_dump_buf_len;
+static bool g_bt_turn_on = FALSE;
 static bool g_bt_dbg_enable = FALSE;
 
 static const tBT_DEV_DBG_STRUCT bt_dev_dbg_struct[] = {
@@ -119,11 +109,6 @@ static const tBT_DEV_DBG_STRUCT bt_dev_dbg_struct[] = {
 	[0xe] = {bt_dbg_get_bt_state,		TRUE},
 	[0xf] = {bt_dbg_rx_buf_control,		TRUE},
 	[0x10] = {bt_dbg_set_rt_thread_runtime,		FALSE},
-	[0x11] = {bt_dbg_fpga_test,			TRUE},
-	[0x12] = {bt_dbg_is_adie_work,		TRUE},
-	[0x13] = {bt_dbg_met_start_stop,	FALSE},
-	[0x14] = {bt_dbg_DynamicAdjustTxPower,		FALSE},
-	[0x15] = {bt_dbg_trace_pt,		FALSE},
 };
 
 /*******************************************************************************
@@ -156,28 +141,19 @@ int bt_dbg_chip_rst(int par1, int par2, int par3)
 	return 0;
 }
 
-int bt_dbg_trace_pt(int par1, int par2, int par3)
-{
-	if(par2 == 0)
-		g_bt_trace_pt = FALSE;
-	else
-		g_bt_trace_pt = TRUE;
-	return 0;
-}
 
 int bt_dbg_read_chipid(int par1, int par2, int par3)
 {
 	return 0;
 }
 
-/* Read BGF SYS address (controller view) by 0x18001104 & 0x18900000 */
 int bt_dbg_reg_read(int par1, int par2, int par3)
 {
 	uint32_t *dynamic_remap_addr = NULL;
 	uint32_t *dynamic_remap_value = NULL;
 
 	/* TODO: */
-	dynamic_remap_addr = ioremap(0x18001104, 4);
+	dynamic_remap_addr = ioremap_nocache(0x18001104, 4);
 	if (dynamic_remap_addr) {
 		*dynamic_remap_addr = par2;
 		BTMTK_DBG("read address = [0x%08x]", par2);
@@ -187,7 +163,7 @@ int bt_dbg_reg_read(int par1, int par2, int par3)
 	}
 	iounmap(dynamic_remap_addr);
 
-	dynamic_remap_value = ioremap(0x18900000, 4);
+	dynamic_remap_value = ioremap_nocache(0x18900000, 4);
 	if (dynamic_remap_value)
 		BTMTK_INFO("%s: 0x%08x value = [0x%08x]", __func__, par2,
 							*dynamic_remap_value);
@@ -199,14 +175,13 @@ int bt_dbg_reg_read(int par1, int par2, int par3)
 	return 0;
 }
 
-/* Write BGF SYS address (controller view) by 0x18001104 & 0x18900000 */
 int bt_dbg_reg_write(int par1, int par2, int par3)
 {
 	uint32_t *dynamic_remap_addr = NULL;
 	uint32_t *dynamic_remap_value = NULL;
 
 	/* TODO: */
-	dynamic_remap_addr = ioremap(0x18001104, 4);
+	dynamic_remap_addr = ioremap_nocache(0x18001104, 4);
 	if (dynamic_remap_addr) {
 		*dynamic_remap_addr = par2;
 		BTMTK_DBG("write address = [0x%08x]", par2);
@@ -216,7 +191,7 @@ int bt_dbg_reg_write(int par1, int par2, int par3)
 	}
 	iounmap(dynamic_remap_addr);
 
-	dynamic_remap_value = ioremap(0x18900000, 4);
+	dynamic_remap_value = ioremap_nocache(0x18900000, 4);
 	if (dynamic_remap_value)
 		*dynamic_remap_value = par3;
 	else {
@@ -231,19 +206,17 @@ int bt_dbg_reg_write(int par1, int par2, int par3)
 int bt_dbg_ap_reg_read(int par1, int par2, int par3)
 {
 	uint32_t *remap_addr = NULL;
-	int ret_val = 0;
 
 	/* TODO: */
-	remap_addr = ioremap(par2, 4);
+	remap_addr = ioremap_nocache(par2, 4);
 	if (!remap_addr) {
 		BTMTK_ERR("ioremap [0x%08x] fail", par2);
 		return -1;
 	}
 
-	ret_val = *remap_addr;
-	BTMTK_INFO("%s: 0x%08x read value = [0x%08x]", __func__, par2, ret_val);
+	BTMTK_INFO("%s: 0x%08x value = [0x%08x]", __func__, par2, *remap_addr);
 	iounmap(remap_addr);
-	return ret_val;
+	return 0;
 }
 
 int bt_dbg_ap_reg_write(int par1, int par2, int par3)
@@ -251,14 +224,13 @@ int bt_dbg_ap_reg_write(int par1, int par2, int par3)
 	uint32_t *remap_addr = NULL;
 
 	/* TODO: */
-	remap_addr = ioremap(par2, 4);
+	remap_addr = ioremap_nocache(par2, 4);
 	if (!remap_addr) {
 		BTMTK_ERR("ioremap [0x%08x] fail", par2);
 		return -1;
 	}
 
 	*remap_addr = par3;
-	BTMTK_INFO("%s: 0x%08x write value = [0x%08x]", __func__, par2, par3);
 	iounmap(remap_addr);
 	return 0;
 }
@@ -284,11 +256,10 @@ int bt_dbg_set_rt_thread_runtime(int par1, int par2, int par3)
 	struct sched_param params;
 	int policy = 0;
 	int ret = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
 
 	/* reference parameter:
 		- normal: 0x10 0x01(SCHED_FIFO) 0x01
-		- rt_thd: 0x10 0x01(SCHED_FIFO) 0x50(MAX_RT_PRIO - 20)
+		- normal: 0x10 0x01(SCHED_FIFO) 0x50(MAX_RT_PRIO - 20)
 	*/
 	if (par2 > SCHED_DEADLINE || par3 > MAX_RT_PRIO) {
 		BTMTK_INFO("%s: parameter not allow!", __func__);
@@ -296,196 +267,18 @@ int bt_dbg_set_rt_thread_runtime(int par1, int par2, int par3)
 	}
 	policy = par2;
 	params.sched_priority = par3;
-	ret = sched_setscheduler(cif_dev->tx_thread, policy, &params);
+	ret = sched_setscheduler(g_bdev->tx_thread, policy, &params);
 	BTMTK_INFO("%s: ret[%d], policy[%d], sched_priority[%d]", __func__, ret, policy, params.sched_priority);
 
 	return 0;
 }
 
-int bt_dbg_fpga_test(int par1, int par2, int par3)
-{
-	/* reference parameter:
-		- 0x12 0x01(power on) 0x00
-		- 0x12 0x02(power off) 0x00
-	*/
-	BTMTK_INFO("%s: par2 = %d", __func__, par2);
-	switch (par2) {
-		case 1:
-			btmtk_set_power_on(g_sbdev->hdev, FALSE);
-			break;
-		case 2:
-			btmtk_set_power_off(g_sbdev->hdev, FALSE);
-			break;
-		default:
-			break;
-	}
-	BTMTK_INFO("%s: done", __func__);
-
-	return 0;
-}
-
-int bt_dbg_is_adie_work(int par1, int par2, int par3)
-{
-	int ret = 0, adie_state = 0;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-
-	if (cif_dev->bt_state == FUNC_ON) {
-		adie_state = 0; // power on a-die pass
-		goto end;
-	}
-
-	ret = conninfra_pwr_on(CONNDRV_TYPE_BT);
-	//if ((ret == CONNINFRA_POWER_ON_A_DIE_FAIL) || (ret == CONNINFRA_POWER_ON_D_DIE_FAIL))
-	if (ret != 0)
-		adie_state = 1; // power on a-die fail, may be evb without DTB
-	else {
-		adie_state = 0; // power on a-die pass
-		conninfra_pwr_off(CONNDRV_TYPE_BT);
-	}
-
-end:
-	BTMTK_INFO("%s: ret[%d], adie_state[%d]", __func__, ret, adie_state);
-	_bt_dbg_reset_dump_buf();
-	g_bt_dump_buf[0] = (adie_state == 0 ? '0' : '1'); // '0': adie pass, '1': adie fail
-	g_bt_dump_buf[1] = '\0';
-	g_bt_dump_buf_len = 2;
-	return 0;
-}
-
-int bt_dbg_met_start_stop(int par1, int par2, int par3)
-{
-	uint32_t val = 0, star_addr = 0, end_addr = 0;
-	int res = 0;
-	struct conn_metlog_info info;
-	phys_addr_t emi_base;
-
-	BTMTK_INFO("%s, par2 = %d", __func__, par2);
-	/* reference parameter:
-		- start: 0x11 0x01 0x00
-		- stop: 0x11 0x00 0x00
-	*/
-	if (par2 == 0x01) {
-		/*
-		// Set EMI Writing Range
-		bt_dbg_ap_reg_write(0, 0x1882140C, 0xF0027000); // BGF_ON_MET_START_ADDR
-		bt_dbg_ap_reg_write(0, 0x18821410, 0xF002EFFF); // BGF_ON_MET_END_ADDR
-		*/
-
-		// Set Ring Buffer Mode
-		val = bt_dbg_ap_reg_read(0, 0x18821404, 0);
-		bt_dbg_ap_reg_write(0, 0x18821404, val | 0x0001); // BGF_ON_MET_CTL1[0] = 0x01
-
-		// Set Sampling Rate
-		val = bt_dbg_ap_reg_read(0, 0x18821400, 0);
-		bt_dbg_ap_reg_write(0, 0x18821400, (val & 0xFFFF80FF) | 0x00001900); // BGF_ON_MET_CTL0[14:8] = 0x19
-
-		// Set Mask Signal
-		//bt_dbg_ap_reg_write(0, 0x18821400, (val & 0x0000FFFF) | 0x????0000); // BGF_ON_MET_CTL0[31:16] = ?
-
-		// Enable Connsys MET
-		val = bt_dbg_ap_reg_read(0, 0x18821400, 0);
-		bt_dbg_ap_reg_write(0, 0x18821400, (val & 0xFFFFFFFC) | 0x00000003); // BGF_ON_MET_CTL0[1:0] = 0x03
-
-		/* write parameters and start MET test */
-		conninfra_get_phy_addr(&emi_base, NULL);
-		info.type = CONNDRV_TYPE_BT;
-		info.read_cr = 0x18821418;
-		info.write_cr = 0x18821414;
-
-		// FW will write the star_addr & end_addr to cooresponding CRs when bt on
-		star_addr = bt_dbg_ap_reg_read(0, 0x1882140C, 0);
-		end_addr = bt_dbg_ap_reg_read(0, 0x18821410, 0);
-		BTMTK_INFO("%s: star_addr[0x%08x], end_addr[0x%08x]", __func__, star_addr, end_addr);
-
-		if (star_addr >= 0x00400000 && star_addr <= 0x0041FFFF) {
-			// met data on sysram
-			info.met_base_ap = 0x18440000 + star_addr;
-			info.met_base_fw = star_addr;
-		} else if (star_addr >= 0xF0000000 && star_addr <= 0xF3FFFFFF){
-			// met data on emi
-			info.met_base_ap = emi_base + MET_EMI_ADDR;
-			info.met_base_fw = 0xF0000000 + MET_EMI_ADDR;
-		} else {
-			// error case
-			BTMTK_ERR("%s: get unexpected met address!!", __func__);
-			return 0;
-		}
-
-		info.met_size = end_addr - star_addr + 1;
-		info.output_len = 32;
-		res = conn_metlog_start(&info);
-		BTMTK_INFO("%s: conn_metlog_start, result = %d", __func__, res);
-	} else {
-		// stop MET test
-		res = conn_metlog_stop(CONNDRV_TYPE_BT);
-		BTMTK_INFO("%s: conn_metlog_stop, result = %d", __func__, res);
-
-		// Disable Connsys MET
-		val = bt_dbg_ap_reg_read(0, 0x18821400, 0);
-		bt_dbg_ap_reg_write(0, 0x18821400, val & 0xFFFFFFFE); // BGF_ON_MET_CTL0[0] = 0x00
-	}
-	return 0;
-}
-
-int bt_dbg_DynamicAdjustTxPower_cb(uint8_t *buf, int len)
-{
-	BTMTK_INFO("%s", __func__);
-	bt_dbg_user_trx_cb(buf, len);
-	return 0;
-}
-
-int bt_dbg_DynamicAdjustTxPower(int par1, int par2, int par3)
-{
-	uint8_t mode = (uint8_t)par2;
-	int8_t set_val = (int8_t)par3;
-
-	/* reference parameter:
-		- query: 0x14 0x01(query) 0x00
-		- set:   0x14 0x02(set)   0x??(set_dbm_val)
-	*/
-	BTMTK_INFO("%s", __func__);
-	btmtk_inttrx_DynamicAdjustTxPower(mode, set_val, bt_dbg_DynamicAdjustTxPower_cb, TRUE);
-	return 0;
-}
-
-/*
-sample code to use gpio
-int bt_dbg_device_is_evb(int par1, int par2, int par3)
-{
-	struct device_node *node = NULL;
-	int gpio_addr = 0, gpio_val = 0;
-
-	node = of_find_compatible_node(NULL, NULL, "mediatek,evb_gpio");
-	gpio_addr = of_get_named_gpio(node, "evb_gpio", 0);
-	if (gpio_addr > 0)
-		gpio_val = gpio_get_value(gpio_addr); // 0x00: phone, 0x01: evb
-
-	BTMTK_INFO("%s: gpio_addr[%d], gpio_val[%d]", __func__, gpio_addr, gpio_val);
-	_bt_dbg_reset_dump_buf();
-	g_bt_dump_buf[0] = (gpio_val == 0 ? '0' : '1'); // 0x00: phone, 0x01: evb
-	g_bt_dump_buf[1] = '\0';
-	g_bt_dump_buf_len = 2;
-
-	return 0;
-}
-dts setting
-	evb_gpio: evb_gpio@1100c000 {
-		compatible = "mediatek,evb_gpio";
-		evb_gpio = <&pio 57 0x0>;
-	};
-*/
-
 int bt_dbg_get_bt_state(int par1, int par2, int par3)
 {
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	bool bt_state = 0;
-
 	// 0x01: bt on, 0x00: bt off
-	bt_state = (cif_dev->bt_state == FUNC_ON ? 1 : 0);
-
-	BTMTK_INFO("%s: bt_state[%d]", __func__, bt_state);
+	BTMTK_INFO("%s: g_bt_turn_on[%d]", __func__, g_bt_turn_on);
 	_bt_dbg_reset_dump_buf();
-	g_bt_dump_buf[0] = bt_state;
+	g_bt_dump_buf[0] = g_bt_turn_on;
 	g_bt_dump_buf[1] = '\0';
 	g_bt_dump_buf_len = 2;
 	return 0;
@@ -494,19 +287,18 @@ int bt_dbg_get_bt_state(int par1, int par2, int par3)
 int bt_dbg_force_bt_wakeup(int par1, int par2, int par3)
 {
 	int ret;
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
 
 	BTMTK_INFO("%s", __func__);
 
 	switch(par2) {
 	case 0:
-		cif_dev->psm.force_on = FALSE;
-		ret = btmtk_set_sleep(g_sbdev->hdev, TRUE);
+		g_bdev->psm.force_on = FALSE;
+		ret = btmtk_set_sleep(g_bdev->hdev, TRUE);
 		break;
 
 	case 1:
-		cif_dev->psm.force_on = TRUE;
-		ret = btmtk_set_wakeup(g_sbdev->hdev, TRUE);
+		g_bdev->psm.force_on = TRUE;
+		ret = btmtk_set_wakeup(g_bdev->hdev);
 		break;
 	default:
 		BTMTK_ERR("Not support");
@@ -565,7 +357,6 @@ ssize_t bt_dbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f
 	int ret = 0;
 	int dump_len;
 
-	BTMTK_INFO("%s: count[%zd]", __func__, count);
 	ret = mutex_lock_killable(&g_bt_lock);
 	if (ret) {
 		BTMTK_ERR("%s: dump_lock fail!!", __func__);
@@ -606,16 +397,26 @@ int bt_osal_strtol(const char *str, unsigned int adecimal, long *res)
 		return kstrtol(str, adecimal, res);
 }
 
-int bt_dbg_user_trx_cb(uint8_t *buf, int len)
+void bt_dbg_user_trx_cb(char *buf, int len)
 {
 	unsigned char *ptr = buf;
 	int i = 0;
+
+	// if this event is not the desire one, skip and reset buffer
+	if((buf[3] + (buf[4] << 8)) != g_bt_dbg_st.trx_opcode)
+		return;
+
+	// desire rx event is received, write to read buffer as string
+	BTMTK_INFO_RAW(buf, len, "%s: len[%d], RxEvt: ", __func__, len);
+	if((len + 1)*5 + 2 > BT_DBG_DUMP_BUF_SIZE)
+		return;
 
 	_bt_dbg_reset_dump_buf();
 	// write event packet type
 	if (snprintf(g_bt_dump_buf, 6, "0x04 ") < 0) {
 		BTMTK_INFO("%s: snprintf error", __func__);
 		goto end;
+
 	}
 	for (i = 0; i < len; i++) {
 		if (snprintf(g_bt_dump_buf + 5*(i+1), 6, "0x%02X ", ptr[i]) < 0) {
@@ -629,7 +430,8 @@ int bt_dbg_user_trx_cb(uint8_t *buf, int len)
 	g_bt_dump_buf_len = 5*len + 1;
 
 end:
-	return 0;
+	// complete trx process
+	complete(&g_bt_dbg_st.trx_comp);
 }
 
 void bt_dbg_user_trx_proc(char *cmd_raw)
@@ -655,9 +457,15 @@ void bt_dbg_user_trx_proc(char *cmd_raw)
 			hci_cmd[len++] = (unsigned char)tmp;
 		}
 	}
+	BTMTK_INFO_RAW(hci_cmd, len, "%s: len[%d], TxCmd: ", __func__, len);
 
 	// Send command and wait for command_complete event
-	btmtk_btif_internal_trx(hci_cmd, len, bt_dbg_user_trx_cb, TRUE, TRUE);
+	g_bt_dbg_st.trx_opcode = hci_cmd[1] + (hci_cmd[2] << 8);
+	g_bt_dbg_st.trx_enable = TRUE;
+	btmtk_send_data(g_bdev->hdev, hci_cmd, len);
+	if (!wait_for_completion_timeout(&g_bt_dbg_st.trx_comp, msecs_to_jiffies(2000)))
+		BTMTK_ERR("%s: wait event timeout!", __func__);
+	g_bt_dbg_st.trx_enable = FALSE;
 }
 
 ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
@@ -669,10 +477,6 @@ ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count,
 	long res = 0;
 	char* pToken = NULL;
 	char* pDelimiter = " \t";
-	struct btmtk_btif_dev *cif_dev = (struct btmtk_btif_dev *)g_sbdev->cif_dev;
-	bool bt_state = 0;
-
-	bt_state = (cif_dev->bt_state == FUNC_ON ? 1 : 0);
 
 	if (len <= 0 || len >= sizeof(buf)) {
 		BTMTK_ERR("%s: input handling fail!", __func__);
@@ -684,8 +488,8 @@ ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count,
 	if (copy_from_user(buf, buffer, len))
 		return -EFAULT;
 	buf[len] = '\0';
-	BTMTK_INFO("%s: bt_state[%d], dbg_enable[%d], len[%d]",
-		__func__, bt_state, g_bt_dbg_enable, (int)len);
+	BTMTK_INFO("%s: g_bt_turn_on[%d], dbg_enable[%d], len[%d], data = %s",
+		__func__, g_bt_turn_on, g_bt_dbg_enable, (int)len, buf);
 
 	/* Check debug function is enabled or not
 	 *   - not enable yet: user should enable it
@@ -710,7 +514,7 @@ ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count,
 
 	/* Mode 1: User trx flow: send command, get response */
 	if (0 == memcmp(buf, BT_DBG_USER_TRX_PREFIX, strlen(BT_DBG_USER_TRX_PREFIX))) {
-		if(!bt_state) // only work when bt on
+		if(!g_bt_turn_on) // only work when bt on
 			return len;
 		buf[len - 1] = '\0';
 		bt_dbg_user_trx_proc(buf + strlen(BT_DBG_USER_TRX_PREFIX));
@@ -731,7 +535,7 @@ ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count,
 	if (pToken != NULL) {
 		bt_osal_strtol(pToken, 16, &res);
 		y = (int)res;
-		BTMTK_INFO("%s: y = 0x%08x", __func__, y);
+		BTMTK_INFO("%s: y = 0x%08x\n\r", __func__, y);
 	} else {
 		y = 3000;
 		/*efuse, register read write default value */
@@ -752,7 +556,7 @@ ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count,
 
 	BTMTK_INFO("%s: x(0x%08x), y(0x%08x), z(0x%08x)", __func__, x, y, z);
 	if (ARRAY_SIZE(bt_dev_dbg_struct) > x && NULL != bt_dev_dbg_struct[x].func) {
-		if(!bt_state && !bt_dev_dbg_struct[x].turn_off_availavle) {
+		if(!g_bt_turn_on && !bt_dev_dbg_struct[x].turn_off_availavle) {
 			BTMTK_WARN("%s: command id(0x%08x) only work when bt on!", __func__, x);
 		} else {
 			(*bt_dev_dbg_struct[x].func) (x, y, z);
@@ -767,23 +571,18 @@ ssize_t bt_dbg_write(struct file *filp, const char __user *buffer, size_t count,
 int bt_dev_dbg_init(void)
 {
 	int i_ret = 0;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
-	static const struct proc_ops bt_dbg_fops = {
-		.proc_read = bt_dbg_read,
-		.proc_write = bt_dbg_write,
-	};
-#else
 	static const struct file_operations bt_dbg_fops = {
 		.owner = THIS_MODULE,
 		.read = bt_dbg_read,
 		.write = bt_dbg_write,
 	};
-#endif
 
 	// initialize debug function struct
 	g_bt_dbg_st.rt_thd_enable = FALSE;
+	g_bt_dbg_st.trx_enable = FALSE;
+	g_bt_dbg_st.trx_cb = bt_dbg_user_trx_cb;
 	g_bt_dbg_st.rx_buf_ctrl = TRUE;
+	init_completion(&g_bt_dbg_st.trx_comp);
 
 	g_bt_dbg_entry = proc_create(BT_DBG_PROCNAME, 0664, NULL, &bt_dbg_fops);
 	if (g_bt_dbg_entry == NULL) {
@@ -808,90 +607,9 @@ int bt_dev_dbg_deinit(void)
 	return 0;
 }
 
-/*******************************************************************************
-*                           bt host debug information for low power
-********************************************************************************
-*/
-#define BTHOST_INFO_MAX	16
-#define BTHOST_DESC_LEN 16
 
-struct bthost_info{
-	uint32_t		id; //0 for not used
-	char 		desc[BTHOST_DESC_LEN];
-	uint32_t		value;
-};
-struct bthost_info bthost_info_table[BTHOST_INFO_MAX];
-
-void bthost_debug_init(void)
+int bt_dev_dbg_set_state(bool turn_on)
 {
-	uint32_t i = 0;
-	for (i = 0; i < BTHOST_INFO_MAX; i++){
-		bthost_info_table[i].id = 0;
-		bthost_info_table[i].desc[0] = '\0';
-		bthost_info_table[i].value = 0;
-	}
+	g_bt_turn_on = turn_on;
+	return 0;
 }
-
-void bthost_debug_print(void)
-{
-	uint32_t i = 0;
-	uint32_t ret = 0;
-	uint8_t *pos = NULL, *end = NULL;
-	uint8_t dump_buffer[700]={0};
-
-	pos = &dump_buffer[0];
-	end = pos + 700 - 1;
-
-	ret = snprintf(pos, (end - pos + 1), "[bt host info] ");
-	pos += ret;
-
-	for (i = 0; i < BTHOST_INFO_MAX; i++){
-		if (bthost_info_table[i].id == 0){
-			ret = snprintf(pos, (end - pos + 1),"[%d-%d] not set", i, BTHOST_INFO_MAX);
-			if (ret < 0 || ret >= (end - pos + 1)){
-				BTMTK_ERR("%s: snprintf fail i[%d] ret[%d]", __func__, i, ret);
-				break;
-			}
-			pos += ret;
-			break;
-		}
-		else {
-			ret = snprintf(pos, (end - pos + 1),"[%d][%s : 0x%08x] ", i,
-			bthost_info_table[i].desc,
-			bthost_info_table[i].value);
-			if (ret < 0 || ret >= (end - pos + 1)){
-				BTMTK_ERR("%s: snprintf fail i[%d] ret[%d]", __func__, i, ret);
-				break;
-			}
-			pos += ret;
-		}
-	}
-	BTMTK_INFO("%s", dump_buffer);
-}
-
-void bthost_debug_save(uint32_t id, uint32_t value, char* desc)
-{
-	uint32_t i = 0;
-	if (id == 0) {
-		BTMTK_WARN("%s: id (%d) must > 0\n", __func__, id);
-		return;
-	}
-	for (i = 0; i < BTHOST_INFO_MAX; i++){
-		// if the id is existed, save to the same column
-		if (bthost_info_table[i].id == id){
-			bthost_info_table[i].value = value;
-			return;
-		}
-		// save to the new column
-		if (bthost_info_table[i].id == 0){
-			bthost_info_table[i].id = id;
-			strncpy(bthost_info_table[i].desc, desc, BTHOST_DESC_LEN - 1);
-			bthost_info_table[i].value = value;
-			return;
-		}
-	}
-	BTMTK_WARN("%s: no space for %d\n", __func__, id);
-}
-
-
-

@@ -4515,10 +4515,6 @@ uint32_t ServiceWlanOid(void *winfos,
 		if (prAdapter->rWifiVar.ucStaHe)
 			capability->ph_cap.protocol |= BIT(3);
 #endif /* (CFG_SUPPORT_802_11AX == 1) */
-#if (CFG_SUPPORT_802_11BE == 1)
-		if (prAdapter->rWifiVar.ucStaEht)
-			capability->ph_cap.protocol |= BIT(4);
-#endif /* (CFG_SUPPORT_802_11BE == 1) */
 
 		/* ph_cap.ant_num */
 		capability->ph_cap.ant_num = prAdapter->rWifiVar.ucNSS;
@@ -4541,31 +4537,19 @@ uint32_t ServiceWlanOid(void *winfos,
 		capability->ph_cap.channel_band = BIT(0);
 		if (!prAdapter->fgIsHw5GBandDisabled)
 			capability->ph_cap.channel_band |= BIT(1);
-		if (prTestWinfo->chip_cap.support_6g)
-			capability->ph_cap.channel_band |= BIT(2);
 
 		/* ph_cap.bandwidth */
 		capability->ph_cap.bandwidth = BITS(0, 1);
 		if (prAdapter->rWifiVar.ucStaVht)
 			capability->ph_cap.bandwidth |= BIT(2);
-		if (prTestWinfo->chip_id == 0x37) /* 6637 */
-			capability->ph_cap.bandwidth |= BITS(3, 4);
 
 		/* ph_cap.channel_band_dbdc */
-		if (prAdapter->rWifiVar.eDbdcMode == ENUM_DBDC_MODE_DISABLED) {
+		if (prAdapter->rWifiVar.eDbdcMode == ENUM_DBDC_MODE_DISABLED)
 			/* band0 (2.4G + 5G) */
-			capability->ph_cap.channel_band_dbdc = BIT(0)+BIT(1);
-
-			if (prTestWinfo->chip_cap.support_6g)
-				capability->ph_cap.channel_band_dbdc |= BIT(2);
-		} else {
+			capability->ph_cap.channel_band_dbdc = 0x00000003;
+		else
 			/* 6635: band0 (2.4G);  band1 (5G) */
-			capability->ph_cap.channel_band_dbdc = BIT(0)+BIT(17);
-
-			/* 6637: band0 (2.4G);	band1 (5G+6G) */
-			if (prTestWinfo->chip_cap.support_6g)
-				capability->ph_cap.channel_band_dbdc |= BIT(18);
-		}
+			capability->ph_cap.channel_band_dbdc = 0x00020001;
 
 		/* ext_cap.feature1: BIT0: AntSwap */
 #if CFG_SUPPORT_ANT_SWAP
@@ -4685,13 +4669,6 @@ uint32_t ServiceWlanOid(void *winfos,
 
 		return WLAN_STATUS_SUCCESS;
 
-	case OP_WLAN_OID_LIST_MODE:
-		pfnOidHandler = wlanoidListMode; /* List mode OID control */
-		fgRead = TRUE;
-		fgWaitResp = TRUE;
-		fgCmd = TRUE;
-		break;
-
 	case OP_WLAN_OID_NUM:
 	default:
 		return WLAN_STATUS_FAILURE;
@@ -4712,24 +4689,6 @@ uint32_t ServiceWlanOid(void *winfos,
 		/* 264 = 66 items * 4 bytes */
 		kalMemCopy(&prStatsData->mac_rx_fcs_err_cnt,
 		&(g_HqaRxStat.MAC_FCS_Err), 264);
-	}
-
-	if ((rsp_data) &&
-		(oidType == OP_WLAN_OID_LIST_MODE)) {
-		DBGLOG(RFTEST, WARN, "OP_WLAN_OID_LIST_MODE event\n");
-		DBGLOG_MEM8(RFTEST,
-					WARN,
-					&g_HqaListModeStatus,
-					sizeof(g_HqaListModeStatus));
-
-		kalMemCopy(rsp_data,
-					&g_HqaListModeStatus,
-					sizeof(g_HqaListModeStatus));
-		*u4BufLen = paramLen;
-
-		/* Prevent list mode command takes more than 2 seconds */
-		if (i4Status == WLAN_STATUS_FAILURE)
-			i4Status = WLAN_STATUS_SUCCESS;
 	}
 
 	return i4Status;
