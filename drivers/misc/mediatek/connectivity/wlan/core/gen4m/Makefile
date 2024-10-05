@@ -314,11 +314,11 @@ ifeq ($(CONFIG_MTK_WIFI_CONNINFRA_SUPPORT), y)
     ccflags-y += -DCFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT=1
     ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
         ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/include
-        ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/conninfra/core/include
-        ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/conninfra/core/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/core/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/core/include
         ccflags-y += -I$(src)/connsys/connac_2_0
-        ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/bt/mt66xx/include
-        ccflags-y += -I$(srctree)/drivers/misc/mediatekconnectivity/bt/mt66xx/include/btif
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/btif
         ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/platform/include
         ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/base/include
         ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility
