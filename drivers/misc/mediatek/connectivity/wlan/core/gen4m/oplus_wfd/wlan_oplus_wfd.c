@@ -21,6 +21,8 @@
 #include "wsys_cmd_handler_fw.h"
 #include <net/oplus/oplus_wfd_wlan.h>
 #include <linux/preempt.h>
+#define LOG_TAG "[oplus_wfd_mtk] %s line:%d "
+#define debug(fmt, args...) printk(LOG_TAG fmt, __FUNCTION__, __LINE__, ##args)
 
 #define BIT_SUPPORTED_PHY_NO_HT     1
 #define BIT_SUPPORTED_PHY_HT        2
