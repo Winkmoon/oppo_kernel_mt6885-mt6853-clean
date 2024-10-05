@@ -51,8 +51,6 @@ void sspm_ipi_timeout_cb(int ipi_id)
 
 	ipi_monitor_dump(&sspm_ipidev);
 
-	/* Connsys dump */
-	mtk_wcn_conninfra_conn_bus_dump();
 
 	BUG_ON(1);
 }
