@@ -53,7 +53,7 @@ obj-y += $(MODULE_NAME).o
 
 ###############################################################################
 
-KO_CODE_PATH := $(srctree)/drivers/misc/mediatek/connectivity/fmradio
+KO_CODE_PATH := $(if $(filter /%,$(src)),,$(srctree)/)$(src)
 $(info [fm_drv:Kbuild] src = $(src))
 $(info [fm_drv:Kbuild] KO_CODE_PATH = $(KO_CODE_PATH))
 
@@ -133,6 +133,8 @@ else
 endif
 
 
+ccflags-y += -I$(KO_CODE_PATH)/inc \
+             -I$(KO_CODE_PATH)/plat/inc
 
 $(FM_CHIP)-objs    += core/fm_module.o \
                 core/fm_main.o \
@@ -145,17 +147,18 @@ $(FM_CHIP)-objs    += core/fm_module.o \
                 core/fm_cmd.o \
                 core/fm_reg_utils.o
 
-    CONNINFRA_SRC_FOLDER := $(srctree)/drivers/misc/mediatek/connectivity/conninfra
+ifeq ($(CFG_BUILD_CONNAC2), true)
+    CONNINFRA_SRC_FOLDER := $(TOP)/vendor/mediatek/kernel_modules/connectivity/conninfra
+
     ccflags-y += -I$(CONNINFRA_SRC_FOLDER)/include
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/fmradio/plat/inc
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/fmradio/inc
-    WMT_SRC_FOLDER := $(srctree)/drivers/misc/mediatek/connectivity/common
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common/common_main/include
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common/common_main/linux/include
-    ifeq ($(CFG_BUILD_CONNAC2), true)
     ccflags-y += -DCFG_FM_CONNAC2=1
     $(FM_CHIP)-objs += plat/conn_infra.o
-    else
+else
+    WMT_SRC_FOLDER := $(TOP)/vendor/mediatek/kernel_modules/connectivity/common
+    WMT_INCLUDE_PATH := common_main
+
+    ccflags-y += -I$(WMT_SRC_FOLDER)/$(WMT_INCLUDE_PATH)/include \
+                 -I$(WMT_SRC_FOLDER)/$(WMT_INCLUDE_PATH)/linux/include
     ccflags-y += -DCFG_FM_CONNAC2=0
     $(FM_CHIP)-objs += plat/legacy_wmt.o
 endif

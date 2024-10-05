@@ -33,7 +33,7 @@
 */
 
 
-#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 
 #if (WMT_IDC_SUPPORT)
 #define CFG_WMT_LTE_COEX_HANDLING 1
@@ -82,7 +82,7 @@
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
-#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 
 typedef VOID (*MTK_WCN_STP_EVENT_CB) (VOID);
 typedef INT32 (*MTK_WCN_STP_IF_TX) (const PUINT8 data, const UINT32 size, PUINT32 written_size);
@@ -113,7 +113,7 @@ typedef enum {
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 
 /*****************************************************************************
 * FUNCTION

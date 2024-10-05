@@ -60,7 +60,7 @@ KBUILD_MODPOST_FAIL_ON_WARNINGS := y
 #ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/clkbuf_v1/$(MTK_PLATFORM)
 #ccflags-y += -I$(srctree)/drivers/devfreq
 ###############################################################################
-
+GPS_PLATFORM := v010
 MODULE_NAME := gps_drv_dl_$(GPS_PLATFORM)
 obj-m += $(MODULE_NAME).o
 
@@ -87,58 +87,58 @@ ccflags-y += -I$(GPS_SRC_FOLDER)/hal/inc
 ccflags-y += -I$(GPS_SRC_FOLDER)/hw/inc
 ccflags-y += -I$(GPS_SRC_FOLDER)/data_link_mock/mock/inc
 
-$(MODULE_NAME)-objs += gps_dl_context.o
-$(MODULE_NAME)-objs += gps_dl_module.o
-$(MODULE_NAME)-objs += lib/gps_dl_dma_buf.o
-$(MODULE_NAME)-objs += lib/gps_dl_lib_misc.o
-$(MODULE_NAME)-objs += lib/gps_dl_hist_rec.o
-$(MODULE_NAME)-objs += lib/gps_dl_hist_rec2.o
-$(MODULE_NAME)-objs += lib/gps_dl_time_tick.o
-$(MODULE_NAME)-objs += lib/gps_dl_name_list.o
+$(MODULE_NAME)-objs += ../../gps_dl_context.o
+$(MODULE_NAME)-objs += ../../gps_dl_module.o
+$(MODULE_NAME)-objs += ../../lib/gps_dl_dma_buf.o
+$(MODULE_NAME)-objs += ../../lib/gps_dl_lib_misc.o
+$(MODULE_NAME)-objs += ../../lib/gps_dl_hist_rec.o
+$(MODULE_NAME)-objs += ../../lib/gps_dl_hist_rec2.o
+$(MODULE_NAME)-objs += ../../lib/gps_dl_time_tick.o
+$(MODULE_NAME)-objs += ../../lib/gps_dl_name_list.o
 
-$(MODULE_NAME)-objs += hw/gps_dl_hw_conn_infra.o
-$(MODULE_NAME)-objs += hw/gps_dl_hw_semaphore.o
-$(MODULE_NAME)-objs += hw/gps_dl_hw_bgf.o
-$(MODULE_NAME)-objs += hw/gps_dl_hw_gps.o
-$(MODULE_NAME)-objs += hw/gps_dl_hw_power_ctrl.o
-$(MODULE_NAME)-objs += hw/gps_dl_hw_usrt_apb.o
-$(MODULE_NAME)-objs += hw/gps_dl_hw_util.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_conn_infra.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_semaphore.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_bgf.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_gps.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_power_ctrl.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_usrt_apb.o
+$(MODULE_NAME)-objs += ../../hw/gps_dl_hw_util.o
 
-$(MODULE_NAME)-objs += hal/gps_dl_hal.o
-$(MODULE_NAME)-objs += hal/gps_dl_hal_util.o
-$(MODULE_NAME)-objs += hal/gps_dsp_fsm.o
-$(MODULE_NAME)-objs += hal/gps_dl_power_ctrl.o
-$(MODULE_NAME)-objs += hal/gps_dl_isr.o
-$(MODULE_NAME)-objs += hal/gps_dl_dma.o
-$(MODULE_NAME)-objs += hal/gps_dl_mcub.o
-$(MODULE_NAME)-objs += hal/gps_dl_zbus.o
-$(MODULE_NAME)-objs += hal/gps_dl_conn_infra.o
-$(MODULE_NAME)-objs += hal/gps_dl_hal_met2_0.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_hal.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_hal_util.o
+$(MODULE_NAME)-objs += ../../hal/gps_dsp_fsm.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_power_ctrl.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_isr.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_dma.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_mcub.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_zbus.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_conn_infra.o
+$(MODULE_NAME)-objs += ../../hal/gps_dl_hal_met2_0.o
 
 
-$(MODULE_NAME)-objs += link/gps_dl_link_event_proc.o
-$(MODULE_NAME)-objs += link/gps_dl_link_hal_ctrl.o
-$(MODULE_NAME)-objs += link/gps_dl_link_irq_ctrl.o
-$(MODULE_NAME)-objs += link/gps_dl_link_state.o
-$(MODULE_NAME)-objs += link/gps_dl_link_sync.o
-$(MODULE_NAME)-objs += link/gps_dl_link_util.o
-$(MODULE_NAME)-objs += link/gps_dl_subsys_reset.o
-$(MODULE_NAME)-objs += gps_each_link.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_link_event_proc.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_link_hal_ctrl.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_link_irq_ctrl.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_link_state.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_link_sync.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_link_util.o
+$(MODULE_NAME)-objs += ../../link/gps_dl_subsys_reset.o
+$(MODULE_NAME)-objs += ../../gps_each_link.o
 
-$(MODULE_NAME)-objs += linux/gps_data_link_devices.o
-$(MODULE_NAME)-objs += linux/gps_each_device.o
-$(MODULE_NAME)-objs += linux/gps_dl_linux.o
-$(MODULE_NAME)-objs += linux/gps_dl_linux_plat_drv.o
-$(MODULE_NAME)-objs += linux/gps_dl_linux_reserved_mem.o
-$(MODULE_NAME)-objs += linux/gps_dl_emi.o
-$(MODULE_NAME)-objs += linux/gps_dl_ctrld.o
-$(MODULE_NAME)-objs += linux/gps_dl_procfs.o
-$(MODULE_NAME)-objs += linux/gps_dl_osal.o
+$(MODULE_NAME)-objs += ../../linux/gps_data_link_devices.o
+$(MODULE_NAME)-objs += ../../linux/gps_each_device.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_linux.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_linux_plat_drv.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_linux_reserved_mem.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_emi.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_ctrld.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_procfs.o
+$(MODULE_NAME)-objs += ../../linux/gps_dl_osal.o
 
-$(MODULE_NAME)-objs += plat/$(GPS_PLATFORM)/gps_dl_hw_dep_bgf.o
-$(MODULE_NAME)-objs += plat/$(GPS_PLATFORM)/gps_dl_hw_dep_gps.o
-$(MODULE_NAME)-objs += plat/$(GPS_PLATFORM)/gps_dl_hw_dep_debug.o
-$(MODULE_NAME)-objs += plat/$(GPS_PLATFORM)/gps_dl_hw_dep_met2_0.o
+$(MODULE_NAME)-objs += gps_dl_hw_dep_bgf.o
+$(MODULE_NAME)-objs += gps_dl_hw_dep_gps.o
+$(MODULE_NAME)-objs += gps_dl_hw_dep_debug.o
+$(MODULE_NAME)-objs += gps_dl_hw_dep_met2_0.o
 
 ifeq ($(GPS_DL_HAS_MOCK),y)
 $(MODULE_NAME)-objs += data_link_mock/mock/gps_mock_mvcd.o

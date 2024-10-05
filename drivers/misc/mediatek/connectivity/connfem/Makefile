@@ -52,7 +52,7 @@ $(MODULE_NAME)-objs += connfem_epaelna.o
 $(MODULE_NAME)-objs += connfem_subsys_bt.o
 $(MODULE_NAME)-objs += connfem_subsys_wifi.o
 
-ifneq ($(wildcard $(srctree)/drivers/misc/mediatek/internal/connfem_enable),)
+ifneq ($(wildcard $(TOP)/vendor/mediatek/internal/connfem_enable),)
     $(info ConnFem: MTK internal load)
     $(MODULE_NAME)-objs += connfem_internal.o
 else

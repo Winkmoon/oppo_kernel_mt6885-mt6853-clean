@@ -47,32 +47,31 @@ ifeq ($(MTK_CHIP_IF), sdio)
     CFILES := sdio/btmtksdio.c btmtk_woble.c btmtk_buffer_mode.c btmtk_chip_reset.c
     ccflags-y += -DCHIP_IF_SDIO
     ccflags-y += -DSDIO_DEBUG=0
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/sdio
+    ccflags-y += -I$(src)/include/sdio
 else ifeq ($(MTK_CHIP_IF), usb)
     MOD_NAME = btmtk_usb_unify
     CFILES := usb/btmtkusb.c btmtk_woble.c btmtk_chip_reset.c
     ccflags-y += -DCHIP_IF_USB
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/usb
+    ccflags-y += -I$(src)/include/usb
 else ifeq ($(MTK_CHIP_IF), uart)
     MOD_NAME = btmtk_uart_unify
     CFILES := uart/btmtk_uart_main.c
     ccflags-y += -DCHIP_IF_UART
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/uart
+    ccflags-y += -I$(src)/include/uart
 else
     MOD_NAME = btmtkbtif_unify
     CFILES := btif/btmtk_btif.c
     ccflags-y += -DCHIP_IF_BTIF
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/btif
+    ccflags-y += -I$(src)/include/btif
 endif
 
 CFILES += btmtk_main.c btmtk_fw_log.c
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include
-ccfiags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx
-+
+ccflags-y += -I$(src)/include/ -I$(src)/
+
 $(MOD_NAME)-objs := $(CFILES:.c=.o)
 
-obj-y += $(MOD_NAME).o
+obj-m += $(MOD_NAME).o
 
 
 #VPATH = /opt/toolchains/gcc-linaro-aarch64-linux-gnu-4.9-2014.09_linux
@@ -84,6 +83,10 @@ obj-y += $(MOD_NAME).o
 # Common
 ###############################################################################
 #obj-m := $(UART_MOD_NAME).o
+all:
+	make -C $(KERNEL_SRC) M=$(PWD) modules
+clean:
+	make -C $(KERNEL_SRC) M=$(PWD) clean
 # Check coding style
 # export IGNORE_CODING_STYLE_RULES := NEW_TYPEDEFS,LEADING_SPACE,CODE_INDENT,SUSPECT_CODE_INDENT
 ccs:

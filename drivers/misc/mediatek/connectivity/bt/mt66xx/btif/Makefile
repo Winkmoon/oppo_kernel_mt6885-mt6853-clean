@@ -21,6 +21,8 @@ KBUILD_MODPOST_FAIL_ON_WARNINGS := y
 # platform
 
 
+  BT_PLATFORM = $(patsubst MTK_CONSYS_MT%,%,$(strip $(_MTK_BT_CHIP)))
+
 
 $(info $(LOG_TAG) TARGET_BUILD_VARIANT = $(TARGET_BUILD_VARIANT))
 ifeq ("$(TARGET_BUILD_VARIANT)","user")
@@ -29,8 +31,7 @@ else
     ccflags-y += -D FW_LOG_DEFAULT_ON=1
 endif
 
-export BT_PLATFORM=6885
-export CONNAC20_CHIPID=6885
+
 ccflags-y += -D CONNAC20_CHIPID=$(BT_PLATFORM)
 $(info $(LOG_TAG) BT_PLATFORM = $(BT_PLATFORM))
 $(info $(LOG_TAG) srctree = $(srctree))
@@ -67,9 +68,9 @@ ccflags-y += -D CONFIG_MP_WAKEUP_SOURCE_SYSFS_STAT=1
 # ---------------------------------------------------
 # Include Path
 # ---------------------------------------------------
-CONN_INFRA_SRC := $(srctree)/drivers/misc/mediatek/connectivity/conninfra
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/connfem/include
-WMT_SRC := $(srctree)/drivers/misc/mediatek/connectivity/common
+CONN_INFRA_SRC := $(TOP)/vendor/mediatek/kernel_modules/connectivity/conninfra
+CONNFEM_SRC := $(TOP)/vendor/mediatek/kernel_modules/connectivity/connfem
+WMT_SRC := $(TOP)/vendor/mediatek/kernel_modules/connectivity/common
 BTIF_SRC := $(srctree)/drivers/misc/mediatek/btif
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
@@ -79,19 +80,20 @@ ccflags-y += -I$(CONN_INFRA_SRC)/include
 ccflags-y += -I$(CONN_INFRA_SRC)/debug_utility/include
 ccflags-y += -I$(CONN_INFRA_SRC)/debug_utility/metlog
 ccflags-y += -I$(CONN_INFRA_SRC)/debug_utility/
+ccflags-y += -I$(CONNFEM_SRC)/include
 ccflags-y += -I$(WMT_SRC)/debug_utility
 ccflags-y += -I$(BTIF_SRC)/common/inc
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/core/include
+
+ccflags-y += -I$(src)/core/include
 ccflags-y += -I$(src)/connsys/connac_2_0
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/bt/mt66xx/include/btif
+ccflags-y += -I$(src)/../include
+ccflags-y += -I$(src)/../include/btif
 
 # ---------------------------------------------------
 # Objects List
 # ---------------------------------------------------
-MODULE_NAME := bt_drv
-obj-y += $(MODULE_NAME).o
-
+MODULE_NAME := bt_drv_$(BT_PLATFORM)
+  obj-y += $(MODULE_NAME).o
 CORE_OBJS := btmtk_dbg.o btmtk_dbg_tp_evt_if.o btmtk_irq.o btmtk_char_dev.o ../btmtk_fw_log.o ../btmtk_main.o
 CHIP_OBJS := btmtk_mt66xx.o
 HIF_OBJS := btmtk_btif_main.o btmtk_queue.o

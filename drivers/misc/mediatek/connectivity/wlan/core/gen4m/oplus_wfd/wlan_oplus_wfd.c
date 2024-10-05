@@ -26,9 +26,8 @@
 #define BIT_SUPPORTED_PHY_HT        2
 #define BIT_SUPPORTED_PHY_VHT       4
 #define BIT_SUPPORTED_PHY_HE        8
+
 #define MTK_SUPPORT_AVOID_CHANNEL 1
-#define LOG_TAG "[oplus_wfd_mtk] %s line:%d "
-#define debug(fmt, args...) printk(LOG_TAG fmt, __FUNCTION__, __LINE__, ##args)
 
 static int is_remove_He_ie_from_prebe_request = 0;
 static struct wireless_dev *s_hdd_ctx = NULL;

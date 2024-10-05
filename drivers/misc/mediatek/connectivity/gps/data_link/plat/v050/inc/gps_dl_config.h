@@ -84,3 +84,4 @@ enum gps_dl_link_id_enum {
 #include "gps_dl_log.h"
 
 #endif /* _GPS_DL_CONFIG_H */
+

@@ -34,6 +34,7 @@ KO_CODE_PATH := $(if $(filter /%,$(src)),,$(srctree)/)$(src)
 
 MODULE_NAME := conninfra
 obj-y += $(MODULE_NAME).o
+PATH_TO_CONNINFRA_DRV := $(srctree)/$(src)
 
 
 ###############################################################################

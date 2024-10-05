@@ -74,7 +74,7 @@
 */
 
 struct work_struct rst_worker;
-extern struct msg_thread_ctx g_ctx;
+struct msg_thread_ctx g_ctx;
 
 typedef enum {
 	INFRA_TEST_OPID_1 = 0,

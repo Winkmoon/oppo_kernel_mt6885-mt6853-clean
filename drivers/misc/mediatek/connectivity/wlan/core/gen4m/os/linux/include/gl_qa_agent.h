@@ -399,9 +399,6 @@ struct HQA_CMD_TABLE {
 	uint32_t CmdOffset;
 };
 
-#define	LIST_SEG_MAX 100
-#define LIST_MODE_FW_SEG_NUM_MAX	8
-
 struct PARAM_LIST_MODE_STATUS {
 	uint16_t    u2Status;
 	uint32_t    u4ExtId;
