@@ -4,7 +4,6 @@
  */
 
 #include "gl_os.h"
-
 #if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 #include <uapi/linux/sched/types.h>
 #include <linux/sched/task.h>

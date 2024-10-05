@@ -42,7 +42,9 @@ endif
     $(MODULE_NAME)-objs += power_throttling/adapter.o
     $(MODULE_NAME)-objs += power_throttling/core.o
     $(MODULE_NAME)-objs += power_throttling/test.o
-
+    
+    
+MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
 
     # Do build-in for Makefile checking
     # export CONFIG_WLAN_DRV_BUILD_IN=y
@@ -66,7 +68,7 @@ endif
     
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export WLAN_CHIP_ID=6833
+        export WLAN_CHIP_ID=$(MTK_PLATFORM_ID)
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
         export MTK_WLAN_SERVICE=y
