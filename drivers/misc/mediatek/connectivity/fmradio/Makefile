@@ -147,21 +147,15 @@ $(FM_CHIP)-objs    += core/fm_module.o \
                 core/fm_cmd.o \
                 core/fm_reg_utils.o
 
-ifeq ($(CFG_BUILD_CONNAC2), true)
     CONNINFRA_SRC_FOLDER := $(TOP)/vendor/mediatek/kernel_modules/connectivity/conninfra
-
     ccflags-y += -I$(CONNINFRA_SRC_FOLDER)/include
     ccflags-y += -DCFG_FM_CONNAC2=1
     $(FM_CHIP)-objs += plat/conn_infra.o
-else
     WMT_SRC_FOLDER := $(TOP)/vendor/mediatek/kernel_modules/connectivity/common
     WMT_INCLUDE_PATH := common_main
 
     ccflags-y += -I$(WMT_SRC_FOLDER)/$(WMT_INCLUDE_PATH)/include \
                  -I$(WMT_SRC_FOLDER)/$(WMT_INCLUDE_PATH)/linux/include
-    ccflags-y += -DCFG_FM_CONNAC2=0
-    $(FM_CHIP)-objs += plat/legacy_wmt.o
-endif
 
 $(MODULE_NAME)-objs += $($(FM_CHIP)-objs)
 #obj-$(CONFIG_MTK_FMRADIO) += private/
