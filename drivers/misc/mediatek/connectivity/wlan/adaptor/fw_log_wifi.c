@@ -31,8 +31,6 @@
 #include <linux/inetdevice.h>
 #include <linux/string.h>
 
-#include "wmt_exp.h"
-#include "stp_exp.h"
 #include "connsys_debug_utility.h"
 
 #if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
@@ -49,6 +47,8 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define WIFI_FW_LOG_ERR             0
 
 uint32_t fwDbgLevel = WIFI_FW_LOG_DBG;
+unsigned int gLastFWLogOnOff;
+int gFwLogOnOffStatus;	/* 0: default, 1: success, -1: fail */
 
 #define WIFI_DBG_FUNC(fmt, arg...)	\
 	do { \
@@ -142,6 +142,8 @@ static ssize_t fw_log_wifi_read(struct file *filp, char __user *buf, size_t len,
 	size_t ret = 0;
 
 	WIFI_INFO_FUNC_LIMITED("fw_log_wifi_read len --> %d\n", (uint32_t) len);
+	WIFI_INFO_FUNC_LIMITED("WIFI_FW_LOG_IOCTL_ON_OFF result=%d, last value=%d\n",
+						gFwLogOnOffStatus, gLastFWLogOnOff);
 
 	ret = connsys_log_read_to_user(CONNLOG_TYPE_WIFI, buf, len);
 
@@ -161,6 +163,16 @@ static unsigned int fw_log_wifi_poll(struct file *filp, poll_table *wait)
 static long fw_log_wifi_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
+	int32_t wait_cnt = 0;
+
+	while (wait_cnt < 2000) {
+		if (pfFwEventFuncCB)
+			break;
+		if (wait_cnt % 20 == 0)
+			WIFI_ERR_FUNC("Wi-Fi driver is not ready for 2s\n");
+		msleep(100);
+		wait_cnt++;
+	}
 
 	down(&ioctl_mtx);
 	switch (cmd) {
@@ -172,8 +184,12 @@ static long fw_log_wifi_unlocked_ioctl(struct file *filp, unsigned int cmd, unsi
 		if (pfFwEventFuncCB) {
 			WIFI_INFO_FUNC("WIFI_FW_LOG_IOCTL_ON_OFF invoke:%d\n", (int)log_on_off);
 			pfFwEventFuncCB(WIFI_FW_LOG_CMD_ON_OFF, log_on_off);
+			gFwLogOnOffStatus = 1;
+		} else {
+			WIFI_ERR_FUNC("WIFI_FW_LOG_IOCTL_ON_OFF invoke:%d failed\n", (int)log_on_off);
+			gFwLogOnOffStatus = -1;
 		}
-
+		gLastFWLogOnOff = log_on_off;
 		WIFI_INFO_FUNC("fw_log_wifi_unlocked_ioctl WIFI_FW_LOG_IOCTL_ON_OFF end\n");
 		break;
 	}
@@ -185,7 +201,8 @@ static long fw_log_wifi_unlocked_ioctl(struct file *filp, unsigned int cmd, unsi
 		if (pfFwEventFuncCB) {
 			WIFI_INFO_FUNC("WIFI_FW_LOG_IOCTL_SET_LEVEL invoke:%d\n", (int)log_level);
 			pfFwEventFuncCB(WIFI_FW_LOG_CMD_SET_LEVEL, log_level);
-		}
+		} else
+			WIFI_ERR_FUNC("WIFI_FW_LOG_IOCTL_ON_OFF invoke:%d failed\n", (int)log_level);
 
 		WIFI_INFO_FUNC("fw_log_wifi_unlocked_ioctl WIFI_FW_LOG_IOCTL_SET_LEVEL end\n");
 		break;
@@ -270,6 +287,7 @@ static long fw_log_wifi_compat_ioctl(struct file *filp, unsigned int cmd, unsign
 		return -ENOTTY;
 
 	fw_log_wifi_unlocked_ioctl(filp, cmd, arg);
+
 	return ret;
 }
 #endif
@@ -339,6 +357,18 @@ int fw_log_wifi_init(void)
 		goto class_destroy;
 	}
 
+	/* integrated with common debug utility */
+	init_waitqueue_head(&wq);
+	connsys_log_init(CONNLOG_TYPE_WIFI);
+	connsys_log_register_event_cb(CONNLOG_TYPE_WIFI, fw_log_wifi_event_cb);
+	sema_init(&ioctl_mtx, 1);
+	pfFwEventFuncCB = NULL;
+	gLastFWLogOnOff = 0;
+	gFwLogOnOffStatus = 0;
+#if (CFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT == 1)
+	gpfn_check_bus_hang = NULL;
+#endif
+
 	cdev_init(&fw_log_wifi_dev->cdev, &fw_log_wifi_fops);
 
 	fw_log_wifi_dev->cdev.owner = THIS_MODULE;
@@ -351,15 +381,6 @@ int fw_log_wifi_init(void)
 		goto cdev_del;
 	}
 
-	/* integrated with common debug utility */
-	init_waitqueue_head(&wq);
-	connsys_log_init(CONNLOG_TYPE_WIFI);
-	connsys_log_register_event_cb(CONNLOG_TYPE_WIFI, fw_log_wifi_event_cb);
-	sema_init(&ioctl_mtx, 1);
-	pfFwEventFuncCB = NULL;
-#if (CFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT == 1)
-	gpfn_check_bus_hang = NULL;
-#endif
 	goto return_fn;
 
 cdev_del:

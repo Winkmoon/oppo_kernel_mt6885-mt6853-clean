@@ -74,6 +74,26 @@
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
+enum _ENUM_TWT_SMART_STA_STATE_T {
+	TWT_SMART_STA_STATE_IDLE = 0,
+	TWT_SMART_STA_STATE_REQUESTING = 1,
+	TWT_SMART_STA_STATE_SUCCESS = 2,
+	TWT_SMART_STA_STATE_FAIL = 3
+};
+
+
+struct _TWT_SMART_STA_T {
+	u_int8_t fgTwtSmartStaReq;
+	u_int8_t fgTwtSmartStaActivated;
+	u_int8_t fgTwtSmartStaTeardownReq;
+	uint8_t  ucBssIndex;
+	uint8_t  ucFlowId;
+	uint32_t u4CurTp;
+	uint32_t u4LastTp;
+	uint32_t u4Count;
+	uint32_t u4TwtSwitch;
+	enum _ENUM_TWT_SMART_STA_STATE_T eState;
+};
 
 /*******************************************************************************
 *                            P U B L I C   D A T A

@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include <linux/dma-mapping.h>
 #include <linux/of_device.h>
 
@@ -56,8 +49,8 @@ void gps_dl_dma_buf_free(struct gps_dl_dma_buf *p_dma_buf, enum gps_dl_link_id_e
 int gps_dl_dma_buf_alloc(struct gps_dl_dma_buf *p_dma_buf, enum gps_dl_link_id_enum link_id,
 	enum gps_dl_dma_dir dir, unsigned int len)
 {
-	struct gps_each_device *p_dev;
-	struct device *p_linux_plat_dev;
+	struct gps_each_device *p_dev = NULL;
+	struct device *p_linux_plat_dev = NULL;
 
 	p_dev = gps_dl_device_get(link_id);
 	if (p_dev == NULL) {
@@ -74,16 +67,27 @@ int gps_dl_dma_buf_alloc(struct gps_dl_dma_buf *p_dma_buf, enum gps_dl_link_id_e
 
 	GDL_LOGI_INI("p_linux_plat_dev = 0x%p", p_linux_plat_dev);
 	if (p_linux_plat_dev == NULL) {
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+		p_dma_buf->vir_addr = dma_alloc_coherent(
+			p_dev->dev, len, &p_dma_buf->phy_addr, GFP_DMA | GFP_DMA32 | __GFP_ZERO);
+	#else
 		p_dma_buf->vir_addr = dma_zalloc_coherent(
 			p_dev->dev, len, &p_dma_buf->phy_addr, GFP_DMA | GFP_DMA32);
+	#endif
+
 	} else {
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+		p_dma_buf->vir_addr = dma_alloc_coherent(
+			p_linux_plat_dev, len, &p_dma_buf->phy_addr, GFP_DMA | __GFP_ZERO);/* | GFP_DMA32); */
+	#else
 		p_dma_buf->vir_addr = dma_zalloc_coherent(
 			p_linux_plat_dev, len, &p_dma_buf->phy_addr, GFP_DMA);/* | GFP_DMA32); */
+	#endif
 	}
 
 	GDL_LOGI_INI(
 #if GPS_DL_ON_LINUX
-		"alloc gps dl dma buf(%d,%d), addr: vir=0x%p, phy=0x%pad, len=%u",
+		"alloc gps dl dma buf(%d,%d), addr: vir=0x%p, phy=0x%llx, len=%u",
 #else
 		"alloc gps dl dma buf(%d,%d), addr: vir=0x%p, phy=0x%08x, len=%u",
 #endif
@@ -113,7 +117,11 @@ int gps_dl_dma_buf_alloc2(enum gps_dl_link_id_enum link_id)
 		return -1;
 	}
 
-	of_dma_configure(p_dev->dev, p_dev->dev->of_node);
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+		of_dma_configure(p_dev->dev, p_dev->dev->of_node, false);
+	#else
+		of_dma_configure(p_dev->dev, p_dev->dev->of_node);
+	#endif
 
 	if (!p_dev->dev->coherent_dma_mask)
 		p_dev->dev->coherent_dma_mask = DMA_BIT_MASK(32);
@@ -141,8 +149,8 @@ void gps_dl_ctx_links_deinit(void)
 {
 	enum gps_dl_link_id_enum link_id;
 
-	struct gps_each_device *p_dev;
-	struct gps_each_link *p_link;
+	struct gps_each_device *p_dev = NULL;
+	struct gps_each_link *p_link = NULL;
 
 	for (link_id = 0; link_id < GPS_DATA_LINK_NUM; link_id++) {
 		p_dev = gps_dl_device_get(link_id);
@@ -168,8 +176,8 @@ int gps_dl_ctx_links_init(void)
 {
 	int retval;
 	enum gps_dl_link_id_enum link_id;
-	struct gps_each_device *p_dev;
-	struct gps_each_link *p_link;
+	struct gps_each_device *p_dev = NULL;
+	struct gps_each_link *p_link = NULL;
 	enum gps_each_link_waitable_type j;
 
 	for (link_id = 0; link_id < GPS_DATA_LINK_NUM; link_id++) {
@@ -208,7 +216,7 @@ static void gps_dl_devices_exit(void)
 {
 	enum gps_dl_link_id_enum link_id;
 	dev_t devno = MKDEV(gps_dl_devno_major, gps_dl_devno_minor);
-	struct gps_each_device *p_dev;
+	struct gps_each_device *p_dev = NULL;
 
 	gps_dl_device_context_deinit();
 
@@ -269,7 +277,7 @@ static int gps_dl_devices_init(void)
 	int result;
 	enum gps_dl_link_id_enum link_id;
 	dev_t devno = 0;
-	struct gps_each_device *p_dev;
+	struct gps_each_device *p_dev = NULL;
 
 	result = alloc_chrdev_region(&devno, gps_dl_devno_minor,
 		GPS_DATA_LINK_NUM, GPS_DATA_LINK_DEV_NAME);

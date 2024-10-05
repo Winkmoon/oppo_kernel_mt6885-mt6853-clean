@@ -65,6 +65,31 @@ enum ROAM_TYPE {
 	ROAM_TYPE_NUM
 };
 
+typedef uint8_t(*PFN_SELECTION_POLICY_FUNC) (
+	enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi,
+	int8_t cCurrentRssi
+);
+
+struct NETWORK_SELECTION_POLICY_BY_BAND {
+	enum ENUM_BAND eCandidateBand;
+	PFN_SELECTION_POLICY_FUNC pfnNetworkSelection;
+};
+
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+struct WFA_DESENSE_CHANNEL_LIST {
+	int8_t ucChLowerBound;
+	int8_t ucChUpperBound;
+};
+
+extern const struct WFA_DESENSE_CHANNEL_LIST desenseChList[BAND_NUM];
+
+#define IS_CHANNEL_IN_DESENSE_RANGE(_prAdapter, _ch, _band) \
+	(!!(_prAdapter->fgIsNeedAvoidDesenseFreq && (_band != BAND_2G4) && \
+	(_ch >= desenseChList[_band].ucChLowerBound) && \
+	(_ch <= desenseChList[_band].ucChUpperBound)))
+#endif
+
 struct BSS_DESC *scanSearchBssDescByScoreForAis(struct ADAPTER *prAdapter,
 	enum ENUM_ROAMING_REASON eRoamReason, uint8_t ucBssIndex);
 void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
@@ -73,6 +98,13 @@ uint8_t scanCheckNeedDriverRoaming(
 uint8_t scanBeaconTimeoutFilterPolicyForAis(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex);
 u_int8_t scanApOverload(uint16_t status, uint16_t reason);
-
+uint8_t scanNetworkReplaceHandler2G4(enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi, int8_t cCurrentRssi);
+uint8_t scanNetworkReplaceHandler5G(enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi, int8_t cCurrentRssi);
+#if (CFG_SUPPORT_WIFI_6G == 1)
+uint8_t scanNetworkReplaceHandler6G(enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi, int8_t cCurrentRssi);
+#endif
 #endif
 

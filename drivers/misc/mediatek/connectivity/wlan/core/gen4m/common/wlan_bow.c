@@ -2038,7 +2038,7 @@ void bowResponderJoin(IN struct ADAPTER *prAdapter, IN struct BSS_DESC *prBssDes
 	prConnSettings = aisGetConnSettings(prAdapter, AIS_DEFAULT_INDEX);
 
 	/* 4 <1> We are going to connect to this BSS. */
-	prBssDesc->fgIsConnecting = TRUE;
+	prBssDesc->fgIsConnecting |= BIT(prBowFsmInfo->ucBssIndex);
 	bowSetBowTableState(prAdapter, prBowFsmInfo->aucPeerAddress, BOW_DEVICE_STATE_CONNECTING);
 
 	/* 4 <2> Setup corresponding STA_RECORD_T */
@@ -2286,7 +2286,8 @@ bowIndicationOfMediaStateToHost(IN struct ADAPTER *prAdapter,
 			COPY_MAC_ADDR(rEventConnStatus.aucBssid, prBssInfo->aucBSSID);
 
 			rEventConnStatus.u2BeaconPeriod = prBssInfo->u2BeaconInterval;
-			rEventConnStatus.u4FreqInKHz = nicChannelNum2Freq(prBssInfo->ucPrimaryChannel);
+			rEventConnStatus.u4FreqInKHz = nicChannelNum2Freq(
+				prBssInfo->ucPrimaryChannel, prBssInfo->eBand);
 
 			switch (prBssInfo->ucNonHTBasicPhyType) {
 			case PHY_TYPE_HR_DSSS_INDEX:

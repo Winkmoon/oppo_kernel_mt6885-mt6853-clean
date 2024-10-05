@@ -155,11 +155,6 @@ void kal_warn_on(uint8_t condition)
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__);
 }
 
-void kal_do_gettimeofday(struct timeval *tv)
-{
-	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__);
-}
-
 void kal_get_monotonic_boottime(struct timespec *ts)
 {
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__);
@@ -282,6 +277,12 @@ unsigned char *kal_skb_put(struct sk_buff *skb, unsigned int len)
 {
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__);
 	return NULL;
+}
+
+uint32_t kal_skb_headroom(struct sk_buff *skb)
+{
+	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__);
+	return 0;
 }
 
 struct sk_buff *kal_skb_dequeue_tail(struct sk_buff_head *list)

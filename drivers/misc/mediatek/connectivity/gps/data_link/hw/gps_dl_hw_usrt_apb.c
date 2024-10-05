@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 #include "gps_dl_context.h"
 #include "gps_dl_time_tick.h"
@@ -53,15 +46,18 @@ unsigned int gps_dl_hw_get_mcub_a2d1_cfg(enum gps_dl_link_id_enum link_id, bool 
 #if GPS_DL_USE_TIA
 	cfg |= GPS_DSP_CFG_BITMASK_COLOCK_USE_TIA;
 #endif
+
+#if GPS_DL_ON_LINUX
 	if (gps_dl_hal_get_need_clk_ext_flag(link_id))
 		cfg |= GPS_DSP_CFG_BITMASK_CLOCK_EXTENSION_WAKEUP;
+#endif
 	return cfg;
 }
 
 void gps_dl_hw_usrt_ctrl(enum gps_dl_link_id_enum link_id,
 	bool is_on, bool is_dma_mode, bool is_1byte_mode)
 {
-	bool poll_okay;
+	bool poll_okay = false;
 
 	if (is_1byte_mode)
 		GDL_HW_SET_GPS_ENTRY2(link_id, 1, GPS_USRT_APB_APB_CTRL_BYTEN, GPS_L5_USRT_APB_APB_CTRL_BYTEN);
@@ -133,9 +129,10 @@ bool gps_dl_hw_poll_usrt_dsp_rx_empty(enum gps_dl_link_id_enum link_id)
 	else if (link_id == GPS_DATA_LINK_ID1)
 		GDL_HW_POLL_GPS_ENTRY(GPS_L5_USRT_APB_APB_STA_RX_EMP, 1, 10000 * POLL_US, &poll_okay);
 
+#if GPS_DL_ON_LINUX
 	if (!poll_okay)
 		GDL_LOGXE_DRW(link_id, "okay = %d", poll_okay);
-
+#endif
 	return poll_okay;
 }
 
@@ -143,13 +140,13 @@ enum GDL_RET_STATUS gps_dl_hal_wait_and_handle_until_usrt_has_data(
 	enum gps_dl_link_id_enum link_id, int timeout_usec)
 {
 	struct gps_dl_hw_usrt_status_struct usrt_status;
-	bool last_rw_log_on;
+	bool last_rw_log_on = false;
 	unsigned long tick0, tick1;
 
 	tick0 = gps_dl_tick_get();
 
 	if (gps_dl_show_reg_wait_log())
-		GDL_LOGXD(link_id, "timeout = %d", timeout_usec);
+		GDL_LOGXD(link_id, "timeout_usec = %d", timeout_usec);
 
 	while (1) {
 		gps_dl_hw_save_usrt_status_struct(link_id, &usrt_status);
@@ -187,9 +184,9 @@ enum GDL_RET_STATUS gps_dl_hal_wait_and_handle_until_usrt_has_nodata_or_rx_dma_d
 	struct gps_dl_hw_dma_status_struct dma_status;
 	struct gps_dl_hw_usrt_status_struct usrt_status;
 	enum gps_dl_hal_dma_ch_index dma_ch;
-	bool last_rw_log_on;
+	bool last_rw_log_on = false;
 	unsigned long tick0, tick1;
-	bool conninfra_okay;
+	bool conninfra_okay = true;
 	bool do_stop = true;
 	enum GDL_RET_STATUS ret = GDL_OKAY;
 	int loop_cnt;
@@ -202,18 +199,19 @@ enum GDL_RET_STATUS gps_dl_hal_wait_and_handle_until_usrt_has_nodata_or_rx_dma_d
 		return GDL_FAIL;
 
 	if (gps_dl_show_reg_wait_log())
-		GDL_LOGXD(link_id, "timeout = %d", timeout_usec);
+		GDL_LOGXD(link_id, "timeout_usec = %d", timeout_usec);
 
 	tick0 = gps_dl_tick_get();
 	loop_cnt = 0;
 	while (1) {
+#if GPS_DL_ON_LINUX
 		conninfra_okay = gps_dl_conninfra_is_okay_or_handle_it(NULL, true);
+#endif
 		if (!conninfra_okay) {
 			ret = GDL_FAIL_CONN_NOT_OKAY;
 			do_stop = false;
 			break;
 		}
-
 		gps_dl_hw_save_dma_status_struct(dma_ch, &dma_status);
 		if (gps_dl_only_show_wait_done_log())
 			last_rw_log_on = gps_dl_set_show_reg_rw_log(false);

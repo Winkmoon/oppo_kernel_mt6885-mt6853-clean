@@ -183,6 +183,8 @@ typedef enum _ENUM_WMT_OPID_T {
 	WMT_OPID_MET_CTRL = 37,
 	WMT_OPID_GPS_SUSPEND = 38,
 	WMT_OPID_GET_CONSYS_STATE = 39,
+	WMT_OPID_DUMP_PC_LOG = 40,
+	WMT_OPID_DUMP_CPUPCR = 41,
 	WMT_OPID_MAX
 } ENUM_WMT_OPID_T, *P_ENUM_WMT_OPID_T;
 
@@ -300,6 +302,7 @@ typedef struct _WMT_GEN_CONF {
 	UINT8 wifi_ant_swap_ant_sel_gpio;
 
 	struct WMT_BYTE_ARRAY *wifi_config;
+	UINT32 vcn33_1_voltage;
 } WMT_GEN_CONF, *P_WMT_GEN_CONF;
 
 typedef enum _ENUM_DRV_STS_ {
@@ -455,6 +458,8 @@ enum wmt_consys_dump_status {
 
 typedef struct consys_state_dmp_info {
 	UINT32 cpu_pcr[WMT_CORE_DMP_CPUPCR_NUM];
+	UINT64 sec[WMT_CORE_DMP_CPUPCR_NUM];
+	ULONG nsec[WMT_CORE_DMP_CPUPCR_NUM];
 	CONSYS_STATE state;
 } CONSYS_STATE_DMP_INFO, *P_CONSYS_STATE_DMP_INFO;
 
@@ -563,6 +568,8 @@ VOID wmt_core_set_blank_status(UINT32 on_off_flag);
 extern UINT32 wmt_core_get_blank_status(VOID);
 
 INT32 wmt_blank_status_ctrl(UINT32 on_off_flag);
+
+void wmt_send_bt_tssi_cmd(void);
 
 /*******************************************************************************
 *                              F U N C T I O N S

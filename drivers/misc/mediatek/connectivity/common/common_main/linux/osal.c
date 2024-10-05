@@ -749,6 +749,10 @@ INT32 osal_bit_op_unlock(P_OSAL_UNSLEEPABLE_LOCK pLock)
 #endif
 INT32 osal_clear_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData)
 {
+	if (bitOffset >= BITS_PER_LONG) {
+		pr_info("bitOffset(%d) is out of range.\n", bitOffset);
+		return -1;
+	}
 	osal_bit_op_lock(&(pData->opLock));
 	clear_bit(bitOffset, &pData->data);
 	osal_bit_op_unlock(&(pData->opLock));
@@ -757,6 +761,10 @@ INT32 osal_clear_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData)
 
 INT32 osal_set_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData)
 {
+	if (bitOffset >= BITS_PER_LONG) {
+		pr_info("bitOffset(%d) is out of range.\n", bitOffset);
+		return -1;
+	}
 	osal_bit_op_lock(&(pData->opLock));
 	set_bit(bitOffset, &pData->data);
 	osal_bit_op_unlock(&(pData->opLock));
@@ -767,6 +775,10 @@ INT32 osal_test_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData)
 {
 	UINT32 iRet = 0;
 
+	if (bitOffset >= BITS_PER_LONG) {
+		pr_info("bitOffset(%d) is out of range.\n", bitOffset);
+		return -1;
+	}
 	osal_bit_op_lock(&(pData->opLock));
 	iRet = test_bit(bitOffset, &pData->data);
 	osal_bit_op_unlock(&(pData->opLock));
@@ -777,6 +789,10 @@ INT32 osal_test_and_clear_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData)
 {
 	UINT32 iRet = 0;
 
+	if (bitOffset >= BITS_PER_LONG) {
+		pr_info("bitOffset(%d) is out of range.\n", bitOffset);
+		return -1;
+	}
 	osal_bit_op_lock(&(pData->opLock));
 	iRet = test_and_clear_bit(bitOffset, &pData->data);
 	osal_bit_op_unlock(&(pData->opLock));
@@ -788,6 +804,10 @@ INT32 osal_test_and_set_bit(UINT32 bitOffset, P_OSAL_BIT_OP_VAR pData)
 {
 	UINT32 iRet = 0;
 
+	if (bitOffset >= BITS_PER_LONG) {
+		pr_info("bitOffset(%d) is out of range.\n", bitOffset);
+		return -1;
+	}
 	osal_bit_op_lock(&(pData->opLock));
 	iRet = test_and_set_bit(bitOffset, &pData->data);
 	osal_bit_op_unlock(&(pData->opLock));
@@ -1382,7 +1402,7 @@ INT32 osal_usleep_range(ULONG min, ULONG max)
 INT32 osal_gettimeofday(PINT32 sec, PINT32 usec)
 {
 	INT32 ret = 0;
-	struct timeval now;
+	struct timespec64 now;
 
 	osal_do_gettimeofday(&now);
 
@@ -1392,20 +1412,20 @@ INT32 osal_gettimeofday(PINT32 sec, PINT32 usec)
 		ret = -1;
 
 	if (usec != NULL)
-		*usec = now.tv_usec;
+		*usec = now.tv_nsec / NSEC_PER_USEC;
 	else
 		ret = -1;
 
 	return ret;
 }
 
-void osal_do_gettimeofday(struct timeval *tv)
+void osal_do_gettimeofday(struct timespec64 *tv)
 {
 	struct timespec64 now;
 
 	ktime_get_real_ts64(&now);
 	tv->tv_sec = now.tv_sec;
-	tv->tv_usec = now.tv_nsec / NSEC_PER_USEC;
+	tv->tv_nsec = now.tv_nsec;
 }
 
 INT32 osal_printtimeofday(const PUINT8 prefix)

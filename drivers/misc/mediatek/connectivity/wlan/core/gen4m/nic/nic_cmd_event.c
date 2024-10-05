@@ -105,7 +105,23 @@ const struct NIC_CAPABILITY_V2_REF_TABLE
 #if (CFG_SUPPORT_P2PGO_ACS == 1)
 	{TAG_CAP_P2P, nicCfgChipP2PCap},
 #endif
+#if (CFG_SUPPORT_RX_QUOTA_INFO == 1)
+	{TAG_CAP_PSE_RX_QUOTA, nicCfgChipPseRxQuota},
+#endif
+	{TAG_CAP_HOST_STATUS_EMI_OFFSET, nicCmdEventHostStatusEmiOffset},
 
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	{TAG_CAP_6G_CAP, nicCfgChipCap6GCap},
+#endif
+
+#if CFG_SUPPORT_LLS
+	{TAG_CAP_LLS_DATA_EMI_OFFSET, nicCmdEventLinkStatsEmiOffset},
+#endif
+
+#if CFG_MSCS_SUPPORT
+	{TAG_CAP_FAST_PATH, nicCfgChipCapFastPath},
+#endif
+	{TAG_CAP_CASAN_LOAD_TYPE, nicCmdEventCasanLoadType},
 };
 
 /*******************************************************************************
@@ -119,7 +135,9 @@ const struct NIC_CAPABILITY_V2_REF_TABLE
  */
 struct MIB_INFO_STAT g_arMibInfo[ENUM_BAND_NUM];
 uint8_t fgEfuseCtrlAxOn = 1; /* run time control if support AX by efuse */
-
+#if CFG_SUPPORT_NAN
+struct _TXM_CMD_EVENT_TEST_T grCmdInfoQueryTestBuffer;
+#endif
 
 /*******************************************************************************
  *                            F U N C T I O N   D A T A
@@ -149,7 +167,7 @@ void nicCmdEventQueryMcrRead(IN struct ADAPTER *prAdapter,
 		prMcrRdInfo->u4McrOffset = prCmdAccessReg->u4Address;
 		prMcrRdInfo->u4McrData = prCmdAccessReg->u4Data;
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -180,7 +198,7 @@ void nicCmdEventQueryCfgRead(IN struct ADAPTER *prAdapter,
 		kalMemCopy(prOutCfgHeader, prInCfgHeader,
 			sizeof(struct CMD_HEADER));
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 }
@@ -254,7 +272,7 @@ void nicCmdEventQueryRxStatistics(IN struct ADAPTER
 		       (unsigned int)prEventAccessRxStat->au4Buffer[65],
 		       (unsigned int)prEventAccessRxStat->au4Buffer[22]);
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -362,7 +380,7 @@ void nicCmdEventPfmuTagRead(IN struct ADAPTER *prAdapter,
 	g_rPfmuTag1 = prPfumTagRead->ru4TxBfPFMUTag1;
 	g_rPfmuTag2 = prPfumTagRead->ru4TxBfPFMUTag2;
 
-	kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+	kalOidComplete(prGlueInfo, prCmdInfo,
 		       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 
 	DBGLOG(INIT, INFO,
@@ -495,7 +513,7 @@ void nicCmdEventGetQd(IN struct ADAPTER *prAdapter,
 	/* g_rPfmuTag1 = prPfumTagRead->ru4TxBfPFMUTag1; */
 	/* g_rPfmuTag2 = prPfumTagRead->ru4TxBfPFMUTag2; */
 
-	kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+	kalOidComplete(prGlueInfo, prCmdInfo,
 		       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 
 	DBGLOG(INIT, INFO, " event id : %x\n", prGetQd->u4EventId);
@@ -549,7 +567,7 @@ void nicCmdEventGetCalcLq(IN struct ADAPTER *prAdapter,
 	/* g_rPfmuTag1 = prPfumTagRead->ru4TxBfPFMUTag1; */
 	/* g_rPfmuTag2 = prPfumTagRead->ru4TxBfPFMUTag2; */
 
-	kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+	kalOidComplete(prGlueInfo, prCmdInfo,
 		       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 
 
@@ -607,7 +625,7 @@ void nicCmdEventGetCalcInitMcs(IN struct ADAPTER *prAdapter,
 	/* g_rPfmuTag1 = prPfumTagRead->ru4TxBfPFMUTag1; */
 	/* g_rPfmuTag2 = prPfumTagRead->ru4TxBfPFMUTag2; */
 
-	kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+	kalOidComplete(prGlueInfo, prCmdInfo,
 		       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 
 
@@ -665,7 +683,7 @@ void nicCmdEventQuerySwCtrlRead(IN struct ADAPTER
 		prSwCtrlInfo->u4Id = prCmdSwCtrl->u4Id;
 		prSwCtrlInfo->u4Data = prCmdSwCtrl->u4Data;
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -717,7 +735,7 @@ void nicCmdEventQueryChipConfig(IN struct ADAPTER
 #endif
 		kalMemCopy(prChipConfigInfo->aucCmd,
 		   prCmdChipConfig->aucCmd, prChipConfigInfo->u2MsgSize);
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 		   u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -731,10 +749,9 @@ void nicCmdEventSetCommon(IN struct ADAPTER *prAdapter,
 
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
-		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo,
 	    prCmdInfo->u4InformationBufferLength, WLAN_STATUS_SUCCESS);
 	}
-
 }
 
 void nicCmdEventSetIpAddress(IN struct ADAPTER *prAdapter,
@@ -752,7 +769,7 @@ void nicCmdEventSetIpAddress(IN struct ADAPTER *prAdapter,
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
 		kalOidComplete(prAdapter->prGlueInfo,
-			prCmdInfo->fgSetQuery,
+			prCmdInfo,
 			OFFSET_OF(struct PARAM_NETWORK_ADDRESS_LIST,
 			arAddress) + u4Count *
 			(OFFSET_OF(struct PARAM_NETWORK_ADDRESS, aucAddress) +
@@ -761,6 +778,33 @@ void nicCmdEventSetIpAddress(IN struct ADAPTER *prAdapter,
 	}
 
 }
+/* fos_change begin */
+#if CFG_SUPPORT_SET_IPV6_NETWORK
+void nicCmdEventSetIpv6Address(IN struct ADAPTER *prAdapter,
+	IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
+{
+	uint32_t u4Count;
+
+	ASSERT(prAdapter);
+	ASSERT(prCmdInfo);
+
+	u4Count = (prCmdInfo->u4SetInfoLen - OFFSET_OF(
+		struct CMD_IPV6_NETWORK_ADDRESS_LIST, arNetAddress))
+		/ sizeof(struct CMD_IPV6_NETWORK_ADDRESS);
+
+	if (prCmdInfo->fgIsOid) {
+		/* Update Set Information Length */
+		kalOidComplete(prAdapter->prGlueInfo,
+			prCmdInfo,
+			OFFSET_OF(struct PARAM_NETWORK_ADDRESS_LIST,
+			arAddress) + u4Count *
+			(OFFSET_OF(struct PARAM_NETWORK_ADDRESS, aucAddress) +
+				sizeof(struct PARAM_NETWORK_ADDRESS_IPV6)),
+			WLAN_STATUS_SUCCESS);
+	}
+}
+#endif /* fos_change end */
+
 
 void nicCmdEventQueryRfTestATInfo(IN struct ADAPTER
 				  *prAdapter, IN struct CMD_INFO *prCmdInfo,
@@ -787,7 +831,7 @@ void nicCmdEventQueryRfTestATInfo(IN struct ADAPTER
 		u4QueryInfoLen = sizeof(union EVENT_TEST_STATUS);
 
 		/* Update Query Information Length */
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -811,7 +855,7 @@ void nicCmdEventQueryLinkQuality(IN struct ADAPTER
 		prCmdInfo->pvInformationBuffer;
 
 	for (i = 0; i < BSSID_NUM; i++) {
-		prLinkSpeed->rLq[i].u2LinkSpeed
+		prLinkSpeed->rLq[i].u2TxLinkSpeed
 			= prLinkQuality->rLq[i].u2LinkSpeed * 5000;
 
 		/* ranged from (-128 ~ 30) in unit of dBm */
@@ -819,8 +863,8 @@ void nicCmdEventQueryLinkQuality(IN struct ADAPTER
 			= prLinkQuality->rLq[i].cRssi;
 
 		DBGLOG(REQ, TRACE,
-			"ucBssIdx = %d, rate = %u, signal = %d\n",
-			i, prLinkSpeed->rLq[i].u2LinkSpeed,
+			"ucBssIdx = %d, TxRate = %u, signal = %d\n",
+			i, prLinkSpeed->rLq[i].u2TxLinkSpeed,
 			prLinkSpeed->rLq[i].cRssi);
 	}
 	u4QueryInfoLen = sizeof(struct PARAM_LINK_SPEED_EX);
@@ -828,7 +872,7 @@ void nicCmdEventQueryLinkQuality(IN struct ADAPTER
 
 	if (prCmdInfo->fgIsOid) {
 		prGlueInfo = prAdapter->prGlueInfo;
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 }
@@ -864,7 +908,7 @@ void nicCmdEventQueryLinkSpeed(IN struct ADAPTER *prAdapter,
 	u4QueryInfoLen = sizeof(uint32_t);
 
 	if (prCmdInfo->fgIsOid)
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 }
 
@@ -874,6 +918,7 @@ void nicCmdEventQueryLinkSpeedEx(IN struct ADAPTER *prAdapter,
 	struct EVENT_LINK_QUALITY *prLinkQuality;
 	struct PARAM_LINK_SPEED_EX *pu4LinkSpeed;
 	struct GLUE_INFO *prGlueInfo;
+	uint32_t u4CurRxRate, u4MaxRxRate, u4CurRxBw;
 	uint32_t u4QueryInfoLen;
 	uint32_t i;
 
@@ -882,29 +927,46 @@ void nicCmdEventQueryLinkSpeedEx(IN struct ADAPTER *prAdapter,
 
 	prLinkQuality = (struct EVENT_LINK_QUALITY *) pucEventBuf;
 
+	DBGLOG(NIC, TRACE, "prCmdInfo->fgIsOid=%u", prCmdInfo->fgIsOid);
 	if (prCmdInfo->fgIsOid) {
 		prGlueInfo = prAdapter->prGlueInfo;
 		pu4LinkSpeed = (struct PARAM_LINK_SPEED_EX *) (
 					   prCmdInfo->pvInformationBuffer);
-
+		DBGLOG(NIC, TRACE, "Glue=%p, Cmd=%p, pvInformationBuffer=%p",
+			prGlueInfo, prCmdInfo, prCmdInfo->pvInformationBuffer);
 		for (i = 0; i < BSSID_NUM; i++) {
-			pu4LinkSpeed->rLq[i].u2LinkSpeed
+			/*Fill Tx Rate*/
+			pu4LinkSpeed->rLq[i].u2TxLinkSpeed
 				= prLinkQuality->rLq[i].u2LinkSpeed * 5000;
 
+			/*Fill Rx Rate in unit of 100bps*/
+			if (IS_BSS_INDEX_AIS(prAdapter, i) &&
+				(wlanGetRxRate(prGlueInfo, i,
+							  &u4CurRxRate,
+							  &u4MaxRxRate,
+							  &u4CurRxBw) == 0)) {
+				pu4LinkSpeed->rLq[i].u2RxLinkSpeed =
+					u4CurRxRate * 1000;
+				pu4LinkSpeed->rLq[i].u4RxBw = u4CurRxBw;
+			} else {
+				pu4LinkSpeed->rLq[i].u2RxLinkSpeed = 0;
+				pu4LinkSpeed->rLq[i].u4RxBw = 0;
+			}
 			/* ranged from (-128 ~ 30) in unit of dBm */
 			pu4LinkSpeed->rLq[i].cRssi
 				= prLinkQuality->rLq[i].cRssi;
 
 			DBGLOG(NIC, TRACE,
-				"ucBssIdx = %d, rate = %u, signal = %d\n",
+				"ucBssIdx=%d, TxRate=%u, RxRate=%u signal=%d\n",
 				i,
-				pu4LinkSpeed->rLq[i].u2LinkSpeed,
+				pu4LinkSpeed->rLq[i].u2TxLinkSpeed,
+				pu4LinkSpeed->rLq[i].u2RxLinkSpeed,
 				pu4LinkSpeed->rLq[i].cRssi);
 		}
 
 		u4QueryInfoLen = sizeof(struct PARAM_LINK_SPEED_EX);
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 }
@@ -1011,9 +1073,74 @@ void nicCmdEventQueryStatistics(IN struct ADAPTER
 #endif
 
 	if (prCmdInfo->fgIsOid)
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 }
+
+#if CFG_SUPPORT_LLS
+void nicCmdEventQueryLinkStats(IN struct ADAPTER *prAdapter,
+		IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
+{
+	struct GLUE_INFO *prGlueInfo;
+	uint16_t len = prCmdInfo->u4InformationBufferLength;
+
+	ASSERT(prAdapter);
+	ASSERT(prCmdInfo);
+
+	prGlueInfo = prAdapter->prGlueInfo;
+
+	DBGLOG(NIC, TRACE, "Glue=%p, Pend=%p, Cmd=%p, oid=%u, Buf=%p, len=%u",
+			prGlueInfo, &prGlueInfo->rPendComp, prCmdInfo,
+			prCmdInfo->fgIsOid, prCmdInfo->pvInformationBuffer,
+			len);
+
+	memcpy((uint8_t *)prCmdInfo->pvInformationBuffer, pucEventBuf, len);
+
+	DBGLOG(RX, TRACE, "kalOidComplete: infoLen=%u", len);
+
+	if (prCmdInfo->fgIsOid)
+		kalOidComplete(prGlueInfo, prCmdInfo, len, WLAN_STATUS_SUCCESS);
+}
+
+void nicEventStatsLinkStats(IN struct ADAPTER *prAdapter,
+		IN struct WIFI_EVENT *prEvent)
+{
+	struct CMD_INFO *prCmdInfo;
+
+	prCmdInfo = nicGetPendingCmdInfo(prAdapter, prEvent->ucSeqNum);
+
+	if (!prCmdInfo)
+		return;
+
+	if (unlikely(prEvent->u2PacketLength - sizeof(struct WIFI_EVENT) >
+					prCmdInfo->u4InformationBufferLength)) {
+		DBGLOG(RX, WARN, "prEventLen=%u-%u, BufLen=%u",
+				prEvent->u2PacketLength,
+				sizeof(struct WIFI_EVENT),
+				prCmdInfo->u4InformationBufferLength);
+		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo, 0,
+				WLAN_STATUS_FAILURE);
+	} else if (prCmdInfo->pfCmdDoneHandler) {
+		/* The destination buffer length has been checked sufficient */
+		kalMemZero(prCmdInfo->pvInformationBuffer,
+				prCmdInfo->u4InformationBufferLength);
+		prCmdInfo->u4InformationBufferLength =
+			prEvent->u2PacketLength - sizeof(struct WIFI_EVENT);
+		DBGLOG(RX, TRACE, "Calling prCmdInfo->pfCmdDoneHandler=%ps",
+				prCmdInfo->pfCmdDoneHandler);
+		prCmdInfo->pfCmdDoneHandler(prAdapter, prCmdInfo,
+					    prEvent->aucBuffer);
+	} else if (prCmdInfo->fgIsOid)
+		kalOidComplete(prAdapter->prGlueInfo,
+			prCmdInfo,
+			prEvent->u2PacketLength - sizeof(struct WIFI_EVENT),
+			WLAN_STATUS_SUCCESS);
+
+	/* return prCmdInfo */
+	cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
+}
+#endif
+
 
 void nicCmdEventQueryBugReport(IN struct ADAPTER *prAdapter,
 	IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
@@ -1042,7 +1169,7 @@ void nicCmdEventQueryBugReport(IN struct ADAPTER *prAdapter,
 				prEventStatistics, u4QueryInfoLen);
 		}
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 }
@@ -1106,7 +1233,7 @@ void nicCmdEventEnterRfTest(IN struct ADAPTER *prAdapter,
 			if (prCmdInfo->fgIsOid) {
 				/* Update Set Information Length */
 				kalOidComplete(prAdapter->prGlueInfo,
-					prCmdInfo->fgSetQuery,
+					prCmdInfo,
 					prCmdInfo->u4SetInfoLen,
 					WLAN_STATUS_NOT_SUPPORTED);
 
@@ -1136,7 +1263,7 @@ void nicCmdEventEnterRfTest(IN struct ADAPTER *prAdapter,
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
 		kalOidComplete(prAdapter->prGlueInfo,
-			       prCmdInfo->fgSetQuery, prCmdInfo->u4SetInfoLen,
+			       prCmdInfo, prCmdInfo->u4SetInfoLen,
 			       WLAN_STATUS_SUCCESS);
 	}
 #if CFG_SUPPORT_NVRAM
@@ -1179,7 +1306,7 @@ void nicCmdEventLeaveRfTest(IN struct ADAPTER *prAdapter,
 			if (prCmdInfo->fgIsOid) {
 				/* Update Set Information Length */
 				kalOidComplete(prAdapter->prGlueInfo,
-					prCmdInfo->fgSetQuery,
+					prCmdInfo,
 					prCmdInfo->u4SetInfoLen,
 					WLAN_STATUS_NOT_SUPPORTED);
 
@@ -1206,7 +1333,7 @@ void nicCmdEventLeaveRfTest(IN struct ADAPTER *prAdapter,
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
 		kalOidComplete(prAdapter->prGlueInfo,
-			       prCmdInfo->fgSetQuery, prCmdInfo->u4SetInfoLen,
+			       prCmdInfo, prCmdInfo->u4SetInfoLen,
 			       WLAN_STATUS_SUCCESS);
 	}
 
@@ -1263,7 +1390,7 @@ void nicCmdEventQueryMcastAddr(IN struct ADAPTER *prAdapter,
 
 		/* buffer length check */
 		if (prCmdInfo->u4InformationBufferLength < u4QueryInfoLen) {
-			kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+			kalOidComplete(prGlueInfo, prCmdInfo,
 				u4QueryInfoLen, WLAN_STATUS_BUFFER_TOO_SHORT);
 		} else {
 			kalMemCopy(prCmdInfo->pvInformationBuffer,
@@ -1271,7 +1398,7 @@ void nicCmdEventQueryMcastAddr(IN struct ADAPTER *prAdapter,
 				prEventMacMcastAddr->u4NumOfGroupAddr *
 					MAC_ADDR_LEN);
 
-			kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+			kalOidComplete(prGlueInfo, prCmdInfo,
 				       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 		}
 	}
@@ -1306,7 +1433,7 @@ void nicCmdEventQueryEepromRead(IN struct ADAPTER
 		prEepromRdInfo->info.rEeprom.u2EepromData =
 			prEventAccessEeprom->u2Data;
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -1325,7 +1452,7 @@ void nicCmdEventSetMediaStreamMode(IN struct ADAPTER
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
 		kalOidComplete(prAdapter->prGlueInfo,
-			       prCmdInfo->fgSetQuery, prCmdInfo->u4SetInfoLen,
+			       prCmdInfo, prCmdInfo->u4SetInfoLen,
 			       WLAN_STATUS_SUCCESS);
 	}
 
@@ -1357,7 +1484,7 @@ void nicCmdEventSetStopSchedScan(IN struct ADAPTER
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
 		kalOidComplete(prAdapter->prGlueInfo,
-			prCmdInfo->fgSetQuery,
+			prCmdInfo,
 			prCmdInfo->u4InformationBufferLength,
 			WLAN_STATUS_SUCCESS);
 	}
@@ -1371,6 +1498,60 @@ void nicCmdEventSetStopSchedScan(IN struct ADAPTER
 			    !prCmdInfo->fgIsOid);
 
 }
+
+#if (CFG_SUPPORT_PKT_OFLD == 1)
+void nicCmdEventQueryOfldInfo(IN struct ADAPTER
+				*prAdapter, IN struct CMD_INFO *prCmdInfo,
+				IN uint8_t *pucEventBuf)
+{
+	uint32_t u4QueryInfoLen;
+	struct GLUE_INFO *prGlueInfo;
+	struct PARAM_OFLD_INFO *prParamOfldInfo;
+	struct CMD_OFLD_INFO *prCmdOfldInfo;
+
+	ASSERT(prAdapter);
+	ASSERT(prCmdInfo);
+	ASSERT(pucEventBuf);
+
+	/* 4 <2> Update information of OID */
+	if (prCmdInfo->fgIsOid) {
+		prGlueInfo = prAdapter->prGlueInfo;
+		prCmdOfldInfo = (struct CMD_OFLD_INFO *) (pucEventBuf);
+
+		u4QueryInfoLen = sizeof(struct
+					PARAM_OFLD_INFO);
+
+		if (prCmdInfo->u4InformationBufferLength < sizeof(
+			    struct PARAM_OFLD_INFO)) {
+			DBGLOG(REQ, INFO,
+			       "Ofld info query length %u is not valid.\n",
+			       prCmdInfo->u4InformationBufferLength);
+		}
+		prParamOfldInfo = (struct PARAM_OFLD_INFO
+				    *) prCmdInfo->pvInformationBuffer;
+		prParamOfldInfo->ucFragNum = prCmdOfldInfo->ucFragNum;
+		prParamOfldInfo->ucFragSeq = prCmdOfldInfo->ucFragSeq;
+		prParamOfldInfo->u4TotalLen = prCmdOfldInfo->u4TotalLen;
+		prParamOfldInfo->u4BufLen = prCmdOfldInfo->u4BufLen;
+
+		if (prCmdOfldInfo->u4TotalLen > 0 &&
+				prCmdOfldInfo->u4BufLen > 0 &&
+				prCmdOfldInfo->u4BufLen <= PKT_OFLD_BUF_SIZE) {
+			kalMemCopy(prParamOfldInfo->aucBuf,
+				prCmdOfldInfo->aucBuf,
+				prCmdOfldInfo->u4BufLen);
+		} else {
+			DBGLOG(REQ, INFO,
+			       "Invalid query result, length: %d Buf size: %d.\n",
+				prCmdOfldInfo->u4TotalLen,
+				prCmdOfldInfo->u4BufLen);
+		}
+		kalOidComplete(prGlueInfo, prCmdInfo,
+		   u4QueryInfoLen, WLAN_STATUS_SUCCESS);
+	}
+
+}
+#endif /* CFG_SUPPORT_PKT_OFLD */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1389,8 +1570,11 @@ void nicOidCmdTimeoutCommon(IN struct ADAPTER *prAdapter,
 	ASSERT(prAdapter);
 
 	if (prCmdInfo->fgIsOid)
-		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo,
 			       0, WLAN_STATUS_FAILURE);
+
+	if (prAdapter->fgIsPostponeTxEAPOLM3)
+		prAdapter->fgIsPostponeTxEAPOLM3 = FALSE;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1436,409 +1620,9 @@ void nicOidCmdEnterRFTestTimeout(IN struct ADAPTER
 	kalFlushPendingTxPackets(prAdapter->prGlueInfo);
 
 	/* 2. indicate for OID failure */
-	kalOidComplete(prAdapter->prGlueInfo, prCmdInfo->fgSetQuery,
+	kalOidComplete(prAdapter->prGlueInfo, prCmdInfo,
 		       0, WLAN_STATUS_FAILURE);
 }
-
-#if CFG_SUPPORT_QA_TOOL
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief This function is called when received dump memory event packet.
- *        transfer the memory data to the IQ format data and write into file
- *
- * @param prIQAry     Pointer to the array store I or Q data.
- *		 prDataLen   The return data length - bytes
- *        u4IQ        0: get I data
- *                    1 : get Q data
- *
- * @return -1: open file error
- *
- */
-/*----------------------------------------------------------------------------*/
-int32_t GetIQData(struct ADAPTER *prAdapter,
-		  int32_t **prIQAry, uint32_t *prDataLen, uint32_t u4IQ,
-		  uint32_t u4GetWf1)
-{
-	uint8_t aucPath[50];	/* the path for iq data dump out */
-	uint8_t aucData[50];	/* iq data in string format */
-	uint32_t i = 0, j = 0, count = 0;
-	int32_t ret = -1;
-	int32_t rv;
-	struct file *file = NULL;
-
-	*prIQAry = prAdapter->rIcapInfo.au4IQData;
-
-	/* sprintf(aucPath, "/pattern.txt");             // CSD's Pattern */
-	kalSprintf(aucPath, "/tmp/dump_out_%05hu_WF%u.txt",
-		prAdapter->rIcapInfo.u2DumpIndex - 1, u4GetWf1);
-	if (kalCheckPath(aucPath) == -1) {
-		kalSnprintf(aucPath, sizeof(aucPath),
-			"/data/dump_out_%05hu_WF%u.txt",
-			prAdapter->rIcapInfo.u2DumpIndex - 1, u4GetWf1);
-	}
-
-	DBGLOG(INIT, INFO,
-	       "iCap Read Dump File dump_out_%05hu_WF%u.txt\n",
-	       prAdapter->rIcapInfo.u2DumpIndex - 1, u4GetWf1);
-
-	file = kalFileOpen(aucPath, O_RDONLY, 0);
-
-	if ((file != NULL) && !IS_ERR(file)) {
-		/* read 1K data per time */
-		for (i = 0; i < RTN_IQ_DATA_LEN / sizeof(uint32_t);
-		     i++, prAdapter->rIcapInfo.au4Offset[u4GetWf1][u4IQ] +=
-			     IQ_FILE_LINE_OFFSET) {
-			if (kalFileRead(file,
-				prAdapter->rIcapInfo.au4Offset[u4GetWf1][u4IQ],
-				aucData, IQ_FILE_IQ_STR_LEN) == 0)
-				break;
-
-			count = 0;
-
-			for (j = 0; j < 8; j++) {
-				if (aucData[j] != ' ')
-					aucData[count++] = aucData[j];
-			}
-
-			aucData[count] = '\0';
-
-			/* transfer data format (string to int) */
-			rv = kalStrtoint(aucData, 0,
-				       &prAdapter->rIcapInfo.au4IQData[i]);
-		}
-		*prDataLen = i * sizeof(uint32_t);
-		kalFileClose(file);
-		ret = 0;
-	}
-
-	DBGLOG(INIT, INFO,
-	       "MT6632 : QA_AGENT GetIQData prDataLen = %d\n", *prDataLen);
-	DBGLOG(INIT, INFO, "MT6632 : QA_AGENT GetIQData i = %d\n",
-	       i);
-
-	return ret;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief This function is called when received dump memory event packet.
- *        transfer the memory data to the IQ format data and write into file
- *
- * @param prEventDumpMem     Pointer to the event dump memory structure.
- *
- * @return 0: SUCCESS, -1: FAIL
- *
- */
-/*----------------------------------------------------------------------------*/
-
-uint32_t nicTsfRawData2IqFmt(struct EVENT_DUMP_MEM
-			     *prEventDumpMem, struct ICAP_INFO_T *prIcap)
-{
-	static uint8_t
-	aucPathWF0[40];	/* the path for iq data dump out */
-	static uint8_t
-	aucPathWF1[40];	/* the path for iq data dump out */
-	static uint8_t
-	aucPathRAWWF0[40];	/* the path for iq data dump out */
-	static uint8_t
-	aucPathRAWWF1[40];	/* the path for iq data dump out */
-	uint8_t *pucDataWF0 = NULL;	/* the data write into file */
-	uint8_t *pucDataWF1 = NULL;	/* the data write into file */
-	uint8_t *pucDataRAWWF0 =
-		NULL;	/* the data write into file */
-	uint8_t *pucDataRAWWF1 =
-		NULL;	/* the data write into file */
-	uint32_t u4SrcOffset;	/* record the buffer offset */
-	uint32_t u4FmtLen = 0;	/* bus format length */
-	uint32_t u4CpyLen = 0;
-	uint32_t u4RemainByte;
-	uint32_t u4DataWBufSize = 150;
-	uint32_t u4DataRAWWBufSize = 150;
-	uint32_t u4DataWLenF0 = 0;
-	uint32_t u4DataWLenF1 = 0;
-	uint32_t u4DataRAWWLenF0 = 0;
-	uint32_t u4DataRAWWLenF1 = 0;
-
-	u_int8_t fgAppend;
-	int32_t u4Iqc160WF0Q0, u4Iqc160WF1I1;
-
-	static uint8_t
-	ucDstOffset;	/* for alignment. bcs we send 2KB data per packet,*/
-	/*the data will not align in 12 bytes case. */
-	static uint32_t u4CurTimeTick;
-
-	static union ICAP_BUS_FMT icapBusData;
-	uint32_t *ptr;
-
-	pucDataWF0 = kmalloc(u4DataWBufSize, GFP_KERNEL);
-	pucDataWF1 = kmalloc(u4DataWBufSize, GFP_KERNEL);
-	pucDataRAWWF0 = kmalloc(u4DataRAWWBufSize, GFP_KERNEL);
-	pucDataRAWWF1 = kmalloc(u4DataRAWWBufSize, GFP_KERNEL);
-
-
-	if ((!pucDataWF0) || (!pucDataWF1) || (!pucDataRAWWF0)
-	    || (!pucDataRAWWF1)) {
-		DBGLOG(INIT, ERROR, "kmalloc failed.\n");
-		kfree(pucDataWF0);
-		kfree(pucDataWF1);
-		kfree(pucDataRAWWF0);
-		kfree(pucDataRAWWF1);
-		ASSERT(-1);
-		return -1;
-	}
-
-	fgAppend = TRUE;
-	if (prEventDumpMem->ucFragNum == 1) {
-
-		u4CurTimeTick = kalGetTimeTick();
-		/* Store memory dump into sdcard,
-		 * path /sdcard/dump_<current  system tick>_
-		 * <memory address>_<memory length>.hex
-		 */
-#if defined(LINUX)
-
-		/* if blbist mkdir undre /data/blbist,
-		 * the dump files wouls put on it
-		 */
-		kalScnprintf(aucPathWF0, sizeof(aucPathWF0),
-			  "/tmp/dump_out_%05hu_WF0.txt", prIcap->u2DumpIndex);
-		kalScnprintf(aucPathWF1, sizeof(aucPathWF1),
-			  "/tmp/dump_out_%05hu_WF1.txt", prIcap->u2DumpIndex);
-		if (kalCheckPath(aucPathWF0) == -1) {
-			kalMemSet(aucPathWF0, 0x00, sizeof(aucPathWF0));
-			kalScnprintf(aucPathWF0, sizeof(aucPathWF0),
-				"/data/dump_out_%05hu_WF0.txt",
-				prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathWF0);
-
-		if (kalCheckPath(aucPathWF1) == -1) {
-			kalMemSet(aucPathWF1, 0x00, sizeof(aucPathWF1));
-			kalScnprintf(aucPathWF1, sizeof(aucPathWF1),
-				"/data/dump_out_%05hu_WF1.txt",
-				prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathWF1);
-
-		kalScnprintf(aucPathRAWWF0, sizeof(aucPathRAWWF0),
-			  "/dump_RAW_%hu_WF0.txt", prIcap->u2DumpIndex);
-		kalScnprintf(aucPathRAWWF1, sizeof(aucPathRAWWF1),
-			  "/dump_RAW_%hu_WF1.txt", prIcap->u2DumpIndex);
-		if (kalCheckPath(aucPathRAWWF0) == -1) {
-			kalMemSet(aucPathRAWWF0, 0x00, sizeof(aucPathRAWWF0));
-			kalScnprintf(aucPathRAWWF0, sizeof(aucPathRAWWF0),
-				"/data/dump_RAW_%05hu_WF0.txt",
-				prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathRAWWF0);
-
-		if (kalCheckPath(aucPathRAWWF1) == -1) {
-			kalMemSet(aucPathRAWWF1, 0x00, sizeof(aucPathRAWWF1));
-			kalScnprintf(aucPathRAWWF1, sizeof(aucPathRAWWF1),
-				"/data/dump_RAW_%05hu_WF1.txt",
-				prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathRAWWF1);
-
-#else
-		kal_sprintf_ddk(aucPathWF0, sizeof(aucPathWF0),
-				u4CurTimeTick, prEventDumpMem->u4Address,
-				prEventDumpMem->u4Length +
-				prEventDumpMem->u4RemainLength);
-		kal_sprintf_ddk(aucPathWF1, sizeof(aucPathWF1),
-				u4CurTimeTick, prEventDumpMem->u4Address,
-				prEventDumpMem->u4Length +
-				prEventDumpMem->u4RemainLength);
-#endif
-		/* fgAppend = FALSE; */
-	}
-
-	ptr = (uint32_t *)(&prEventDumpMem->aucBuffer[0]);
-
-	for (u4SrcOffset = 0,
-	     u4RemainByte = prEventDumpMem->u4Length; u4RemainByte > 0;
-	    ) {
-		u4FmtLen =
-			(prEventDumpMem->eIcapContent
-				== ICAP_CONTENT_SPECTRUM) ?
-			sizeof(struct SPECTRUM_BUS_FMT) : sizeof(union
-					ICAP_BUS_FMT);
-		/* 4 bytes : 12 bytes */
-		u4CpyLen = (u4RemainByte - u4FmtLen >= 0) ? u4FmtLen :
-			   u4RemainByte;
-
-		if ((ucDstOffset + u4CpyLen) > sizeof(icapBusData)) {
-			DBGLOG(INIT, ERROR,
-			       "ucDstOffset(%u) + u4CpyLen(%u) exceed bound of icapBusData\n",
-			       ucDstOffset, u4CpyLen);
-			kfree(pucDataWF0);
-			kfree(pucDataWF1);
-			kfree(pucDataRAWWF0);
-			kfree(pucDataRAWWF1);
-			ASSERT(-1);
-			return -1;
-		}
-		memcpy((uint8_t *)&icapBusData + ucDstOffset,
-		       &prEventDumpMem->aucBuffer[0] + u4SrcOffset, u4CpyLen);
-#if 0
-		if (prEventDumpMem->eIcapContent == ICAP_CONTENT_ADC) {
-			sprintf(aucDataWF0, "%8d,%8d\n",
-				icapBusData.rAdcBusData.u4Dcoc0I,
-				icapBusData.rAdcBusData.u4Dcoc0Q);
-			sprintf(aucDataWF1, "%8d,%8d\n",
-				icapBusData.rAdcBusData.u4Dcoc1I,
-				icapBusData.rAdcBusData.u4Dcoc1Q);
-		}
-#endif
-		if (prEventDumpMem->eIcapContent == ICAP_CONTENT_FIIQ ||
-		    prEventDumpMem->eIcapContent == ICAP_CONTENT_FDIQ) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rIqcBusData.u4Iqc0I,
-				icapBusData.rIqcBusData.u4Iqc0Q);
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rIqcBusData.u4Iqc1I,
-				icapBusData.rIqcBusData.u4Iqc1Q);
-		} else if (prEventDumpMem->eIcapContent - 1000 ==
-			   ICAP_CONTENT_FIIQ
-			   || prEventDumpMem->eIcapContent - 1000 ==
-			   ICAP_CONTENT_FDIQ) {
-			u4Iqc160WF0Q0 =
-				icapBusData.rIqc160BusData.u4Iqc0Q0P1 |
-				(icapBusData.rIqc160BusData.u4Iqc0Q0P2 << 8);
-			u4Iqc160WF1I1 =
-				icapBusData.rIqc160BusData.u4Iqc1I1P1 |
-				(icapBusData.rIqc160BusData.u4Iqc1I1P2 << 4);
-
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n",
-				icapBusData.rIqc160BusData.u4Iqc0I0,
-				u4Iqc160WF0Q0,
-				icapBusData.rIqc160BusData.u4Iqc0I1,
-				icapBusData.rIqc160BusData.u4Iqc0Q1);
-
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n",
-				icapBusData.rIqc160BusData.u4Iqc1I0,
-				icapBusData.rIqc160BusData.u4Iqc1Q0,
-				u4Iqc160WF1I1,
-				icapBusData.rIqc160BusData.u4Iqc1Q1);
-
-		} else if (prEventDumpMem->eIcapContent ==
-			   ICAP_CONTENT_SPECTRUM) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rSpectrumBusData.u4DcocI,
-				icapBusData.rSpectrumBusData.u4DcocQ);
-		} else if (prEventDumpMem->eIcapContent ==
-			   ICAP_CONTENT_ADC) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI0T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T0,
-				icapBusData.rPackedAdcBusData.u4AdcI0T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T1,
-				icapBusData.rPackedAdcBusData.u4AdcI0T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T2,
-				icapBusData.rPackedAdcBusData.u4AdcI0T3,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T3,
-				icapBusData.rPackedAdcBusData.u4AdcI0T4,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T4,
-				icapBusData.rPackedAdcBusData.u4AdcI0T5,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T5);
-
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI1T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T0,
-				icapBusData.rPackedAdcBusData.u4AdcI1T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T1,
-				icapBusData.rPackedAdcBusData.u4AdcI1T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T2,
-				icapBusData.rPackedAdcBusData.u4AdcI1T3,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T3,
-				icapBusData.rPackedAdcBusData.u4AdcI1T4,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T4,
-				icapBusData.rPackedAdcBusData.u4AdcI1T5,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T5);
-		} else if (prEventDumpMem->eIcapContent - 2000 ==
-			   ICAP_CONTENT_ADC) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI0T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T0,
-				icapBusData.rPackedAdcBusData.u4AdcI0T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T1,
-				icapBusData.rPackedAdcBusData.u4AdcI0T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T2);
-
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI1T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T0,
-				icapBusData.rPackedAdcBusData.u4AdcI1T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T1,
-				icapBusData.rPackedAdcBusData.u4AdcI1T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T2);
-		} else if (prEventDumpMem->eIcapContent ==
-			   ICAP_CONTENT_TOAE) {
-			/* actually, this is DCOC. we take TOAE as DCOC */
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rAdcBusData.u4Dcoc0I,
-				icapBusData.rAdcBusData.u4Dcoc0Q);
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rAdcBusData.u4Dcoc1I,
-				icapBusData.rAdcBusData.u4Dcoc1Q);
-		}
-		if (u4CpyLen ==
-		    u4FmtLen) {	/* the data format is complete */
-			kalWriteToFile(aucPathWF0, fgAppend, pucDataWF0,
-				       u4DataWLenF0);
-			kalWriteToFile(aucPathWF1, fgAppend, pucDataWF1,
-				       u4DataWLenF1);
-		}
-		ptr = (uint32_t *)(&prEventDumpMem->aucBuffer[0] +
-				   u4SrcOffset);
-		u4DataRAWWLenF0 = kalScnprintf(pucDataRAWWF0, u4DataWBufSize,
-					    "%08x%08x%08x\n",
-					    *(ptr + 2), *(ptr + 1), *ptr);
-		kalWriteToFile(aucPathRAWWF0, fgAppend, pucDataRAWWF0,
-			       u4DataRAWWLenF0);
-		kalWriteToFile(aucPathRAWWF1, fgAppend, pucDataRAWWF1,
-			       u4DataRAWWLenF1);
-
-		u4RemainByte -= u4CpyLen;
-		u4SrcOffset += u4CpyLen;	/* shift offset */
-		/* only use ucDstOffset at first packet for align 2KB */
-		ucDstOffset =	0;
-	}
-	/* if this is a last packet, we can't transfer the remain data.
-	 *  bcs we can't guarantee the data is complete align data format
-	 */
-	/* the data format is complete */
-	if (u4CpyLen != u4FmtLen) {
-		/* not align 2KB, keep the data
-		 * and next packet data will append it
-		 */
-		ucDstOffset =	u4CpyLen;
-	}
-
-	kfree(pucDataWF0);
-	kfree(pucDataWF1);
-	kfree(pucDataRAWWF0);
-	kfree(pucDataRAWWF1);
-
-	if (u4RemainByte < 0) {
-		ASSERT(-1);
-		return -1;
-	}
-
-	return 0;
-}
-#endif /* CFG_SUPPORT_QA_TOOL */
 
 #if CFG_SUPPORT_CAL_RESULT_BACKUP_TO_HOST
 void nicCmdEventQueryCalBackupV2(IN struct ADAPTER
@@ -1898,7 +1682,7 @@ void nicCmdEventQueryCalBackupV2(IN struct ADAPTER
 			prEventCalBackupDataV2->u4ThermalValue;
 		g_rBackupCalDataAllV2.u4ThermalInfo =
 			prEventCalBackupDataV2->u4ThermalValue;
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	} else if (prEventCalBackupDataV2->ucReason == 0
 		   && prEventCalBackupDataV2->ucAction == 1) {
@@ -1914,7 +1698,7 @@ void nicCmdEventQueryCalBackupV2(IN struct ADAPTER
 			g_rBackupCalDataAllV2.u4ValidRamCalDataLength =
 				prEventCalBackupDataV2->u4Length;
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	} else if (prEventCalBackupDataV2->ucReason == 2
 		   && prEventCalBackupDataV2->ucAction == 4) {
@@ -1997,7 +1781,7 @@ void nicCmdEventQueryCalBackupV2(IN struct ADAPTER
 
 		if (prEventCalBackupDataV2->u4RemainLength == 0
 		    || prEventCalBackupDataV2->u4Address == 0xFFFFFFFF) {
-			kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+			kalOidComplete(prGlueInfo, prCmdInfo,
 				       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 		} else {
 			wlanoidSendCalBackupV2Cmd(prAdapter,
@@ -2005,252 +1789,12 @@ void nicCmdEventQueryCalBackupV2(IN struct ADAPTER
 				prCmdInfo->u4InformationBufferLength);
 		}
 	} else {
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
 }
 #endif
-
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief This function is called to handle dump burst event
- *
- * @param prAdapter          Pointer to the Adapter structure.
- * @param prCmdInfo         Pointer to the command information
- * @param pucEventBuf       Pointer to event buffer
- *
- * @return none
- *
- */
-/*----------------------------------------------------------------------------*/
-void nicEventQueryMemDump(IN struct ADAPTER *prAdapter,
-			  IN uint8_t *pucEventBuf)
-{
-	struct EVENT_DUMP_MEM *prEventDumpMem;
-	static uint8_t aucPath[256];
-	static uint8_t aucPath_done[300];
-	static uint32_t u4CurTimeTick;
-
-	ASSERT(prAdapter);
-	ASSERT(pucEventBuf);
-
-	kalSprintf(aucPath, "/dump_%05hu.hex",
-		prAdapter->rIcapInfo.u2DumpIndex);
-
-	prEventDumpMem = (struct EVENT_DUMP_MEM *) (pucEventBuf);
-
-	if (kalCheckPath(aucPath) == -1) {
-		kalMemSet(aucPath, 0x00, 256);
-		kalSprintf(aucPath, "/data/dump_%05hu.hex",
-			prAdapter->rIcapInfo.u2DumpIndex);
-	}
-
-	if (prEventDumpMem->ucFragNum == 1) {
-		/* Store memory dump into sdcard,
-		 * path /sdcard/dump_<current  system tick>_
-		 * <memory address>_<memory length>.hex
-		 */
-		u4CurTimeTick = kalGetTimeTick();
-#if defined(LINUX)
-
-		/* if blbist mkdir undre /data/blbist,
-		 * the dump files wouls put on it
-		 */
-		kalSprintf(aucPath, "/dump_%05hu.hex",
-			prAdapter->rIcapInfo.u2DumpIndex);
-		if (kalCheckPath(aucPath) == -1) {
-			kalMemSet(aucPath, 0x00, 256);
-			kalSprintf(aucPath, "/data/dump_%05hu.hex",
-				prAdapter->rIcapInfo.u2DumpIndex);
-		}
-#else
-		kal_sprintf_ddk(aucPath, sizeof(aucPath),
-				u4CurTimeTick,
-				prEventDumpMem->u4Address,
-				prEventDumpMem->u4Length +
-				prEventDumpMem->u4RemainLength);
-#endif
-		kalWriteToFile(aucPath, FALSE,
-			&prEventDumpMem->aucBuffer[0],
-			prEventDumpMem->u4Length);
-	} else {
-		/* Append current memory dump to the hex file */
-		kalWriteToFile(aucPath, TRUE, &prEventDumpMem->aucBuffer[0],
-			       prEventDumpMem->u4Length);
-	}
-#if CFG_SUPPORT_QA_TOOL
-	nicTsfRawData2IqFmt(prEventDumpMem, &prAdapter->rIcapInfo);
-#endif /* CFG_SUPPORT_QA_TOOL */
-	DBGLOG(INIT, INFO,
-	       "iCap : ==> (u4RemainLength = %x, u4Address=%x )\n",
-	       prEventDumpMem->u4RemainLength,
-	       prEventDumpMem->u4Address);
-
-	if (prEventDumpMem->u4RemainLength == 0
-	    || prEventDumpMem->u4Address == 0xFFFFFFFF) {
-
-		/* The request is finished or firmware response a error */
-		/* Reply time tick to iwpriv */
-
-		prAdapter->rIcapInfo.eIcapState = ICAP_STATE_FW_DUMP_DONE;
-
-		kalSprintf(aucPath_done, "/file_dump_done.txt");
-		if (kalCheckPath(aucPath_done) == -1) {
-			kalMemSet(aucPath_done, 0x00, 256);
-			kalSprintf(aucPath_done, "/data/file_dump_done.txt");
-		}
-		DBGLOG(INIT, INFO, ": ==> gen done_file\n");
-		kalWriteToFile(aucPath_done, FALSE, aucPath_done,
-			       sizeof(aucPath_done));
-#if CFG_SUPPORT_QA_TOOL
-		prAdapter->rIcapInfo.au4Offset[0][0] = 0;
-		prAdapter->rIcapInfo.au4Offset[0][1] = 9;
-		prAdapter->rIcapInfo.au4Offset[1][0] = 0;
-		prAdapter->rIcapInfo.au4Offset[1][1] = 9;
-#endif /* CFG_SUPPORT_QA_TOOL */
-
-		prAdapter->rIcapInfo.u2DumpIndex++;
-
-	}
-
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief This function is called when command for memory dump has
- *        replied a event.
- *
- * @param prAdapter          Pointer to the Adapter structure.
- * @param prCmdInfo         Pointer to the command information
- * @param pucEventBuf       Pointer to event buffer
- *
- * @return none
- *
- */
-/*----------------------------------------------------------------------------*/
-void nicCmdEventQueryMemDump(IN struct ADAPTER *prAdapter,
-	IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
-{
-	uint32_t u4QueryInfoLen;
-	struct GLUE_INFO *prGlueInfo;
-	struct EVENT_DUMP_MEM *prEventDumpMem;
-	static uint8_t aucPath[256];
-	/*	static UINT_8 aucPath_done[300]; */
-	static uint32_t u4CurTimeTick;
-
-	ASSERT(prAdapter);
-	ASSERT(prCmdInfo);
-	ASSERT(pucEventBuf);
-
-	/* 4 <2> Update information of OID */
-	if (1) {
-		prGlueInfo = prAdapter->prGlueInfo;
-		prEventDumpMem = (struct EVENT_DUMP_MEM *) (pucEventBuf);
-
-		u4QueryInfoLen = sizeof(struct PARAM_CUSTOM_MEM_DUMP_STRUCT
-					*);
-
-		if (prEventDumpMem->ucFragNum == 1) {
-			/* Store memory dump into sdcard,
-			 * path /sdcard/dump_<current  system tick>_
-			 * <memory address>_<memory length>.hex
-			 */
-			u4CurTimeTick = kalGetTimeTick();
-#if defined(LINUX)
-
-			/* PeiHsuan add for avoiding out of memory 20160801 */
-			if (prAdapter->rIcapInfo.u2DumpIndex >= 20)
-				prAdapter->rIcapInfo.u2DumpIndex = 0;
-
-			/* if blbist mkdir undre /data/blbist,
-			 * the dump files wouls put on it
-			 */
-			sprintf(aucPath, "/dump_%05hu.hex",
-				prAdapter->rIcapInfo.u2DumpIndex);
-			if (kalCheckPath(aucPath) == -1) {
-				kalMemSet(aucPath, 0x00, 256);
-				sprintf(aucPath, "/data/dump_%05hu.hex",
-					prAdapter->rIcapInfo.u2DumpIndex);
-			} else
-				kalTrunkPath(aucPath);
-
-			DBGLOG(INIT, INFO,
-			       "iCap Create New Dump File dump_%05hu.hex\n",
-			       prAdapter->rIcapInfo.u2DumpIndex);
-#else
-			kal_sprintf_ddk(aucPath, sizeof(aucPath),
-				u4CurTimeTick,
-				prEventDumpMem->u4Address,
-				prEventDumpMem->u4Length +
-				prEventDumpMem->u4RemainLength);
-			/* strcpy(aucPath, "dump.hex"); */
-#endif
-			kalWriteToFile(aucPath, FALSE,
-				&prEventDumpMem->aucBuffer[0],
-				prEventDumpMem->u4Length);
-		} else {
-			/* Append current memory dump to the hex file */
-			kalWriteToFile(aucPath, TRUE,
-				&prEventDumpMem->aucBuffer[0],
-				prEventDumpMem->u4Length);
-		}
-#if CFG_SUPPORT_QA_TOOL
-		nicTsfRawData2IqFmt(prEventDumpMem, &prAdapter->rIcapInfo);
-#endif /* CFG_SUPPORT_QA_TOOL */
-		if (prEventDumpMem->u4RemainLength == 0
-		    || prEventDumpMem->u4Address == 0xFFFFFFFF) {
-			/* The request is finished or firmware response
-			 * a error
-			 */
-			/* Reply time tick to iwpriv */
-			if (prCmdInfo->fgIsOid) {
-
-				/* the oid would be complete only in oid-trigger
-				 * mode, that is no need to if the event-trigger
-				 */
-				if (prAdapter->rIcapInfo.eIcapState
-						== ICAP_STATE_FW_DUMPING) {
-					*((uint32_t *)
-					  prCmdInfo->pvInformationBuffer)
-						= u4CurTimeTick;
-					kalOidComplete(prGlueInfo,
-						prCmdInfo->fgSetQuery,
-						u4QueryInfoLen,
-						WLAN_STATUS_SUCCESS);
-				}
-			}
-
-			prAdapter->rIcapInfo.eIcapState
-				= ICAP_STATE_FW_DUMP_DONE;
-
-#if defined(LINUX)
-
-			prAdapter->rIcapInfo.u2DumpIndex++;
-
-#else
-			kal_sprintf_done_ddk(aucPath_done,
-				sizeof(aucPath_done));
-			kalWriteToFile(aucPath_done, FALSE, aucPath_done,
-				       sizeof(aucPath_done));
-#endif
-		} else {
-#if defined(LINUX)
-
-#else /* 2013/05/26 fw would try to send the buffer successfully */
-			/* The memory dump request is not finished,
-			 * Send next command
-			 */
-			wlanSendMemDumpCmd(prAdapter,
-				prCmdInfo->pvInformationBuffer,
-				prCmdInfo->u4InformationBufferLength);
-#endif
-		}
-	}
-
-	return;
-
-}
 
 #if CFG_SUPPORT_BATCH_SCAN
 /*----------------------------------------------------------------------------*/
@@ -2289,7 +1833,7 @@ void nicCmdEventBatchScanResult(IN struct ADAPTER
 		kalMemCopy(prCmdInfo->pvInformationBuffer,
 			prEventBatchResult, sizeof(struct EVENT_BATCH_RESULT));
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -2399,7 +1943,7 @@ void nicCmdEventBuildDateCode(IN struct ADAPTER *prAdapter,
 		kalMemCopy(prCmdInfo->pvInformationBuffer,
 			   prEvent->aucDateCode, sizeof(uint8_t) * 16);
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 
@@ -2682,7 +2226,7 @@ void nicCmdEventQueryStaStatistics(IN struct ADAPTER
 
 	if (prCmdInfo->fgIsOid)
 		kalOidComplete(prGlueInfo,
-			prCmdInfo->fgSetQuery,
+			prCmdInfo,
 			u4QueryInfoLen,
 			WLAN_STATUS_SUCCESS);
 
@@ -2860,7 +2404,7 @@ void nicCmdEventQueryWlanInfo(IN struct ADAPTER *prAdapter,
 	}
 
 	if (prCmdInfo->fgIsOid)
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 }
 
@@ -2898,7 +2442,7 @@ void nicCmdEventQueryMibInfo(IN struct ADAPTER *prAdapter,
 	}
 
 	if (prCmdInfo->fgIsOid)
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 }
 #endif
@@ -3135,14 +2679,68 @@ uint32_t nicCfgChipCapPhyCap(IN struct ADAPTER *prAdapter,
 		fgEfuseCtrlAxOn = 1; /* default is 0 */
 	}
 #endif
+#if (CFG_SUPPORT_802_11BE == 1)
+	/* TODO */
+#endif
+	/* Overwrite bandwidth settings by phy capability */
+	if (prAdapter->rWifiVar.ucStaBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucStaBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "StaBw",
+			prAdapter->rWifiVar.ucStaBandwidth);
+	}
+
+	if (prAdapter->rWifiVar.ucSta5gBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucSta5gBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "Sta5gBw",
+			prAdapter->rWifiVar.ucSta5gBandwidth);
+	}
+
+	if (prAdapter->rWifiVar.ucApBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucApBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "ApBw",
+			prAdapter->rWifiVar.ucApBandwidth);
+	}
+
+	if (prAdapter->rWifiVar.ucAp5gBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucAp5gBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "Ap5gBw",
+			prAdapter->rWifiVar.ucAp5gBandwidth);
+	}
+
+	if (prAdapter->rWifiVar.ucP2p5gBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucP2p5gBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "P2p5gBw",
+			prAdapter->rWifiVar.ucP2p5gBandwidth);
+	}
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	if (prAdapter->rWifiVar.ucSta6gBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucSta6gBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "Sta6gBw",
+			prAdapter->rWifiVar.ucSta6gBandwidth);
+	}
+
+	if (prAdapter->rWifiVar.ucAp6gBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucAp6gBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "Ap6gBw",
+			prAdapter->rWifiVar.ucAp6gBandwidth);
+	}
+
+	if (prAdapter->rWifiVar.ucP2p6gBandwidth > prPhyCap->ucMaxBandwidth) {
+		prAdapter->rWifiVar.ucP2p6gBandwidth = prPhyCap->ucMaxBandwidth;
+		wlanCfgSetUint32(prAdapter, "P2p6gBw",
+			prAdapter->rWifiVar.ucP2p6gBandwidth);
+	}
+#endif
 
 	DBGLOG(INIT, TRACE,
-		"Vht [%u] He[%u] 5gBand [%d], Nss [%d], Dbdc [%d]\n",
+		"Vht [%u] He[%u] 5gBand [%d], Nss [%d], Dbdc [%d], bw [%d]\n",
 			prPhyCap->ucVht,
 			prPhyCap->ucHe,
 			prPhyCap->uc5gBand,
 			prPhyCap->ucNss,
-			prPhyCap->ucDbdc);
+			prPhyCap->ucDbdc,
+			prPhyCap->ucMaxBandwidth);
 
 	DBGLOG(INIT, TRACE,
 		"TxLdpc [%u], RxLdpc [%u], StbcTx [%u], StbcRx [%u], WifiPath [%x]\n",
@@ -3166,12 +2764,169 @@ uint32_t nicCfgChipP2PCap(IN struct ADAPTER *prAdapter,
 	prAdapter->rWifiVar.ucStaVht &= prPhyCap->ucVht;
 #endif
 	wlanCfgSetUint32(prAdapter, "P2pGoACSEnable",
-	prAdapter->rWifiVar.ucP2pGoACS);
+		prAdapter->rWifiVar.ucP2pGoACS);
 	DBGLOG(INIT, INFO, "P2pGoACSEnable:ACS Enable[%d]\n",
-			prAdapter->rWifiVar.ucP2pGoACS);
+		prAdapter->rWifiVar.ucP2pGoACS);
 	return WLAN_STATUS_SUCCESS;
 	}
 #endif
+
+#if (CFG_SUPPORT_RX_QUOTA_INFO == 1)
+uint32_t nicCfgChipPseRxQuota(IN struct ADAPTER *prAdapter,
+				IN uint8_t *pucEventBuf)
+{
+	struct CAP_PSE_RX_QUOTA *prPseCap =
+	(struct CAP_PSE_RX_QUOTA *)pucEventBuf;
+	uint8_t ucMaxBand = prAdapter->rWifiVar.ucNSS;
+	uint32_t u4MaxQuotaBytes = 0;
+	uint32_t u4MaxPktSize = 0;
+
+	if (IS_FEATURE_DISABLED(prAdapter->rWifiVar.ucRxQuotaInfoEn)) {
+		DBGLOG(INIT, INFO, "RxQuotaInfoEn disabled.");
+		return WLAN_STATUS_SUCCESS;
+	}
+
+	if (prPseCap->u4MaxQuotaBytes < RX_QUOTA_MAGIC_NUM) {
+		DBGLOG(INIT, ERROR, "invalid u4MaxQuotaBytes:%d\n",
+			prPseCap->u4MaxQuotaBytes);
+		return WLAN_STATUS_SUCCESS;
+	}
+
+	u4MaxQuotaBytes = prPseCap->u4MaxQuotaBytes - RX_QUOTA_MAGIC_NUM;
+	u4MaxPktSize = u4MaxQuotaBytes/ucMaxBand;
+	if (u4MaxPktSize < 3000) {
+		/* disable AMSDU */
+		prAdapter->rWifiVar.ucAmsduInAmpduRx = FEATURE_DISABLED;
+		DBGLOG(INIT, INFO, "Disable AMSDU\n");
+	}
+	DBGLOG(INIT, INFO,
+		"u4MaxQuotaBytes:%d u4MaxPktSize:%d ucRxMaxMpduLen:%d\n",
+		prPseCap->u4MaxQuotaBytes, u4MaxPktSize,
+		prAdapter->rWifiVar.ucRxMaxMpduLen);
+
+	return WLAN_STATUS_SUCCESS;
+}
+#endif
+
+uint32_t nicCmdEventHostStatusEmiOffset(IN struct ADAPTER *prAdapter,
+					IN uint8_t *pucEventBuf)
+{
+	struct NIC_HOST_STATUS_EMI_OFFSET *prOffset =
+		(struct NIC_HOST_STATUS_EMI_OFFSET *)pucEventBuf;
+
+	prAdapter->u4HostStatusEmiOffset = prOffset->u4EmiOffset;
+
+	DBGLOG(INIT, INFO,
+	       "EMI offset= %x\n",
+	       prAdapter->u4HostStatusEmiOffset);
+
+	return WLAN_STATUS_SUCCESS;
+}
+
+#if CFG_SUPPORT_LLS
+uint32_t nicCmdEventLinkStatsEmiOffset(IN struct ADAPTER *prAdapter,
+					IN uint8_t *pucEventBuf)
+{
+	struct CAP_LLS_DATA_EMI_OFFSET *prOffset =
+		(struct CAP_LLS_DATA_EMI_OFFSET *)pucEventBuf;
+	uint32_t size = sizeof(struct HAL_LLS_FULL_REPORT);
+	uint32_t offset = prOffset->u4DataEmiOffset & WIFI_EMI_ADDR_MASK;
+
+	uint32_t u4HostOffsetInfo =
+		OFFSET_OF(struct STATS_LLS_WIFI_IFACE_STAT, info);
+	uint32_t u4HostOffsetAc =
+		OFFSET_OF(struct STATS_LLS_WIFI_IFACE_STAT, ac);
+	uint32_t u4HostOffsetPeerInfo =
+		OFFSET_OF(struct HAL_LLS_FULL_REPORT, peer_info);
+	uint32_t u4HostOffsetRadioStat =
+		OFFSET_OF(struct HAL_LLS_FULL_REPORT, radio);
+	uint32_t u4HostOffsetChannel =
+		OFFSET_OF(struct WIFI_RADIO_CHANNEL_STAT, channel);
+	uint32_t u4HostOffsetTxTimePerLevels =
+		OFFSET_OF(struct STATS_LLS_WIFI_RADIO_STAT, tx_time_per_levels);
+	uint32_t u4HostOffsetRxTime =
+		OFFSET_OF(struct STATS_LLS_WIFI_RADIO_STAT, rx_time);
+
+	if (!gConEmiPhyBaseFinal) {
+		DBGLOG(INIT, ERROR,
+		       "Invalid Consys EMI memory address gConEmiPhyBaseFinal");
+		return WLAN_STATUS_FAILURE;
+	}
+
+	DBGLOG(INIT, INFO, "Offset(Host): %u/%u/%u/%u/%u/%u/%u",
+			u4HostOffsetInfo, u4HostOffsetAc,
+			u4HostOffsetPeerInfo, u4HostOffsetRadioStat,
+			u4HostOffsetTxTimePerLevels, u4HostOffsetRxTime,
+			u4HostOffsetChannel);
+
+	if (prOffset->u4OffsetInfo != u4HostOffsetInfo ||
+	    prOffset->u4OffsetAc != u4HostOffsetAc ||
+	    prOffset->u4OffsetPeerInfo != u4HostOffsetPeerInfo ||
+	    prOffset->u4OffsetRadioStat != u4HostOffsetRadioStat ||
+	    prOffset->u4OffsetTxTimerPerLevels != u4HostOffsetTxTimePerLevels ||
+	    prOffset->u4OffsetRxTime != u4HostOffsetRxTime ||
+	    prOffset->u4OffsetChannel != u4HostOffsetChannel) {
+		DBGLOG(INIT, WARN, "Offset not match(FW): %u/%u/%u/%u/%u/%u/%u",
+			prOffset->u4OffsetInfo,
+			prOffset->u4OffsetAc,
+			prOffset->u4OffsetPeerInfo,
+			prOffset->u4OffsetRadioStat,
+			prOffset->u4OffsetTxTimerPerLevels,
+			prOffset->u4OffsetRxTime,
+			prOffset->u4OffsetChannel);
+		return WLAN_STATUS_FAILURE;
+	}
+
+	if (prAdapter->pucLinkStatsSrcBufferAddr) {
+		DBGLOG(INIT, WARN, "LLS EMI has already set, update it.");
+		iounmap(prAdapter->pucLinkStatsSrcBufferAddr);
+		prAdapter->pucLinkStatsSrcBufferAddr = NULL;
+	}
+
+	request_mem_region(gConEmiPhyBaseFinal + offset, size, "WIFI-LLS");
+
+	prAdapter->pucLinkStatsSrcBufferAddr =
+				ioremap(gConEmiPhyBaseFinal + offset, size);
+
+	DBGLOG(INIT, INFO, "EMI Base=0x%llx, offset= %x, size=%zu",
+			gConEmiPhyBase, prOffset->u4DataEmiOffset, size);
+
+	return WLAN_STATUS_SUCCESS;
+}
+#endif
+
+uint32_t nicCfgChipCapFastPath(IN struct ADAPTER *prAdapter,
+			       IN uint8_t *pucEventBuf)
+{
+	struct MSCS_CAP_FAST_PATH *prFastPathCap =
+		(struct MSCS_CAP_FAST_PATH *)pucEventBuf;
+
+	kalMemCopy(&prAdapter->rFastPathCap, prFastPathCap,
+			sizeof(struct MSCS_CAP_FAST_PATH));
+
+	DBGLOG(INIT, INFO,
+	       "Fast path version(%d) support(%d) vendor key(0x%x) group key(0x%x)\n",
+	       prFastPathCap->ucVersion, prFastPathCap->fgSupportFastPath,
+	       prFastPathCap->u4KeyBitmap[0], prFastPathCap->u4KeyBitmap[2]);
+
+	return WLAN_STATUS_SUCCESS;
+}
+
+uint32_t nicCmdEventCasanLoadType(IN struct ADAPTER *prAdapter,
+					IN uint8_t *pucEventBuf)
+{
+
+	struct CAP_CASAN_LOAD_TYPE_T *prLoadType =
+		(struct CAP_CASAN_LOAD_TYPE_T *)pucEventBuf;
+
+	prAdapter->u4CasanLoadType = prLoadType->u4CasanLoadType;
+
+	DBGLOG(INIT, INFO,
+	       "Casan load type = %x\n",
+	       prAdapter->u4CasanLoadType);
+
+	return WLAN_STATUS_SUCCESS;
+}
 
 uint32_t nicCfgChipCapMacCap(IN struct ADAPTER *prAdapter,
 			     IN uint8_t *pucEventBuf)
@@ -3243,6 +2998,25 @@ uint32_t nicCfgChipCapAntSwpCap(IN struct ADAPTER *prAdapter,
 	return WLAN_STATUS_SUCCESS;
 }
 #endif /* CFG_SUPPORT_ANT_SWAP */
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+uint32_t nicCfgChipCap6GCap(IN struct ADAPTER *prAdapter,
+	IN uint8_t *pucEventBuf)
+{
+	struct CAP_6G_CAP *pr6gCap = (struct CAP_6G_CAP *)pucEventBuf;
+
+	ASSERT(prAdapter);
+
+	prAdapter->fgIsHwSupport6G = pr6gCap->ucIsSupport6G;
+	prAdapter->rWifiFemCfg.u2WifiPath6G = (uint16_t)(pr6gCap->ucHwWifiPath);
+
+	DBGLOG(INIT, INFO, "fgIsHwSupport6G = %d, u2WifiPath6G = %d\n",
+		prAdapter->fgIsHwSupport6G,
+		prAdapter->rWifiFemCfg.u2WifiPath6G);
+
+	return WLAN_STATUS_SUCCESS;
+}
+#endif /* CFG_SUPPORT_WIFI_6G */
 
 struct nicTxRsrcEvtHdlr nicTxRsrcEvtHdlrTbl[] = {
 	{NIC_TX_RESOURCE_REPORT_VERSION_1,
@@ -3397,7 +3171,7 @@ void nicCmdEventQueryTxPowerInfo(IN struct ADAPTER *prAdapter,
 			struct EXT_EVENT_TXPOWER_ALL_RATE_POWER_INFO_T));
 		}
 
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 }
@@ -3461,13 +3235,16 @@ void nicEventLinkQuality(IN struct ADAPTER *prAdapter,
 	prCmdInfo = nicGetPendingCmdInfo(prAdapter,
 					 prEvent->ucSeqNum);
 
+	DBGLOG(RX, TRACE, "prCmdInfo=%p", prCmdInfo);
 	if (prCmdInfo != NULL) {
+		DBGLOG(RX, TRACE, "Calling prCmdInfo->pfCmdDoneHandler=%ps",
+				prCmdInfo->pfCmdDoneHandler);
 		if (prCmdInfo->pfCmdDoneHandler)
 			prCmdInfo->pfCmdDoneHandler(prAdapter, prCmdInfo,
 						    prEvent->aucBuffer);
 		else if (prCmdInfo->fgIsOid)
 			kalOidComplete(prAdapter->prGlueInfo,
-				prCmdInfo->fgSetQuery,
+				prCmdInfo,
 				0, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
@@ -3501,292 +3278,6 @@ void nicEventLinkQuality(IN struct ADAPTER *prAdapter,
 			ucBssIndex);
 	}
 #endif
-}
-
-uint32_t nicExtTsfRawData2IqFmt(
-	struct EXT_EVENT_RBIST_DUMP_DATA_T *prEventDumpMem,
-	struct ICAP_INFO_T *prIcap)
-{
-	static uint8_t
-	aucPathWF0[40];	/* the path for iq data dump out */
-	static uint8_t
-	aucPathWF1[40];	/* the path for iq data dump out */
-	static uint8_t
-	aucPathRAWWF0[40];	/* the path for iq data dump out */
-	static uint8_t
-	aucPathRAWWF1[40];	/* the path for iq data dump out */
-	uint8_t *pucDataWF0 = NULL;	/* the data write into file */
-	uint8_t *pucDataWF1 = NULL;	/* the data write into file */
-	uint8_t *pucDataRAWWF0 =
-		NULL;	/* the data write into file */
-	uint8_t *pucDataRAWWF1 =
-		NULL;	/* the data write into file */
-	uint32_t u4SrcOffset;	/* record the buffer offset */
-	uint32_t u4FmtLen = 0;	/* bus format length */
-	uint32_t u4CpyLen = 0;
-	uint32_t u4RemainByte;
-	uint32_t u4DataWBufSize = 150;
-	uint32_t u4DataRAWWBufSize = 150;
-	uint32_t u4DataWLenF0 = 0;
-	uint32_t u4DataWLenF1 = 0;
-	uint32_t u4DataRAWWLenF0 = 0;
-	uint32_t u4DataRAWWLenF1 = 0;
-	u_int8_t fgAppend;
-	int32_t u4Iqc160WF0Q0, u4Iqc160WF1I1;
-	/* for alignment. bcs we send 2KB data per packet,*/
-	static uint8_t	ucDstOffset;
-	/* the data will not align in 12 bytes case. */
-	static uint32_t u4CurTimeTick;
-
-	static union ICAP_BUS_FMT icapBusData;
-	uint32_t *ptr;
-
-	pucDataWF0 = kmalloc(u4DataWBufSize, GFP_KERNEL);
-	pucDataWF1 = kmalloc(u4DataWBufSize, GFP_KERNEL);
-	pucDataRAWWF0 = kmalloc(u4DataRAWWBufSize, GFP_KERNEL);
-	pucDataRAWWF1 = kmalloc(u4DataRAWWBufSize, GFP_KERNEL);
-
-
-	if ((!pucDataWF0) || (!pucDataWF1) || (!pucDataRAWWF0)
-	    || (!pucDataRAWWF1)) {
-		DBGLOG(INIT, ERROR, "kmalloc failed.\n");
-		kfree(pucDataWF0);
-		kfree(pucDataWF1);
-		kfree(pucDataRAWWF0);
-		kfree(pucDataRAWWF1);
-		ASSERT(-1);
-		return -1;
-	}
-
-	fgAppend = TRUE;
-	if (prEventDumpMem->u4PktNum == 0) {
-		u4CurTimeTick = kalGetTimeTick();
-		/* Store memory dump into sdcard,
-		 * path /sdcard/dump_<current system tick>_
-		 * <memory address>_<memory length>.hex
-		 */
-#if defined(LINUX)
-
-		/* if blbist mkdir undre /data/blbist,
-		 * the dump files wouls put on it
-		 */
-		kalScnprintf(aucPathWF0, sizeof(aucPathWF0),
-			  "/dump_out_%05hu_WF0.txt", prIcap->u2DumpIndex);
-		kalScnprintf(aucPathWF1, sizeof(aucPathWF1),
-			  "/dump_out_%05hu_WF1.txt", prIcap->u2DumpIndex);
-		if (kalCheckPath(aucPathWF0) == -1) {
-			kalMemSet(aucPathWF0, 0x00, sizeof(aucPathWF0));
-			kalScnprintf(aucPathWF0, sizeof(aucPathWF0),
-				  "/data/dump_out_%05hu_WF0.txt",
-				  prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathWF0);
-
-		if (kalCheckPath(aucPathWF1) == -1) {
-			kalMemSet(aucPathWF1, 0x00, sizeof(aucPathWF1));
-			kalScnprintf(aucPathWF1, sizeof(aucPathWF1),
-				  "/data/dump_out_%05hu_WF1.txt",
-				  prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathWF1);
-
-		kalScnprintf(aucPathRAWWF0, sizeof(aucPathRAWWF0),
-			  "/dump_RAW_%05hu_WF0.txt", prIcap->u2DumpIndex);
-		kalScnprintf(aucPathRAWWF1, sizeof(aucPathRAWWF1),
-			  "/dump_RAW_%05hu_WF1.txt", prIcap->u2DumpIndex);
-		if (kalCheckPath(aucPathRAWWF0) == -1) {
-			kalMemSet(aucPathRAWWF0, 0x00, sizeof(aucPathRAWWF0));
-			kalScnprintf(aucPathRAWWF0, sizeof(aucPathRAWWF0),
-				  "/data/dump_RAW_%05hu_WF0.txt",
-				  prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathRAWWF0);
-
-		if (kalCheckPath(aucPathRAWWF1) == -1) {
-			kalMemSet(aucPathRAWWF1, 0x00, sizeof(aucPathRAWWF1));
-			kalScnprintf(aucPathRAWWF1, sizeof(aucPathRAWWF1),
-				  "/data/dump_RAW_%hu_WF1.txt",
-				  prIcap->u2DumpIndex);
-		} else
-			kalTrunkPath(aucPathRAWWF1);
-
-#else
-		/* TODO: check Address */
-		kal_sprintf_ddk(aucPathWF0, sizeof(aucPathWF0),
-				u4CurTimeTick, prEventDumpMem->u4Address,
-				prEventDumpMem->u4Length +
-				prEventDumpMem->u4RemainLength);
-		kal_sprintf_ddk(aucPathWF1, sizeof(aucPathWF1),
-				u4CurTimeTick, prEventDumpMem->u4Address,
-				prEventDumpMem->u4Length +
-				prEventDumpMem->u4RemainLength);
-#endif
-		/* fgAppend = FALSE; */
-	}
-
-	ptr = (uint32_t *)(&prEventDumpMem->u4Data);
-
-	for (u4SrcOffset = 0,
-	     u4RemainByte = prEventDumpMem->u4DataLength;
-	     u4RemainByte > 0;) {
-		u4FmtLen = (prIcap->u4CapNode == ICAP_CONTENT_SPECTRUM) ?
-			   sizeof(struct SPECTRUM_BUS_FMT) : sizeof(union
-					   ICAP_BUS_FMT);
-		/* 4 bytes : 12 bytes */
-		u4CpyLen = (u4RemainByte - u4FmtLen >= 0) ? u4FmtLen :
-			   u4RemainByte;
-		if ((ucDstOffset + u4CpyLen) > sizeof(icapBusData)) {
-			DBGLOG(INIT, ERROR,
-				"ucDstOffset(%u) + u4CpyLen(%u) exceed bound of icapBusData\n",
-			  ucDstOffset, u4CpyLen);
-			kfree(pucDataWF0);
-			kfree(pucDataWF1);
-			kfree(pucDataRAWWF0);
-			kfree(pucDataRAWWF1);
-			ASSERT(-1);
-			return -1;
-		}
-
-		memcpy((uint8_t *)&icapBusData + ucDstOffset,
-		       &prEventDumpMem->u4Data + u4SrcOffset, u4CpyLen);
-		if (prIcap->u4CapNode == ICAP_CONTENT_FIIQ
-		    || prIcap->u4CapNode == ICAP_CONTENT_FDIQ) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rIqcBusData.u4Iqc0I,
-				icapBusData.rIqcBusData.u4Iqc0Q);
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rIqcBusData.u4Iqc1I,
-				icapBusData.rIqcBusData.u4Iqc1Q);
-		} else if (prIcap->u4CapNode - 1000 == ICAP_CONTENT_FIIQ ||
-			   prIcap->u4CapNode - 1000 == ICAP_CONTENT_FDIQ) {
-			u4Iqc160WF0Q0 = icapBusData.rIqc160BusData.u4Iqc0Q0P1 |
-				(icapBusData.rIqc160BusData.u4Iqc0Q0P2 << 8);
-			u4Iqc160WF1I1 = icapBusData.rIqc160BusData.u4Iqc1I1P1 |
-				(icapBusData.rIqc160BusData.u4Iqc1I1P2 << 4);
-
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n",
-				icapBusData.rIqc160BusData.u4Iqc0I0,
-				u4Iqc160WF0Q0,
-				icapBusData.rIqc160BusData.u4Iqc0I1,
-				icapBusData.rIqc160BusData.u4Iqc0Q1);
-
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n",
-				icapBusData.rIqc160BusData.u4Iqc1I0,
-				icapBusData.rIqc160BusData.u4Iqc1Q0,
-				u4Iqc160WF1I1,
-				icapBusData.rIqc160BusData.u4Iqc1Q1);
-
-		} else if (prIcap->u4CapNode == ICAP_CONTENT_SPECTRUM) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n",
-				icapBusData.rSpectrumBusData.u4DcocI,
-				icapBusData.rSpectrumBusData.u4DcocQ);
-		} else if (prIcap->u4CapNode == ICAP_CONTENT_ADC) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI0T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T0,
-				icapBusData.rPackedAdcBusData.u4AdcI0T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T1,
-				icapBusData.rPackedAdcBusData.u4AdcI0T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T2,
-				icapBusData.rPackedAdcBusData.u4AdcI0T3,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T3,
-				icapBusData.rPackedAdcBusData.u4AdcI0T4,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T4,
-				icapBusData.rPackedAdcBusData.u4AdcI0T5,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T5);
-
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI1T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T0,
-				icapBusData.rPackedAdcBusData.u4AdcI1T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T1,
-				icapBusData.rPackedAdcBusData.u4AdcI1T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T2,
-				icapBusData.rPackedAdcBusData.u4AdcI1T3,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T3,
-				icapBusData.rPackedAdcBusData.u4AdcI1T4,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T4,
-				icapBusData.rPackedAdcBusData.u4AdcI1T5,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T5);
-		} else if (prIcap->u4CapNode - 2000 == ICAP_CONTENT_ADC) {
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI0T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T0,
-				icapBusData.rPackedAdcBusData.u4AdcI0T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T1,
-				icapBusData.rPackedAdcBusData.u4AdcI0T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ0T2);
-
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-				"%8d,%8d\n%8d,%8d\n%8d,%8d\n",
-				icapBusData.rPackedAdcBusData.u4AdcI1T0,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T0,
-				icapBusData.rPackedAdcBusData.u4AdcI1T1,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T1,
-				icapBusData.rPackedAdcBusData.u4AdcI1T2,
-				icapBusData.rPackedAdcBusData.u4AdcQ1T2);
-		} else if (prIcap->u4CapNode == ICAP_CONTENT_TOAE) {
-			/* actually, this is DCOC. we take TOAE as DCOC */
-			u4DataWLenF0 = kalScnprintf(pucDataWF0, u4DataWBufSize,
-					"%8d,%8d\n",
-					icapBusData.rAdcBusData.u4Dcoc0I,
-					icapBusData.rAdcBusData.u4Dcoc0Q);
-			u4DataWLenF1 = kalScnprintf(pucDataWF1, u4DataWBufSize,
-					"%8d,%8d\n",
-					icapBusData.rAdcBusData.u4Dcoc1I,
-					icapBusData.rAdcBusData.u4Dcoc1Q);
-		}
-		if (u4CpyLen ==
-		    u4FmtLen) {	/* the data format is complete */
-			kalWriteToFile(aucPathWF0, fgAppend, pucDataWF0,
-				       u4DataWLenF0);
-			kalWriteToFile(aucPathWF1, fgAppend, pucDataWF1,
-				       u4DataWLenF1);
-		}
-		ptr = (uint32_t *)(&prEventDumpMem->u4Data + u4SrcOffset);
-		u4DataRAWWLenF0 = kalScnprintf(pucDataRAWWF0, u4DataWBufSize,
-					    "%08x%08x%08x\n",
-					    *(ptr + 2), *(ptr + 1), *ptr);
-		kalWriteToFile(aucPathRAWWF0, fgAppend, pucDataRAWWF0,
-			       u4DataRAWWLenF0);
-		kalWriteToFile(aucPathRAWWF1, fgAppend, pucDataRAWWF1,
-			       u4DataRAWWLenF1);
-
-		u4RemainByte -= u4CpyLen;
-		u4SrcOffset += u4CpyLen;	/* shift offset */
-		/* only use ucDstOffset at first packet for align 2KB */
-		ucDstOffset = 0;
-	}
-	/* if this is a last packet, we can't transfer the remain data.
-	 *  bcs we can't guarantee the data is complete align data format
-	 */
-	if (u4CpyLen !=
-	    u4FmtLen) {	/* the data format is complete */
-		/* not align 2KB, keep the data and next packet data
-		 * will append it
-		 */
-		ucDstOffset =	u4CpyLen;
-	}
-
-	kfree(pucDataWF0);
-	kfree(pucDataWF1);
-	kfree(pucDataRAWWF0);
-	kfree(pucDataRAWWF1);
-
-	if (u4RemainByte < 0) {
-		ASSERT(-1);
-		return -1;
-	}
-
-	return 0;
 }
 
 void nicExtEventReCalData(IN struct ADAPTER *prAdapter, IN uint8_t *pucEventBuf)
@@ -3910,7 +3401,7 @@ void nicExtEventICapIQData(IN struct ADAPTER *prAdapter,
 		       "u4SmplCnt is larger than buffer size\n");
 	}
 
-	if (prIcapInfo->u4IQArrayIndex + prICapEvent->u4SmplCnt >=
+	if (prIcapInfo->u4IQArrayIndex + prICapEvent->u4SmplCnt >
 	    MAX_ICAP_IQ_DATA_CNT) {
 		DBGLOG(RFTEST, ERROR,
 		       "Too many packets from FW, skip rest of them\n");
@@ -3951,96 +3442,6 @@ void nicExtEventICapIQData(IN struct ADAPTER *prAdapter,
 		prAdapter->rIcapInfo.eIcapState = ICAP_STATE_FW_DUMPING;
 
 }
-
-void nicExtEventQueryMemDump(IN struct ADAPTER *prAdapter,
-			     IN uint8_t *pucEventBuf)
-{
-	struct EXT_EVENT_RBIST_DUMP_DATA_T *prEventDumpMem;
-	static uint8_t aucPath[256];
-	static uint8_t aucPath_done[300];
-	static uint32_t u4CurTimeTick;
-
-	ASSERT(prAdapter);
-	ASSERT(pucEventBuf);
-
-	kalSprintf(aucPath, "/dump_%05hu.hex",
-		prAdapter->rIcapInfo.u2DumpIndex);
-
-	prEventDumpMem = (struct EXT_EVENT_RBIST_DUMP_DATA_T *)
-			 pucEventBuf;
-
-	if (kalCheckPath(aucPath) == -1) {
-		kalMemSet(aucPath, 0x00, 256);
-		kalSprintf(aucPath, "/data/dump_%05hu.hex",
-			prAdapter->rIcapInfo.u2DumpIndex);
-	}
-
-	if (prEventDumpMem->u4PktNum == 0) {
-		/* Store memory dump into sdcard,
-		 * path /sdcard/dump_<current  system tick>_<memory address>
-		 * _<memory length>.hex
-		 */
-		u4CurTimeTick = kalGetTimeTick();
-#if defined(LINUX)
-
-		/* if blbist mkdir undre /data/blbist,
-		 * the dump files wouls put on it
-		 */
-		kalSprintf(aucPath, "/dump_%05hu.hex",
-			prAdapter->rIcapInfo.u2DumpIndex);
-		if (kalCheckPath(aucPath) == -1) {
-			kalMemSet(aucPath, 0x00, 256);
-			kalSprintf(aucPath, "/data/dump_%05hu.hex",
-				prAdapter->rIcapInfo.u2DumpIndex);
-		}
-#else
-		/* TODO: check Address */
-		kal_sprintf_ddk(aucPath, sizeof(aucPath),
-			u4CurTimeTick, prEventDumpMem->u4Address,
-			prEventDumpMem->u4Length +
-			prEventDumpMem->u4RemainLength);
-#endif
-		kalWriteToFile(aucPath, FALSE,
-			       (uint8_t *)prEventDumpMem->u4Data,
-			       prEventDumpMem->u4DataLength);
-	} else {
-		/* Append current memory dump to the hex file */
-		kalWriteToFile(aucPath, TRUE,
-			       (uint8_t *)prEventDumpMem->u4Data,
-			       prEventDumpMem->u4DataLength);
-	}
-#if CFG_SUPPORT_QA_TOOL
-	nicExtTsfRawData2IqFmt(prEventDumpMem,
-			       &prAdapter->rIcapInfo);
-#endif /* CFG_SUPPORT_QA_TOOL */
-
-	/* TODO: check Address */
-
-	if (prEventDumpMem->u4DataLength == 0) {
-		/* The request is finished or firmware response a error */
-		/* Reply time tick to iwpriv */
-
-		prAdapter->rIcapInfo.eIcapState = ICAP_STATE_FW_DUMP_DONE;
-
-		kalSprintf(aucPath_done, "/file_dump_done.txt");
-		if (kalCheckPath(aucPath_done) == -1) {
-			kalMemSet(aucPath_done, 0x00, 256);
-			kalSprintf(aucPath_done, "/data/file_dump_done.txt");
-		}
-		DBGLOG(INIT, INFO, ": ==> gen done_file\n");
-		kalWriteToFile(aucPath_done, FALSE, aucPath_done,
-			       sizeof(aucPath_done));
-#if CFG_SUPPORT_QA_TOOL
-		prAdapter->rIcapInfo.au4Offset[0][0] = 0;
-		prAdapter->rIcapInfo.au4Offset[0][1] = 9;
-		prAdapter->rIcapInfo.au4Offset[1][0] = 0;
-		prAdapter->rIcapInfo.au4Offset[1][1] = 9;
-#endif /* CFG_SUPPORT_QA_TOOL */
-		prAdapter->rIcapInfo.u2DumpIndex++;
-
-	}
-}
-
 
 uint32_t nicRfTestEventHandler(IN struct ADAPTER *prAdapter,
 			       IN struct WIFI_EVENT *prEvent)
@@ -4214,6 +3615,13 @@ void nicEventLayer0ExtMagic(IN struct ADAPTER *prAdapter,
 		       prStaRec->ucMaxMpduCount);
 		break;
 	}
+#if (CFG_SUPPORT_POWER_THROTTLING == 1)
+	case EXT_EVENT_ID_THERMAL_PROTECT:
+	{
+		thrmProtEventHandler(prAdapter, prEvent->aucBuffer);
+		break;
+	}
+#endif
 #if CFG_SUPPORT_WIFI_SYSDVT
 	case EXT_EVENT_ID_SYSDVT_TEST:
 	{
@@ -4230,7 +3638,7 @@ void nicEventLayer0ExtMagic(IN struct ADAPTER *prAdapter,
 	if (prCmdInfo != NULL) {
 		if ((prCmdInfo->fgIsOid) != 0)
 			kalOidComplete(prAdapter->prGlueInfo,
-				prCmdInfo->fgSetQuery,
+				prCmdInfo,
 				u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
@@ -4250,7 +3658,7 @@ void nicEventLayer0ExtMagic(IN struct ADAPTER *prAdapter,
 					prCmdInfo, prEvent->aucBuffer);
 			else if (prCmdInfo->fgIsOid)
 				kalOidComplete(prAdapter->prGlueInfo,
-					prCmdInfo->fgSetQuery,
+					prCmdInfo,
 				  u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 
 			/* return prCmdInfo */
@@ -4274,7 +3682,7 @@ void nicEventLayer0ExtMagic(IN struct ADAPTER *prAdapter,
 			} else if ((prCmdInfo->fgIsOid) != 0)
 				kalOidComplete(
 					prAdapter->prGlueInfo,
-					prCmdInfo->fgSetQuery,
+					prCmdInfo,
 					u4QueryInfoLen,
 					WLAN_STATUS_SUCCESS);
 			/* return prCmdInfo */
@@ -4296,7 +3704,7 @@ void nicEventLayer0ExtMagic(IN struct ADAPTER *prAdapter,
 			} else if ((prCmdInfo->fgIsOid) != 0)
 				kalOidComplete(
 					prAdapter->prGlueInfo,
-					prCmdInfo->fgSetQuery,
+					prCmdInfo,
 					u4QueryInfoLen,
 					WLAN_STATUS_SUCCESS);
 			/* return prCmdInfo */
@@ -4469,7 +3877,7 @@ void nicEventStatistics(IN struct ADAPTER *prAdapter,
 						    prEvent->aucBuffer);
 		else if (prCmdInfo->fgIsOid)
 			kalOidComplete(prAdapter->prGlueInfo,
-				prCmdInfo->fgSetQuery,
+				prCmdInfo,
 				0, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
@@ -4497,7 +3905,7 @@ void nicEventWlanInfo(IN struct ADAPTER *prAdapter,
 						    prEvent->aucBuffer);
 		else if (prCmdInfo->fgIsOid)
 			kalOidComplete(prAdapter->prGlueInfo,
-							prCmdInfo->fgSetQuery,
+							prCmdInfo,
 							0, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
@@ -4525,7 +3933,7 @@ void nicEventMibInfo(IN struct ADAPTER *prAdapter,
 						    prEvent->aucBuffer);
 		else if (prCmdInfo->fgIsOid)
 			kalOidComplete(prAdapter->prGlueInfo,
-				prCmdInfo->fgSetQuery,
+				prCmdInfo,
 				0, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
@@ -4554,10 +3962,6 @@ bool nicBeaconTimeoutFilterPolicy(IN struct ADAPTER *prAdapter,
 	bool		bValid = true;
 	uint32_t	u4MonitorWindow;
 	struct BSS_INFO *prBssInfo = (struct BSS_INFO *) NULL;
-#if CFG_SUPPORT_WFD
-	struct WFD_CFG_SETTINGS *prWfdCfgSettings =
-		&prAdapter->rWifiVar.rWfdConfigureSettings;
-#endif
 
 	ASSERT(prAdapter);
 	u4MonitorWindow = CFG_BEACON_TIMEOUT_FILTER_DURATION_DEFAULT_VALUE;
@@ -4568,7 +3972,7 @@ bool nicBeaconTimeoutFilterPolicy(IN struct ADAPTER *prAdapter,
 	prTxCtrl = &prAdapter->rTxCtrl;
 	ASSERT(prTxCtrl);
 
-	GET_CURRENT_SYSTIME(&u4CurrentTime);
+	GET_BOOT_SYSTIME(&u4CurrentTime);
 
 	DBGLOG(NIC, INFO,
 			"u4MonitorWindow: %d, u4CurrentTime: %d, u4LastRxTime: %d, u4LastTxTime: %d",
@@ -4605,14 +4009,6 @@ bool nicBeaconTimeoutFilterPolicy(IN struct ADAPTER *prAdapter,
 				"Policy 1 hit, RX in the past duration");
 			bValid = false;
 		}
-#if CFG_SUPPORT_WFD
-		else if (prWfdCfgSettings->ucWfdEnable &&
-			prWfdCfgSettings->u4LinkScore > 0) {
-			DBGLOG(NIC, INFO,
-				"Policy 2 hit, link score > 0 in WFD");
-			bValid = false;
-		}
-#endif /* CFG_SUPPORT_WFD */
 	}
 #endif /* CFG_ENABLE_WIFI_DIRECT */
 
@@ -4639,6 +4035,18 @@ void nicEventBeaconTimeout(IN struct ADAPTER *prAdapter,
 
 		DBGLOG(NIC, INFO, "Reason code: %d\n",
 		       prEventBssBeaconTimeout->ucReasonCode);
+/* fos_change begin */
+#if CFG_SUPPORT_EXCEPTION_STATISTICS
+		prAdapter->total_beacon_timeout_count++;
+		if (prEventBssBeaconTimeout->ucReasonCode >=
+			BEACON_TIMEOUT_DUE_2_NUM) {
+			DBGLOG(RX, WARN, "Invaild Beacon Timeout Reason: %d\n",
+				prEventBssBeaconTimeout->ucReasonCode);
+		} else {
+			prAdapter->beacon_timeout_count
+				[prEventBssBeaconTimeout->ucReasonCode]++;
+		}
+#endif /* fos_change end */
 
 		prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
 			prEventBssBeaconTimeout->ucBssIndex);
@@ -4905,27 +4313,12 @@ void nicEventAddPkeyDone(IN struct ADAPTER *prAdapter,
 		prStaRec->fgIsTxKeyReady = TRUE;
 		qmUpdateStaRec(prAdapter, prStaRec);
 	}
-}
 
-void nicEventIcapDone(IN struct ADAPTER *prAdapter,
-		      IN struct WIFI_EVENT *prEvent)
-{
-	struct EVENT_ICAP_STATUS *prEventIcapStatus;
-	struct PARAM_CUSTOM_MEM_DUMP_STRUCT rMemDumpInfo;
-	uint32_t u4QueryInfo;
-
-	prEventIcapStatus = (struct EVENT_ICAP_STATUS *) (
-				    prEvent->aucBuffer);
-
-	rMemDumpInfo.u4Address = prEventIcapStatus->u4StartAddress;
-	rMemDumpInfo.u4Length = prEventIcapStatus->u4IcapSieze;
-#if CFG_SUPPORT_QA_TOOL
-	rMemDumpInfo.u4IcapContent =
-		prEventIcapStatus->u4IcapContent;
-#endif
-
-	wlanoidQueryMemDump(prAdapter, &rMemDumpInfo,
-			    sizeof(rMemDumpInfo), &u4QueryInfo);
+	if (prAdapter->fgIsPostponeTxEAPOLM3) {
+		prAdapter->fgIsPostponeTxEAPOLM3 = FALSE;
+		DBGLOG(RX, INFO,
+			"[Passpoint] PTK is installed and ready!\n");
+	}
 }
 
 #if CFG_SUPPORT_CAL_RESULT_BACKUP_TO_HOST
@@ -5052,7 +4445,7 @@ void nicEventRssiMonitor(IN struct ADAPTER *prAdapter,
 	struct net_device *dev;
 
 	prGlueInfo = prAdapter->prGlueInfo;
-	wiphy = priv_to_wiphy(prGlueInfo);
+	wiphy = wlanGetWiphy();
 
 	kalMemCopy(&rssi, prEvent->aucBuffer, sizeof(int32_t));
 	DBGLOG(RX, TRACE, "EVENT_ID_RSSI_MONITOR value=%d\n", rssi);
@@ -5083,103 +4476,12 @@ void nicEventDumpMem(IN struct ADAPTER *prAdapter,
 						    prEvent->aucBuffer);
 		else if (prCmdInfo->fgIsOid)
 			kalOidComplete(prAdapter->prGlueInfo,
-				prCmdInfo->fgSetQuery, 0, WLAN_STATUS_SUCCESS);
+				prCmdInfo, 0, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
 	} else {
 		/* Burst mode */
 		DBGLOG(NIC, INFO, ": ==> 2\n");
-#if 0
-		nicEventQueryMemDump(prAdapter, prEvent->aucBuffer);
-#endif
-	}
-}
-
-void nicEventAssertDump(IN struct ADAPTER *prAdapter,
-			IN struct WIFI_EVENT *prEvent)
-{
-	struct mt66xx_chip_info *prChipInfo = NULL;
-
-	ASSERT(prAdapter);
-	prChipInfo = prAdapter->chip_info;
-
-	if (wlanIsChipRstRecEnabled(prAdapter))
-		wlanChipRstPreAct(prAdapter);
-
-	if (prEvent->ucS2DIndex == S2D_INDEX_EVENT_N2H) {
-		if (!prAdapter->fgN9AssertDumpOngoing) {
-			DBGLOG(NIC, ERROR,
-				"%s: EVENT_ID_ASSERT_DUMP\n", __func__);
-			DBGLOG(NIC, ERROR,
-			       "\n[DUMP_N9]====N9 ASSERT_DUMPSTART====\n");
-			prAdapter->fgKeepPrintCoreDump = TRUE;
-			if (kalOpenCorDumpFile(TRUE) != WLAN_STATUS_SUCCESS)
-				DBGLOG(NIC, ERROR, "kalOpenCorDumpFile fail\n");
-			else
-				prAdapter->fgN9CorDumpFileOpend = TRUE;
-
-			prAdapter->fgN9AssertDumpOngoing = TRUE;
-			wlanCorDumpTimerInit(prAdapter, TRUE);
-		}
-		if (prAdapter->fgN9AssertDumpOngoing) {
-
-			if (prAdapter->fgKeepPrintCoreDump)
-				DBGLOG(NIC, ERROR, "[DUMP_N9]%s:\n",
-					prEvent->aucBuffer);
-			if (!kalStrnCmp(prEvent->aucBuffer,
-					";more log added here", 5)
-			    || !kalStrnCmp(prEvent->aucBuffer,
-					";[core dump start]", 5))
-				prAdapter->fgKeepPrintCoreDump = FALSE;
-
-			if (prAdapter->fgN9CorDumpFileOpend) {
-				if (kalWriteCorDumpFile(
-					    prEvent->aucBuffer,
-					    prEvent->u2PacketLength -
-					    prChipInfo->event_hdr_size,
-					    TRUE) != WLAN_STATUS_SUCCESS) {
-					DBGLOG(NIC, INFO,
-						"kalWriteN9CorDumpFile fail\n");
-				}
-			}
-			wlanCorDumpTimerReset(prAdapter, TRUE);
-		}
-	} else {
-		/* prEvent->ucS2DIndex == S2D_INDEX_EVENT_C2H */
-		if (!prAdapter->fgCr4AssertDumpOngoing) {
-			DBGLOG(NIC, ERROR,
-					"%s: EVENT_ID_ASSERT_DUMP\n", __func__);
-			DBGLOG(NIC, ERROR,
-							"\n[DUMP_Cr4]====CR4 ASSERT_DUMPSTART====\n");
-			prAdapter->fgKeepPrintCoreDump = TRUE;
-			if (kalOpenCorDumpFile(FALSE) != WLAN_STATUS_SUCCESS)
-				DBGLOG(NIC, ERROR, "kalOpenCorDumpFile fail\n");
-			else
-				prAdapter->fgCr4CorDumpFileOpend = TRUE;
-
-			prAdapter->fgCr4AssertDumpOngoing = TRUE;
-			wlanCorDumpTimerInit(prAdapter, FALSE);
-		}
-		if (prAdapter->fgCr4AssertDumpOngoing) {
-			if (prAdapter->fgKeepPrintCoreDump)
-				DBGLOG(NIC, ERROR, "[DUMP_CR4]%s:\n",
-					prEvent->aucBuffer);
-			if (!kalStrnCmp(prEvent->aucBuffer,
-					";more log added here", 5))
-				prAdapter->fgKeepPrintCoreDump = FALSE;
-
-			if (prAdapter->fgCr4CorDumpFileOpend) {
-				if (kalWriteCorDumpFile(
-					    prEvent->aucBuffer,
-					    prEvent->u2PacketLength -
-					    prChipInfo->event_hdr_size,
-					    FALSE) != WLAN_STATUS_SUCCESS) {
-					DBGLOG(NIC, ERROR,
-						"kalWriteN9CorDumpFile fail\n");
-				}
-			}
-			wlanCorDumpTimerReset(prAdapter, FALSE);
-		}
 	}
 }
 
@@ -5222,6 +4524,106 @@ void nicEventUpdateCoexPhyrate(IN struct ADAPTER *prAdapter,
 	       prAdapter->ucSmartGearWfPathSupport);
 }
 
+void nicEventUpdateCoexStatus(IN struct ADAPTER *prAdapter,
+			      IN struct WIFI_EVENT *prEvent)
+{
+	struct EVENT_COEX_STATUS *prEventCoexStatus;
+	struct STA_RECORD *prStaRec;
+	struct BSS_DESC *prBssDesc;
+	struct BSS_INFO *prBssInfo;
+	struct CMD_ADDBA_REJECT rAddBaReject;
+
+	enum ENUM_COEX_MODE eCoexMode = COEX_NONE_BT;
+	uint32_t rStatus = WLAN_STATUS_SUCCESS;
+	uint8_t ucBssIndex = AIS_DEFAULT_INDEX;
+	bool fgIsBAND2G4Coex = FALSE;
+	bool fgHitBlackList = FALSE;
+
+	ASSERT(prAdapter);
+
+	DBGLOG(NIC, LOUD, "%s\n", __func__);
+
+	prEventCoexStatus = (struct EVENT_COEX_STATUS *)(prEvent->aucBuffer);
+
+	eCoexMode = prEventCoexStatus->ucCoexMode;
+	fgIsBAND2G4Coex = prEventCoexStatus->fgIsBAND2G4Coex;
+
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+	prAdapter->fgIsNeedAvoidDesenseFreq =
+		!!(prEventCoexStatus->ucBtOnOff &&
+		!prEventCoexStatus->fgIs5GsupportEPA);
+	DBGLOG(NIC, TRACE, "Avoid desense frequency[%d]\n",
+		prAdapter->fgIsNeedAvoidDesenseFreq);
+#endif
+
+	DBGLOG(NIC, TRACE, "[BTon:%d BTPrf:0x%x BTRssi=%d Mode:%d Flag:%d]\n",
+	       prEventCoexStatus->ucBtOnOff,
+	       prEventCoexStatus->u2BtProfile,
+	       prEventCoexStatus->ucBtRssi,
+	       prEventCoexStatus->ucCoexMode,
+	       prEventCoexStatus->fgIsBAND2G4Coex);
+	/*AIS only feature*/
+	for (; ucBssIndex < KAL_AIS_NUM; ucBssIndex++) {
+		prBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
+		prBssDesc = aisGetTargetBssDesc(prAdapter, ucBssIndex);
+		prStaRec = aisGetStaRecOfAP(prAdapter, ucBssIndex);
+		fgHitBlackList = (bssGetIotApAction(prAdapter, prBssDesc) ==
+				  WLAN_IOT_AP_COEX_DIS_RX_AMPDU);
+		if (!prBssInfo || !prStaRec)
+			return;
+		/**
+		 * 1. Previouse mode is not TDD
+		 * 2. Coex mode in Event = TDD
+		 * 3. CoexFlag in Event is TRUE
+		 * 4. Bss Band is 2G
+		 * 5. BssDesc hit Blacklist
+		 */
+		if (prBssInfo->eCoexMode != COEX_TDD_MODE &&
+		    eCoexMode == COEX_TDD_MODE &&
+		    fgIsBAND2G4Coex == TRUE &&
+		    prBssInfo->eBand == BAND_2G4 &&
+		    fgHitBlackList == TRUE) {
+			/*Set Rx BA size=1*/
+			prAdapter->rWifiVar.ucRxHtBaSize = 1;
+			prAdapter->rWifiVar.ucRxVhtBaSize = 1;
+			cnmStaSendUpdateCmd(prAdapter, prStaRec, NULL, FALSE);
+			rAddBaReject.fgEnable = TRUE;
+			rAddBaReject.fgApply = TRUE;
+			rStatus = wlanSendSetQueryCmd(prAdapter,
+				CMD_ID_ADDBA_REJECT,
+				TRUE, FALSE, FALSE, NULL, NULL,
+				sizeof(struct CMD_ADDBA_REJECT),
+				(uint8_t *) &rAddBaReject, NULL, 0);
+			DBGLOG(NIC, INFO, "Set Rx BA size=1 [%u]\n", rStatus);
+		} else if (prBssInfo->eCoexMode == COEX_TDD_MODE &&
+			   eCoexMode != COEX_TDD_MODE &&
+			   prBssInfo->eBand == BAND_2G4 &&
+			   fgHitBlackList == TRUE) {
+			/*restore Tx BA size setting*/
+			prAdapter->rWifiVar.ucRxHtBaSize =
+				WLAN_LEGACY_MAX_BA_SIZE;
+			prAdapter->rWifiVar.ucRxVhtBaSize =
+				WLAN_LEGACY_MAX_BA_SIZE;
+			cnmStaSendUpdateCmd(prAdapter, prStaRec, NULL, FALSE);
+			rAddBaReject.fgEnable = TRUE;
+			rAddBaReject.fgApply = TRUE;
+			rStatus = wlanSendSetQueryCmd(prAdapter,
+				CMD_ID_ADDBA_REJECT,
+				TRUE, FALSE, FALSE, NULL, NULL,
+				sizeof(struct CMD_ADDBA_REJECT),
+				(uint8_t *) &rAddBaReject, NULL, 0);
+			DBGLOG(NIC, INFO, "Reset Rx BA size [%u]\n", rStatus);
+		}
+		/*Record current coex mode to Ais BssInfo*/
+		prBssInfo->eCoexMode = eCoexMode;
+	}
+
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+	p2pFuncSwitchSapChannel(prAdapter);
+#endif
+}
+
+
 void nicCmdEventQueryCnmInfo(IN struct ADAPTER *prAdapter,
 		IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
 {
@@ -5243,7 +4645,7 @@ void nicCmdEventQueryCnmInfo(IN struct ADAPTER *prAdapter,
 
 		prGlueInfo = prAdapter->prGlueInfo;
 		u4QueryInfoLen = sizeof(struct PARAM_GET_CNM_T);
-		kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prGlueInfo, prCmdInfo,
 			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
 }
@@ -5263,12 +4665,27 @@ void nicEventCnmInfo(IN struct ADAPTER *prAdapter,
 						    prEvent->aucBuffer);
 		else if (prCmdInfo->fgIsOid)
 			kalOidComplete(prAdapter->prGlueInfo,
-							prCmdInfo->fgSetQuery,
+							prCmdInfo,
 							0, WLAN_STATUS_SUCCESS);
 		/* return prCmdInfo */
 		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
 	}
 }
+
+void nicEventReportUEvent(IN struct ADAPTER *prAdapter,
+		     IN struct WIFI_EVENT *prEvent)
+{
+	struct EVENT_REPORT_U_EVENT *prEventData;
+
+	prEventData = (struct EVENT_REPORT_U_EVENT *) (prEvent->aucBuffer);
+
+	if (prEventData != NULL) {
+		DBGLOG(NIC, TRACE, "UEvent: %s\n",
+		prEventData->aucData);
+		kalSendUevent(prEventData->aucData);
+	}
+}
+
 
 #if CFG_SUPPORT_REPLAY_DETECTION
 void nicCmdEventSetAddKey(IN struct ADAPTER *prAdapter,
@@ -5285,7 +4702,7 @@ void nicCmdEventSetAddKey(IN struct ADAPTER *prAdapter,
 	if (prCmdInfo->fgIsOid) {
 		/* Update Set Information Length */
 		kalOidComplete(prAdapter->prGlueInfo,
-			       prCmdInfo->fgSetQuery,
+			       prCmdInfo,
 			       prCmdInfo->u4InformationBufferLength,
 			       WLAN_STATUS_SUCCESS);
 	}
@@ -5330,8 +4747,11 @@ void nicOidCmdTimeoutSetAddKey(IN struct ADAPTER *prAdapter,
 
 	DBGLOG(NIC, WARN, "Wlan setaddkey timeout.\n");
 	if (prCmdInfo->fgIsOid)
-		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo->fgSetQuery,
+		kalOidComplete(prAdapter->prGlueInfo, prCmdInfo,
 			       0, WLAN_STATUS_FAILURE);
+
+	if (prAdapter->fgIsPostponeTxEAPOLM3)
+		prAdapter->fgIsPostponeTxEAPOLM3 = FALSE;
 }
 #endif
 
@@ -5350,7 +4770,7 @@ void nicEventUpdateLowLatencyInfoStatus(IN struct ADAPTER *prAdapter,
 {
 	struct EVENT_LOW_LATENCY_INFO *prEvtLowLatencyInfo;
 	struct rtc_time tm;
-	struct timeval tv = { 0 };
+	struct timespec64 tv = { 0 };
 #if CFG_SUPPORT_DATA_STALL
 	uint8_t event[12];
 	uint32_t iEventTime;
@@ -5362,18 +4782,17 @@ void nicEventUpdateLowLatencyInfoStatus(IN struct ADAPTER *prAdapter,
 	prEvtLowLatencyInfo =
 		(struct EVENT_LOW_LATENCY_INFO *)(prEvent->aucBuffer);
 
-	do_gettimeofday(&tv);
-	rtc_time_to_tm(tv.tv_sec, &tm);
+	ktime_get_real_ts64(&tv);
+	rtc_time64_to_tm(tv.tv_sec, &tm);
 
-	DBGLOG_LIMITED(NIC, INFO,
+	DBGLOG(NIC, TRACE,
 	       "Low Latency DPP Info: drv cert=[%d], evt cert=[%d], evt dup=[%d] drv det=[%d] %02d-%02d %02d:%02d:%02d.%06u\n",
 	       prAdapter->fgTxDupCertificate,
 	       prEvtLowLatencyInfo->fgTxDupCert,
 	       prEvtLowLatencyInfo->fgTxDupEnable,
 	       prAdapter->fgEnTxDupDetect,
 	       tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-	       tm.tm_min, tm.tm_sec, (unsigned int)tv.tv_usec);
-
+	       tm.tm_min, tm.tm_sec, (unsigned int)NSEC_TO_USEC(tv.tv_nsec));
 	if (prAdapter->fgTxDupCertificate != prEvtLowLatencyInfo->fgTxDupCert) {
 
 		prAdapter->fgTxDupCertificate =
@@ -5383,7 +4802,7 @@ void nicEventUpdateLowLatencyInfoStatus(IN struct ADAPTER *prAdapter,
 		ret = sprintf(event, "%03d%02d%06u",
 			EVENT_TX_DUP_CERT_CHANGE,
 			tm.tm_sec,
-			(unsigned int)tv.tv_usec);
+			(unsigned int)NSEC_TO_USEC(tv.tv_nsec));
 		if (ret < 0 || ret > sizeof(event)) {
 			DBGLOG_LIMITED(NIC, INFO, "sprintf failed:%d\n", ret);
 			return;
@@ -5410,12 +4829,12 @@ void nicEventUpdateLowLatencyInfoStatus(IN struct ADAPTER *prAdapter,
 				ret = sprintf(event, "%03d%02d%06u",
 					EVENT_TX_DUP_ON,
 					tm.tm_sec,
-					(unsigned int)tv.tv_usec);
+					(unsigned int)NSEC_TO_USEC(tv.tv_nsec));
 			} else {
 				ret = sprintf(event, "%03d%02d%06u",
 					EVENT_TX_DUP_OFF,
 					tm.tm_sec,
-					(unsigned int)tv.tv_usec);
+					(unsigned int)NSEC_TO_USEC(tv.tv_nsec));
 			}
 			if (ret < 0 || ret > sizeof(event)) {
 				DBGLOG_LIMITED(NIC, INFO,
@@ -5440,4 +4859,583 @@ void nicEventUpdateLowLatencyInfoStatus(IN struct ADAPTER *prAdapter,
 #endif
 }
 #endif
+
+#if CFG_SUPPORT_NAN
+uint32_t nicDumpTlv(IN void *prCmdBuffer)
+{
+	struct _CMD_EVENT_TLV_COMMOM_T *prTlvCommon = NULL;
+	struct _CMD_EVENT_TLV_ELEMENT_T *prTlvElement = NULL;
+	uint16_t u2ElementNum = 1;
+	uint32_t u4BodyByteCnt;
+
+	prTlvCommon = (struct _CMD_EVENT_TLV_COMMOM_T *)prCmdBuffer;
+
+	DBGLOG(TX, INFO, "u2TotalElementNum:%d\n",
+	       prTlvCommon->u2TotalElementNum);
+
+	for (u2ElementNum = 1; u2ElementNum <= prTlvCommon->u2TotalElementNum;
+	     u2ElementNum++) {
+		prTlvElement =
+			nicGetTargetTlvElement(u2ElementNum, prCmdBuffer);
+		DBGLOG(TX, INFO, "TLV(%d) start address:%p\n", u2ElementNum,
+		       prTlvElement);
+		DBGLOG(TX, INFO, "TLV(%d) tag_type:%d\n", u2ElementNum,
+		       (uint32_t)prTlvElement->tag_type);
+		DBGLOG(TX, INFO, "TLV(%d) body_len:%d\n", u2ElementNum,
+		       (uint32_t)prTlvElement->body_len);
+
+		for (u4BodyByteCnt = 0; u4BodyByteCnt < prTlvElement->body_len;
+		     u4BodyByteCnt++) {
+			DBGLOG(TX, INFO, "TLV(%d) body[%d]:%x\n", u2ElementNum,
+			       u4BodyByteCnt,
+			       prTlvElement->aucbody[u4BodyByteCnt]);
+		}
+	}
+
+	return WLAN_STATUS_SUCCESS;
+}
+
+struct _CMD_EVENT_TLV_ELEMENT_T *nicGetTargetTlvElement(
+		   IN uint16_t u2TargetTlvElement, IN void *prCmdBuffer)
+{
+	struct _CMD_EVENT_TLV_COMMOM_T *prTlvCommon = NULL;
+	struct _CMD_EVENT_TLV_ELEMENT_T *prTlvElement = NULL;
+	uint16_t u2ElementNum;
+	void *pvCurrPtr;
+
+	prTlvCommon = (struct _CMD_EVENT_TLV_COMMOM_T *)prCmdBuffer;
+
+	/* Check target element is exist or not */
+	if (u2TargetTlvElement > prTlvCommon->u2TotalElementNum) {
+		/* New element or element is not exist */
+		if (u2TargetTlvElement - prTlvCommon->u2TotalElementNum > 1) {
+			/* element is not exist */
+			DBGLOG(TX, ERROR, "Target element is not exist\n");
+			return NULL;
+		}
+	}
+
+	/* Get target element */
+	pvCurrPtr = prCmdBuffer;
+
+	for (u2ElementNum = 1; u2ElementNum <= u2TargetTlvElement;
+	     u2ElementNum++) {
+		if (u2ElementNum == 1) {
+			pvCurrPtr = prTlvCommon->aucBuffer;
+		} else {
+			pvCurrPtr = prTlvElement->aucbody;
+			pvCurrPtr = (void *)((uint8_t *)pvCurrPtr +
+					    prTlvElement->body_len);
+		}
+		prTlvElement = (struct _CMD_EVENT_TLV_ELEMENT_T *)pvCurrPtr;
+	}
+
+	return prTlvElement;
+}
+
+uint32_t nicAddNewTlvElement(IN uint32_t u4Tag, IN uint32_t u4BodyLen,
+		    IN uint32_t prCmdBufferLen, IN void *prCmdBuffer)
+{
+	struct _CMD_EVENT_TLV_COMMOM_T *prTlvCommon = NULL;
+	struct _CMD_EVENT_TLV_ELEMENT_T *prTlvElement = NULL;
+	uint32_t u4TotalLen;
+
+	prTlvCommon = (struct _CMD_EVENT_TLV_COMMOM_T *)prCmdBuffer;
+
+	/* Get new element */
+	prTlvElement = nicGetTargetTlvElement(
+		prTlvCommon->u2TotalElementNum + 1, prCmdBuffer);
+
+	if (prTlvElement == NULL) {
+		DBGLOG(TX, ERROR, "Get new TLV element fail\n");
+		return WLAN_STATUS_FAILURE;
+	}
+
+	/* Check tatol len is overflow or not */
+	u4TotalLen = ((size_t)prTlvElement->aucbody + u4BodyLen) -
+		     (size_t)prCmdBuffer;
+
+	if (u4TotalLen > prCmdBufferLen) {
+		/* Length overflow */
+		DBGLOG(TX, ERROR,
+		       "Length overflow: Total len:%d, CMD buffer len:%d\n",
+		       u4TotalLen, prCmdBufferLen);
+		return WLAN_STATUS_NOT_ACCEPTED;
+	}
+
+	/* Update total element count */
+	prTlvCommon->u2TotalElementNum++;
+
+	/* Fill TLV constant */
+	prTlvElement->tag_type = u4Tag;
+
+	prTlvElement->body_len = u4BodyLen;
+
+	return WLAN_STATUS_SUCCESS;
+}
+
+void nicNanEventTestProcess(IN struct ADAPTER *prAdapter,
+		       IN struct WIFI_EVENT *prEvent)
+{
+	struct CMD_INFO *prCmdInfo;
+
+	if (!prAdapter) {
+		DBGLOG(NAN, ERROR, "prAdapter error!\n");
+		return;
+	}
+	if (!prEvent) {
+		DBGLOG(NAN, ERROR, "prEvent error!\n");
+		return;
+	}
+
+	DBGLOG(TX, INFO, "nicNanEventDispatcher\n");
+
+	/* Dump Event content */
+	nicDumpTlv((void *)prEvent->aucBuffer);
+
+	/* Process CMD done handler */
+	prCmdInfo = nicGetPendingCmdInfo(prAdapter, prEvent->ucSeqNum);
+
+	if (prCmdInfo != NULL) {
+		if (prCmdInfo->pfCmdDoneHandler)
+			prCmdInfo->pfCmdDoneHandler(prAdapter, prCmdInfo,
+						    prEvent->aucBuffer);
+		else if (prCmdInfo->fgIsOid)
+			kalOidComplete(prAdapter->prGlueInfo,
+				       prCmdInfo, 0,
+				       WLAN_STATUS_SUCCESS);
+
+		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
+	}
+}
+
+void nicNanEventSTATxCTL(IN struct ADAPTER *prAdapter, IN uint8_t *pcuEvtBuf)
+{
+	struct EVENT_UPDATE_NAN_TX_STATUS *prUpdateTxStatus;
+
+	prUpdateTxStatus = (struct EVENT_UPDATE_NAN_TX_STATUS *)pcuEvtBuf;
+	qmUpdateFreeNANQouta(prAdapter, prUpdateTxStatus);
+}
+
+void nicNanVendorEventHandler(IN struct ADAPTER *prAdapter,
+			 IN struct WIFI_EVENT *prEvent)
+{
+	ASSERT(prAdapter);
+	ASSERT(prEvent);
+
+	DBGLOG(NAN, INFO, "[%s] IN, Guiding to Vendor event handler\n",
+	       __func__);
+
+	kalNanHandleVendorEvent(prAdapter, prEvent->aucBuffer);
+}
+
+struct NanMatchInd g_rDiscMatchInd;
+uint8_t g_u2IndPubId;
+
+void nicNanEventDiscoveryResult(IN struct ADAPTER *prAdapter,
+	    IN uint8_t *pcuEvtBuf)
+{
+	struct NAN_DISCOVERY_EVENT *prDiscEvt;
+
+	prDiscEvt = (struct NAN_DISCOVERY_EVENT *)pcuEvtBuf;
+	g_u2IndPubId = prDiscEvt->u2PublishID; /* for sigma test */
+
+	DBGLOG(NAN, INFO, "generate discovey event\n");
+	dumpMemory8((uint8_t *)prDiscEvt->aucNanAddress, MAC_ADDR_LEN);
+
+	kalMemSet(&g_rDiscMatchInd, 0, sizeof(struct NanMatchInd));
+	g_rDiscMatchInd.eventID = ENUM_NAN_SD_RESULT;
+	g_rDiscMatchInd.peer_sdea_params.config_nan_data_path =
+		prDiscEvt->ucDataPathParm;
+	g_rDiscMatchInd.publish_subscribe_id = prDiscEvt->u2SubscribeID;
+	g_rDiscMatchInd.requestor_instance_id = prDiscEvt->u2PublishID;
+	g_rDiscMatchInd.peer_sdea_params.security_cfg = 0;
+	g_rDiscMatchInd.peer_cipher_type = 1;
+	g_rDiscMatchInd.peer_sdea_params.ndp_type = NAN_DATA_PATH_UNICAST_MSG;
+	g_rDiscMatchInd.service_specific_info_len =
+		prDiscEvt->u2Service_info_len;
+	kalMemCopy(g_rDiscMatchInd.service_specific_info,
+		   prDiscEvt->aucSerive_specificy_info,
+		   NAN_MAX_SERVICE_SPECIFIC_INFO_LEN);
+	kalMemCopy(g_rDiscMatchInd.addr, prDiscEvt->aucNanAddress,
+		   MAC_ADDR_LEN);
+	g_rDiscMatchInd.sdf_match_filter_len =
+		prDiscEvt->ucSdf_match_filter_len;
+	kalMemCopy(g_rDiscMatchInd.sdf_match_filter,
+			prDiscEvt->aucSdf_match_filter,
+			NAN_FW_MAX_MATCH_FILTER_LEN);
+
+	kalIndicateNetlink2User(prAdapter->prGlueInfo, &g_rDiscMatchInd,
+				sizeof(struct NanMatchInd));
+}
+
+struct NanFollowupInd rFollowInd;
+void nicNanReceiveEvent(IN struct ADAPTER *prAdapter, IN uint8_t *pcuEvtBuf)
+{
+	struct NAN_FOLLOW_UP_EVENT *prDiscEvt;
+
+	prDiscEvt = (struct NAN_FOLLOW_UP_EVENT *)pcuEvtBuf;
+	dumpMemory8((uint8_t *)pcuEvtBuf, 32);
+	DBGLOG(NAN, LOUD, "receive followup event\n");
+	kalMemSet(&rFollowInd, 0, sizeof(struct NanFollowupInd));
+	rFollowInd.eventID = ENUM_NAN_RECEIVE;
+	rFollowInd.publish_subscribe_id = prDiscEvt->publish_subscribe_id;
+	rFollowInd.requestor_instance_id = prDiscEvt->requestor_instance_id;
+	kalMemCopy(rFollowInd.addr, prDiscEvt->addr, MAC_ADDR_LEN);
+	rFollowInd.service_specific_info_len =
+		prDiscEvt->service_specific_info_len;
+	kalMemCopy(rFollowInd.service_specific_info,
+		   prDiscEvt->service_specific_info,
+		   prDiscEvt->service_specific_info_len);
+	kalIndicateNetlink2User(prAdapter->prGlueInfo, &rFollowInd,
+				sizeof(struct NanFollowupInd));
+}
+
+void nicNanRepliedEvnt(IN struct ADAPTER *prAdapter, IN uint8_t *pcuEvtBuf)
+{
+	struct NanPublishRepliedInd rRepliedInd;
+	struct NAN_REPLIED_EVENT *prRepliedEvt;
+
+	prRepliedEvt = (struct NAN_REPLIED_EVENT *)pcuEvtBuf;
+	kalMemZero(&rRepliedInd, sizeof(struct NanPublishRepliedInd));
+	rRepliedInd.eventID = ENUM_NAN_REPLIED;
+	rRepliedInd.pubid = prRepliedEvt->u2Pubid;
+	rRepliedInd.subid = prRepliedEvt->u2Subid;
+	COPY_MAC_ADDR(rRepliedInd.addr, prRepliedEvt->auAddr);
+	kalIndicateNetlink2User(prAdapter->prGlueInfo, &rRepliedInd,
+				sizeof(struct NanPublishRepliedInd));
+}
+
+void nicNanPublishTerminateEvt(IN struct ADAPTER *prAdapter,
+		   IN uint8_t *pcuEvtBuf)
+{
+	struct NanPublishTerminatedInd rPubTerminatEvt;
+	struct NAN_PUBLISH_TERMINATE_EVENT *prPubTerEvt;
+
+	prPubTerEvt = (struct NAN_PUBLISH_TERMINATE_EVENT *)pcuEvtBuf;
+	kalMemZero(&rPubTerminatEvt, sizeof(struct NanPublishTerminatedInd));
+	rPubTerminatEvt.eventID = ENUM_NAN_PUB_TERMINATE;
+	rPubTerminatEvt.publish_id = prPubTerEvt->u2Pubid;
+	kalIndicateNetlink2User(prAdapter->prGlueInfo, &rPubTerminatEvt,
+				sizeof(struct NanPublishTerminatedInd));
+}
+
+void nicNanSubscribeTerminateEvt(IN struct ADAPTER *prAdapter,
+			    IN uint8_t *pcuEvtBuf)
+{
+	struct NanSubscribeTerminatedInd rSubTerminatEvt;
+	struct NAN_SUBSCRIBE_TERMINATE_EVENT *pSubTerEvt;
+
+	pSubTerEvt = (struct NAN_SUBSCRIBE_TERMINATE_EVENT *)pcuEvtBuf;
+	kalMemZero(&rSubTerminatEvt, sizeof(struct NanPublishTerminatedInd));
+	rSubTerminatEvt.eventID = ENUM_NAN_SUB_TERMINATE;
+	rSubTerminatEvt.subscribe_id = pSubTerEvt->u2Subid;
+	kalIndicateNetlink2User(prAdapter->prGlueInfo, &rSubTerminatEvt,
+				sizeof(struct NanSubscribeTerminatedInd));
+}
+
+void nicNanNdlFlowCtrlEvt(IN struct ADAPTER *prAdapter, IN uint8_t *pcuEvtBuf)
+{
+	struct NAN_EVT_NDL_FLOW_CTRL *prFlowCtrlEvt;
+	struct STA_RECORD *prStaRec;
+	uint16_t u2SchId = 0;
+	uint32_t u4Idx;
+	unsigned char fgNeedToSendPkt = FALSE;
+	OS_SYSTIME rCurrentTime;
+	OS_SYSTIME rExpiryTime;
+
+	prFlowCtrlEvt = (struct NAN_EVT_NDL_FLOW_CTRL *)pcuEvtBuf;
+	for (u2SchId = 0; u2SchId < NAN_MAX_CONN_CFG; u2SchId++) {
+		uint8_t ucSTAIdx;
+		uint16_t u2SlotTime;
+
+		if (nanSchedPeerSchRecordIsValid(prAdapter, u2SchId) == FALSE)
+			continue;
+
+		rCurrentTime = kalGetTimeTick();
+		u2SlotTime = prFlowCtrlEvt->au2FlowCtrl[u2SchId];
+		rExpiryTime =
+			rCurrentTime + u2SlotTime * NAN_SEND_PKT_TIME_SLOT;
+
+		DBGLOG(NAN, LOUD,
+		       "[NDL flow control] Sch:%u, Expiry:%u, Slot:%u\n",
+		       u2SchId, rExpiryTime, u2SlotTime);
+
+		if (u2SlotTime == 0)
+			continue;
+
+		rExpiryTime -= NAN_SEND_PKT_TIME_GUARD_TIME;
+		for (u4Idx = 0; u4Idx < NAN_MAX_SUPPORT_NDP_NUM; u4Idx++) {
+			ucSTAIdx = nanSchedQueryStaRecIdx(prAdapter, u2SchId,
+							  u4Idx);
+			if (ucSTAIdx == STA_REC_INDEX_NOT_FOUND)
+				continue;
+
+			prStaRec = &prAdapter->arStaRec[ucSTAIdx];
+			prStaRec->rNanExpiredSendTime = rExpiryTime;
+
+			if (prStaRec->fgNanSendTimeExpired)
+				fgNeedToSendPkt = TRUE;
+		}
+	}
+
+	if (fgNeedToSendPkt == TRUE &&
+	    wlanGetTxPendingFrameCount(prAdapter) > 0) {
+		DBGLOG(NAN, LOUD, "Trigger NAN tx request\n");
+		kalSetEvent(prAdapter->prGlueInfo);
+	}
+}
+
+void nicNanEventDispatcher(IN struct ADAPTER *prAdapter,
+		      IN struct WIFI_EVENT *prEvent)
+{
+	ASSERT(prAdapter);
+	ASSERT(prEvent);
+
+	DBGLOG(INIT, WARN, "nicNanEventDispatcher\n");
+
+	if (prAdapter->fgIsNANfromHAL == FALSE) {
+		DBGLOG(INIT, WARN, "nicNanIOEventHandler\n");
+		/* For IOCTL use */
+		nicNanIOEventHandler(prAdapter, prEvent);
+	} else {
+		DBGLOG(INIT, WARN, "nicNanVendorEventHandler\n");
+		/* For Vendor command use */
+		nicNanVendorEventHandler(prAdapter, prEvent);
+	}
+}
+
+void nicNanIOEventHandler(IN struct ADAPTER *prAdapter,
+		     IN struct WIFI_EVENT *prEvent)
+{
+	struct _CMD_EVENT_TLV_COMMOM_T *prTlvCommon = NULL;
+	struct _CMD_EVENT_TLV_ELEMENT_T *prTlvElement = NULL;
+	uint32_t u4SubEvent;
+
+	ASSERT(prAdapter);
+	ASSERT(prEvent);
+
+	prTlvCommon = (struct _CMD_EVENT_TLV_COMMOM_T *)prEvent->aucBuffer;
+
+	prTlvElement =
+		(struct _CMD_EVENT_TLV_ELEMENT_T *)prTlvCommon->aucBuffer;
+
+	u4SubEvent = prTlvElement->tag_type;
+
+	DBGLOG(NAN, INFO, "nicNanIOEventHandler, subEvent:%d\n", u4SubEvent);
+
+	switch (u4SubEvent) {
+	case NAN_EVENT_TEST:
+		nicNanEventTestProcess(prAdapter, prEvent);
+		break;
+	case NAN_EVENT_DISCOVERY_RESULT:
+		nicNanEventDiscoveryResult(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_FOLLOW_EVENT:
+		nicNanReceiveEvent(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_REPLIED_EVENT:
+		nicNanRepliedEvnt(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_PUBLISH_TERMINATE_EVENT:
+		nicNanPublishTerminateEvt(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_SUBSCRIBE_TERMINATE_EVENT:
+		nicNanSubscribeTerminateEvt(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_MASTER_IND_ATTR:
+		nanDevMasterIndEvtHandler(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_CLUSTER_ID_UPDATE:
+		nanDevClusterIdEvtHandler(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_ID_SCHEDULE_CONFIG:
+	case NAN_EVENT_ID_PEER_AVAILABILITY:
+	case NAN_EVENT_ID_PEER_CAPABILITY:
+	case NAN_EVENT_ID_CRB_HANDSHAKE_TOKEN:
+		nanSchedulerEventDispatch(prAdapter, u4SubEvent,
+					  prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_ID_PEER_SEC_CONTEXT_INFO:
+		nanDiscUpdateSecContextInfoAttr(prAdapter,
+						prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_ID_PEER_CIPHER_SUITE_INFO:
+		nanDiscUpdateCipherSuiteInfoAttr(prAdapter,
+						 prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_ID_DATA_NOTIFY:
+		nicNanEventSTATxCTL(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_FTM_DONE:
+		nanRangingFtmDoneEvt(prAdapter, prTlvElement->aucbody);
+		break;
+	case NAN_EVENT_RANGING_BY_DISC:
+		nanRangingInvokedByDiscEvt(prAdapter, prTlvElement->aucbody);
+		break;
+#if CFG_SUPPORT_NAN_ADVANCE_DATA_CONTROL
+	case NAN_EVENT_NDL_FLOW_CTRL:
+		nicNanNdlFlowCtrlEvt(prAdapter, prTlvElement->aucbody);
+		break;
+#endif
+	case NAN_EVENT_NDL_DISCONNECT:
+		nanDataEngingDisconnectEvt(prAdapter, prTlvElement->aucbody);
+	}
+}
+
+void nicNanGetCmdInfoQueryTestBuffer(
+	struct _TXM_CMD_EVENT_TEST_T **prCmdInfoQueryTestBuffer)
+{
+	*prCmdInfoQueryTestBuffer =
+		(struct _TXM_CMD_EVENT_TEST_T *)&grCmdInfoQueryTestBuffer;
+}
+
+void nicNanTestQueryInfoDone(IN struct ADAPTER *prAdapter,
+	    IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
+{
+	struct GLUE_INFO *prGlueInfo;
+	struct _CMD_EVENT_TLV_COMMOM_T *prTlvCommon = NULL;
+	struct _CMD_EVENT_TLV_ELEMENT_T *prTlvElement = NULL;
+	struct _TXM_CMD_EVENT_TEST_T *prEventContent = NULL;
+	struct _TXM_CMD_EVENT_TEST_T *prQueryInfoContent = NULL;
+	uint32_t u4QueryInfoLen;
+
+	ASSERT(prAdapter);
+	ASSERT(prCmdInfo);
+	ASSERT(pucEventBuf);
+
+	DBGLOG(TX, INFO, "nicNanTestQueryInfoDone\n");
+
+	if (prCmdInfo->fgIsOid) {
+		prGlueInfo = prAdapter->prGlueInfo;
+		prTlvCommon = (struct _CMD_EVENT_TLV_COMMOM_T *)pucEventBuf;
+		prTlvElement = nicGetTargetTlvElement(1, prTlvCommon);
+		prEventContent =
+			(struct _TXM_CMD_EVENT_TEST_T *)prTlvElement->aucbody;
+		prQueryInfoContent =
+			(struct _TXM_CMD_EVENT_TEST_T *)
+				prCmdInfo->pvInformationBuffer;
+		prQueryInfoContent->u4TestValue0 = prEventContent->u4TestValue0;
+		prQueryInfoContent->u4TestValue1 = prEventContent->u4TestValue1;
+		prQueryInfoContent->ucTestValue2 = prEventContent->ucTestValue2;
+		u4QueryInfoLen = sizeof(struct _TXM_CMD_EVENT_TEST_T);
+
+		nicDumpTlv((void *)pucEventBuf);
+
+		DBGLOG(TX, INFO, "grCmdInfoQueryTestBuffer.u4TestValue0 = %x\n",
+		       grCmdInfoQueryTestBuffer.u4TestValue0);
+		DBGLOG(TX, INFO, "grCmdInfoQueryTestBuffer.u4TestValue1 = %x\n",
+		       grCmdInfoQueryTestBuffer.u4TestValue1);
+		DBGLOG(TX, INFO, "grCmdInfoQueryTestBuffer.ucTestValue2 = %x\n",
+		       grCmdInfoQueryTestBuffer.ucTestValue2);
+
+		if ((grCmdInfoQueryTestBuffer.u4TestValue0 == 0x22222222) &&
+		    (grCmdInfoQueryTestBuffer.u4TestValue1 == 0x22222222) &&
+		    (grCmdInfoQueryTestBuffer.ucTestValue2 == 0x22)) {
+			DBGLOG(TX, INFO, ">>CMD done content check pass\n");
+		} else {
+			DBGLOG(TX, INFO, ">>CMD done content check fail\n");
+		}
+
+		kalOidComplete(prGlueInfo, prCmdInfo,
+			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
+	}
+}
+#endif
+#if (CONFIG_WLAN_SERVICE == 1)
+void nicCmdEventListmode(IN struct ADAPTER
+				  *prAdapter, IN struct CMD_INFO *prCmdInfo,
+				  IN uint8_t *pucEventBuf)
+{
+	struct list_mode_event *prStatus;
+	struct GLUE_INFO *prGlueInfo;
+	uint32_t u4QueryInfoLen;
+
+	ASSERT(prAdapter);
+	ASSERT(prCmdInfo);
+
+	prStatus = (struct list_mode_event *) pucEventBuf;
+
+	if (prCmdInfo->fgIsOid) {
+		prGlueInfo = prAdapter->prGlueInfo;
+
+		u4QueryInfoLen = sizeof(struct list_mode_event);
+
+		/* Memory copy length is depended on upper-layer */
+		kalMemCopy(&g_HqaListModeStatus, prStatus, u4QueryInfoLen);
+
+		/* Update Query Information Length */
+		kalOidComplete(prGlueInfo, prCmdInfo,
+			       u4QueryInfoLen, WLAN_STATUS_SUCCESS);
+	}
+}
+#endif /*(CONFIG_WLAN_SERVICE == 1)*/
+
+#if CFG_SUPPORT_BAR_DELAY_INDICATION
+void nicEventHandleDelayBar(IN struct ADAPTER *prAdapter,
+		      IN struct WIFI_EVENT *prEvent)
+{
+	struct EVENT_BAR_DELAY *prEventStoredBAR;
+	struct SW_RFB *prRetSwRfb;
+	struct QUE rReturnedQue;
+	struct QUE *prReturnedQue;
+	int i = 0;
+
+	prEventStoredBAR = (struct EVENT_BAR_DELAY *)(
+				prEvent->aucBuffer);
+
+	if (unlikely(prEventStoredBAR == NULL)) {
+		DBGLOG(NIC, WARN, "prEventStoredBAR is NULL\n");
+		return;
+	}
+
+	if (unlikely(prEventStoredBAR->ucEvtVer != 0)) {
+		DBGLOG(NIC, WARN, "not be handle, ucEvtVer:%u\n",
+			prEventStoredBAR->ucEvtVer);
+		return;
+	}
+
+	if (unlikely(prEventStoredBAR->ucBaNum >
+		BAR_DELAY_INDICATION_BA_MAX)) {
+		DBGLOG(NIC, WARN, "not be handle, ucBaNum:%u\n",
+			prEventStoredBAR->ucBaNum);
+		return;
+	}
+
+	prReturnedQue = &rReturnedQue;
+	QUEUE_INITIALIZE(prReturnedQue);
+	for (i = 0; i < prEventStoredBAR->ucBaNum; i++) {
+		/* always add 1 since cnt=0 for 1st stored in fw */
+		prEventStoredBAR->rBAR[i].ucStoredBARCount++;
+
+		DBGLOG(NIC, INFO,
+			"[Id:StaId:Tid:SSN:StoredCnt]:[%d:%d:%d:%d:%d]\n",
+			i,
+			prEventStoredBAR->rBAR[i].ucStaRecIdx,
+			prEventStoredBAR->rBAR[i].ucTid,
+			prEventStoredBAR->rBAR[i].u2SSN,
+			prEventStoredBAR->rBAR[i].ucStoredBARCount);
+
+		qmHandleRxReorderWinShift(prAdapter,
+			prEventStoredBAR->rBAR[i].ucStaRecIdx,
+			prEventStoredBAR->rBAR[i].ucTid,
+			prEventStoredBAR->rBAR[i].u2SSN,
+			prReturnedQue);
+
+		RX_ADD_CNT(&prAdapter->rRxCtrl, RX_BAR_DELAY_COUNT,
+			prEventStoredBAR->rBAR[i].ucStoredBARCount
+			);
+	}
+
+	if (QUEUE_IS_NOT_EMPTY(prReturnedQue)) {
+		QM_TX_SET_NEXT_MSDU_INFO((struct SW_RFB *)
+			QUEUE_GET_TAIL(prReturnedQue), NULL);
+	}
+
+	prRetSwRfb = (struct SW_RFB *) QUEUE_GET_HEAD(
+				prReturnedQue);
+	if (prRetSwRfb != NULL)
+		nicRxIndicatePackets(prAdapter, prRetSwRfb);
+}
+#endif /* CFG_SUPPORT_BAR_DELAY_INDICATION */
 

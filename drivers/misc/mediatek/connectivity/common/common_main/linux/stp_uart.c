@@ -117,6 +117,7 @@ INT32 rd_idx;
 INT32 wr_idx;
 /* struct semaphore buf_mtx; */
 spinlock_t buf_lock;
+static struct tty_ldisc_ops stp_uart_ldisc;
 static INT32 mtk_wcn_uart_tx(const PUINT8 data, const UINT32 size, PUINT32 written_size);
 
 
@@ -204,7 +205,9 @@ static INT32 stp_uart_tty_open(struct tty_struct *tty)
 	UART_PR_DBG("stp_uart_tty_opentty: %p\n", tty);
 
 	tty->receive_room = 65536;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	tty->port->low_latency = 1;
+#endif
 
 	/* Flush any pending characters in the driver and line discipline. */
 
@@ -339,7 +342,15 @@ static VOID stp_uart_rx_handling(ULONG func_data)
 		UART_PR_INFO("finish, fifolen(%d)\n", kfifo_len(g_stp_uart_rx_fifo));
 }
 
-static VOID stp_uart_tty_receive(struct tty_struct *tty, const unsigned char *data, PINT8 flags, INT32 count)
+static VOID stp_uart_tty_receive(
+	struct tty_struct *tty,
+	const unsigned char *data,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
+	PINT8 flags,
+#else
+	const char *flags,
+#endif
+	INT32 count)
 {
 	UINT32 fifo_avail_len = LDISC_RX_FIFO_SIZE - kfifo_len(g_stp_uart_rx_fifo);
 	UINT32 how_much_put = 0;
@@ -487,7 +498,15 @@ static VOID stp_uart_rx_worker(struct work_struct *work)
  *
  * Return Value:    None
  */
-static VOID stp_uart_tty_receive(struct tty_struct *tty, const PUINT8 data, PINT8 flags, INT32 count)
+static VOID stp_uart_tty_receive(
+	struct tty_struct *tty,
+	const unsigned char *data,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
+	PINT8 flags,
+#else
+	const char *flags,
+#endif
+	INT32 count)
 {
 	UINT32 written;
 
@@ -517,7 +536,15 @@ static VOID stp_uart_tty_receive(struct tty_struct *tty, const PUINT8 data, PINT
 
 #else
 
-static VOID stp_uart_tty_receive(struct tty_struct *tty, const PUINT8 data, PINT8 flags, INT32 count)
+static VOID stp_uart_tty_receive(
+	struct tty_struct *tty,
+	const unsigned char *data,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
+	PINT8 flags,
+#else
+	const char *flags,
+#endif
+	INT32 count)
 {
 
 #if 0
@@ -576,9 +603,10 @@ static INT32 stp_uart_tty_ioctl(struct tty_struct *tty, struct file *file, UINT3
 
 	switch (cmd) {
 	case HCIUARTSETPROTO:
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 		UART_PR_DBG("<!!> Set low_latency to TRUE <!!>\n");
 		tty->port->low_latency = 1;
-
+#endif
 		break;
 	default:
 		UART_PR_DBG("<!!> n_tty_ioctl_helper <!!>\n");
@@ -592,8 +620,14 @@ static INT32 stp_uart_tty_ioctl(struct tty_struct *tty, struct file *file, UINT3
 /*
  * We don't provide read/write/poll interface for user space.
  */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 21))
 static ssize_t stp_uart_tty_read(struct tty_struct *tty, struct file *file,
-				 unsigned char __user *buf, size_t nr)
+				unsigned char *buf, size_t nr,
+				void **cookie, unsigned long offset)
+#else
+static ssize_t stp_uart_tty_read(struct tty_struct *tty, struct file *file,
+				unsigned char __user *buf, size_t nr)
+#endif
 {
 	return 0;
 }
@@ -706,7 +740,6 @@ INT32 mtk_wcn_uart_tx(const PUINT8 data, const UINT32 size, PUINT32 written_size
 
 static INT32 mtk_wcn_stp_uart_init(VOID)
 {
-	static struct tty_ldisc_ops stp_uart_ldisc;
 	INT32 err;
 	INT32 fifo_init_done = 0;
 
@@ -751,7 +784,9 @@ static INT32 mtk_wcn_stp_uart_init(VOID)
 
 	/* Register the tty discipline */
 	memset(&stp_uart_ldisc, 0, sizeof(stp_uart_ldisc));
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	stp_uart_ldisc.magic = TTY_LDISC_MAGIC;
+#endif
 	stp_uart_ldisc.name = "n_mtkstp";
 	stp_uart_ldisc.open = stp_uart_tty_open;
 	stp_uart_ldisc.close = stp_uart_tty_close;
@@ -763,7 +798,11 @@ static INT32 mtk_wcn_stp_uart_init(VOID)
 	stp_uart_ldisc.write_wakeup = stp_uart_tty_wakeup;
 	stp_uart_ldisc.owner = THIS_MODULE;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	err = tty_register_ldisc(N_MTKSTP, &stp_uart_ldisc);
+#else
+	err = tty_register_ldisc(&stp_uart_ldisc);
+#endif
 	if (err) {
 		UART_PR_ERR("MTK STP line discipline registration failed. (%d)\n", err);
 		goto init_err;
@@ -800,14 +839,21 @@ init_err:
 
 static VOID mtk_wcn_stp_uart_exit(VOID)
 {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	INT32 err;
+#endif
 
 	mtk_wcn_stp_register_if_tx(STP_UART_IF_TX, NULL);	/* unregister if_tx function */
 
 	/* Release tty registration of line discipline */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	err = tty_unregister_ldisc(N_MTKSTP);
 	if (err)
 		UART_PR_ERR("Can't unregister MTK STP line discipline (%d)\n", err);
+#else
+	tty_unregister_ldisc(&stp_uart_ldisc);
+#endif
+
 
 #if (LDISC_RX == LDISC_RX_TASKLET)
 	tasklet_kill(&g_stp_uart_rx_fifo_tasklet);

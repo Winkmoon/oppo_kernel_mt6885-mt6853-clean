@@ -113,6 +113,9 @@
 /* For DW 2, Byte 3 - ucHwChannelNum */
 #define HW_CHNL_NUM_MAX_2G4                 (14)
 #define HW_CHNL_NUM_MAX_4G_5G               (255 - HW_CHNL_NUM_MAX_2G4)
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#define HW_CHNL_NUM_MAX_5G                  (180)
+#endif
 
 /*******************************************************************************
  *                         D A T A   T Y P E S

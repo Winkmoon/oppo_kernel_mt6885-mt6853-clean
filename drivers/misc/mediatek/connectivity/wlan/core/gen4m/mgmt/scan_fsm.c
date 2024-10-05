@@ -100,6 +100,15 @@ static uint8_t *apucDebugScanState[SCAN_STATE_NUM] = {
  *                                 M A C R O S
  *******************************************************************************
  */
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#define SCN_GET_EBAND_BY_CH_NUM(_ucChNum) \
+	((_ucChNum <= HW_CHNL_NUM_MAX_2G4) ? BAND_2G4 : \
+	(_ucChNum > HW_CHNL_NUM_MAX_5G) ? BAND_6G : \
+	BAND_5G)
+#else
+#define SCN_GET_EBAND_BY_CH_NUM(_ucChNum) \
+	((_ucChNum <= HW_CHNL_NUM_MAX_2G4) ? BAND_2G4 :	BAND_5G)
+#endif
 
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S
@@ -147,6 +156,7 @@ void scnFsmSteps(IN struct ADAPTER *prAdapter,
 
 		switch (prScanInfo->eCurrentState) {
 		case SCAN_STATE_IDLE:
+			prScanParam->fg6gOobRnrParseEn = FALSE;
 			/* check for pending scanning requests */
 			if (!LINK_IS_EMPTY(&(prScanInfo->rPendingMsgList))) {
 				/* load next message from pending list as
@@ -239,7 +249,10 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 	struct SCAN_PARAM *prScanParam;
 	/* CMD_SCAN_REQ_V2 rCmdScanReq; */
 	struct CMD_SCAN_REQ_V2 *prCmdScanReq;
-	uint32_t i;
+	uint32_t i, j;
+	uint8_t ucChannel;
+	uint8_t ucBand;
+	struct CHANNEL_INFO *prCnlInfo;
 
 	ASSERT(prAdapter);
 
@@ -255,10 +268,17 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 	/* send command packet for scan */
 	kalMemZero(prCmdScanReq, sizeof(struct CMD_SCAN_REQ_V2));
 	/* Modify channelList number from 32 to 54 */
-	COPY_MAC_ADDR(prCmdScanReq->aucBSSID, prScanParam->aucBSSID);
-	if (!EQUAL_MAC_ADDR(prCmdScanReq->aucBSSID, "\xff\xff\xff\xff\xff\xff"))
-		DBGLOG(SCN, INFO, "Include BSSID %pM in probe request\n",
-		       prCmdScanReq->aucBSSID);
+	if (prScanParam->ucScnFuncMask & ENUM_SCN_USE_PADDING_AS_BSSID) {
+		kalMemCopy(prCmdScanReq->aucExtBSSID,
+			&prScanParam->aucBSSID[0][0],
+			CFG_SCAN_OOB_MAX_NUM * MAC_ADDR_LEN);
+	} else {
+		COPY_MAC_ADDR(prCmdScanReq->aucBSSID,
+		&prScanParam->aucBSSID[0][0]);
+	}
+	if (!EQUAL_MAC_ADDR(prCmdScanReq->aucBSSID, "\x00\x00\x00\x00\x00\x00"))
+		DBGLOG(SCN, INFO, "Include BSSID "MACSTR" in probe request\n",
+			MAC2STR(prCmdScanReq->aucBSSID));
 
 	prCmdScanReq->ucSeqNum = prScanParam->ucSeqNum;
 	prCmdScanReq->ucBssIndex = prScanParam->ucBssIndex;
@@ -266,13 +286,23 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 	prCmdScanReq->ucSSIDType = prScanParam->ucSSIDType;
 	prCmdScanReq->auVersion[0] = 1;
 	prCmdScanReq->ucScnFuncMask |= prScanParam->ucScnFuncMask;
+	/* for 6G OOB scan */
+	kalMemCopy(prCmdScanReq->ucBssidMatchCh, prScanParam->ucBssidMatchCh,
+			CFG_SCAN_OOB_MAX_NUM);
+	kalMemCopy(prCmdScanReq->ucBssidMatchSsidInd,
+		prScanParam->ucBssidMatchSsidInd, CFG_SCAN_OOB_MAX_NUM);
+
 	if (kalIsValidMacAddr(prScanParam->aucRandomMac)) {
 		prCmdScanReq->ucScnFuncMask |= (ENUM_SCN_RANDOM_MAC_EN |
 						ENUM_SCN_RANDOM_SN_EN);
 		kalMemCopy(prCmdScanReq->aucRandomMac,
 			prScanParam->aucRandomMac, MAC_ADDR_LEN);
 	}
-	if (prAdapter->rWifiVar.eDbdcMode == ENUM_DBDC_MODE_DISABLED)
+	if (prAdapter->rWifiVar.eDbdcMode == ENUM_DBDC_MODE_DISABLED
+#if (CFG_SUPPORT_POWER_THROTTLING == 1 && CFG_SUPPORT_CNM_POWER_CTRL == 1)
+		|| prAdapter->fgPowerForceOneNss
+#endif
+		)
 		prCmdScanReq->ucScnFuncMask |= ENUM_SCN_DBDC_SCAN_DIS;
 
 	/* Set SSID to scan request */
@@ -320,46 +350,34 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 
 	/* Set channel info to scan request */
 	if (prScanParam->eScanChannel == SCAN_CHANNEL_SPECIFIED) {
-		if (prScanParam->ucChannelListNum <= SCAN_CMD_CHNL_NUM) {
-			prCmdScanReq->ucChannelListNum =
-				prScanParam->ucChannelListNum;
-			prCmdScanReq->ucChannelListExtNum = 0;
-		} else if (prScanParam->ucChannelListNum <=
-				MAXIMUM_OPERATION_CHANNEL_LIST) {
-			prCmdScanReq->ucChannelListNum =
-				SCAN_CMD_CHNL_NUM;
-			prCmdScanReq->ucChannelListExtNum =
-				prScanParam->ucChannelListNum -
-				SCAN_CMD_CHNL_NUM;
-		} else {
-			log_dbg(SCN, WARN, "Too many Channel %u\n",
-				prScanParam->ucChannelListNum);
-			prCmdScanReq->ucChannelListNum = 0;
-			prCmdScanReq->ucChannelListExtNum = 0;
-			prCmdScanReq->ucChannelType = SCAN_CHANNEL_FULL;
-		}
+		for (i = 0, j = 0; i < prScanParam->ucChannelListNum; i++) {
+			ucBand = (uint8_t) prScanParam->arChnlInfoList[i].eBand;
+			ucChannel = prScanParam->arChnlInfoList[i].ucChannelNum;
+			/* remove DFS channel */
+			if (prAdapter->rWifiVar.rScanInfo.fgSkipDFS &&
+				rlmDomainIsDfsChnls(prAdapter, ucChannel))
+				continue;
 
-		for (i = 0; i < prCmdScanReq->ucChannelListNum; i++) {
-			prCmdScanReq->arChannelList[i].ucBand
-				= (uint8_t) prScanParam->arChnlInfoList[i]
-					.eBand;
-
-			prCmdScanReq->arChannelList[i].ucChannelNum
-				= (uint8_t) prScanParam->arChnlInfoList[i]
-					.ucChannelNum;
-		}
-		for (i = 0; i < prCmdScanReq->ucChannelListExtNum; i++) {
-			prCmdScanReq->arChannelListExtend[i].ucBand
-				= (uint8_t)prScanParam
-					->arChnlInfoList
-					[prCmdScanReq->ucChannelListNum+i]
-					.eBand;
-
-			prCmdScanReq->arChannelListExtend[i].ucChannelNum
-				= (uint8_t) prScanParam
-					->arChnlInfoList
-					[prCmdScanReq->ucChannelListNum+i]
-					.ucChannelNum;
+			if (j < SCAN_CMD_CHNL_NUM) {
+				prCnlInfo = &(prCmdScanReq->arChannelList[j]);
+				prCnlInfo->ucBand = ucBand;
+				prCnlInfo->ucChannelNum = ucChannel;
+				prCmdScanReq->ucChannelListNum = ++j;
+			} else if (j < MAXIMUM_OPERATION_CHANNEL_LIST) {
+				prCnlInfo = &(prCmdScanReq->
+				   arChannelListExtend[j - SCAN_CMD_CHNL_NUM]);
+				prCnlInfo->ucBand = ucBand;
+				prCnlInfo->ucChannelNum = ucChannel;
+				prCmdScanReq->ucChannelListExtNum =
+					(++j - SCAN_CMD_CHNL_NUM);
+			} else {
+				log_dbg(SCN, WARN, "Too many Channel %u\n",
+					prScanParam->ucChannelListNum);
+				prCmdScanReq->ucChannelListNum = 0;
+				prCmdScanReq->ucChannelListExtNum = 0;
+				prCmdScanReq->ucChannelType = SCAN_CHANNEL_FULL;
+				break;
+			}
 		}
 	}
 
@@ -367,6 +385,34 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 	prCmdScanReq->u2ChannelMinDwellTime =
 		prScanParam->u2ChannelMinDwellTime;
 	prCmdScanReq->u2TimeoutValue = prScanParam->u2TimeoutValue;
+
+	/* If ProbeDelayTime bigger than MinDwellTime,
+	 * reset ProbeDelayTime to 0
+	 */
+	if (prCmdScanReq->u2ProbeDelayTime >
+	    prCmdScanReq->u2ChannelMinDwellTime)
+		prCmdScanReq->u2ProbeDelayTime = 0;
+
+	/* OCE certification handling */
+	if (prAdapter->rWifiVar.u4SwTestMode == ENUM_SW_TEST_MODE_SIGMA_OCE) {
+		scanHandleOceIE(prScanParam, prCmdScanReq);
+		prCmdScanReq->ucScnFuncMask |= ENUM_SCN_OCE_SCAN_EN;
+	}
+
+	/* enable split scan when (not in roam) && (WFD || 1s TRX pkt > 30) */
+	if (scnEnableSplitScan(prAdapter, prScanParam->ucBssIndex)) {
+		prCmdScanReq->ucScnFuncMask |= ENUM_SCN_SPLIT_SCAN_EN;
+		/* if WFD enable, not do dbdc scan and reduce dwell time to
+		 * enhance latency
+		 */
+		if (wlanWfdEnabled(prAdapter)) {
+			prCmdScanReq->ucScnFuncMask |= ENUM_SCN_DBDC_SCAN_DIS;
+			prCmdScanReq->u2ChannelDwellTime =
+				SCAN_CHANNEL_DWELL_TIME_MIN_MSEC;
+			prCmdScanReq->u2ChannelMinDwellTime =
+				SCAN_CHANNEL_DWELL_TIME_MIN_MSEC;
+		}
+	}
 
 	if (prScanParam->u2IELen <= MAX_IE_LENGTH)
 		prCmdScanReq->u2IELen = prScanParam->u2IELen;
@@ -377,8 +423,8 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 		kalMemCopy(prCmdScanReq->aucIE, prScanParam->aucIE,
 			sizeof(uint8_t) * prCmdScanReq->u2IELen);
 
-	log_dbg(SCN, INFO, "ScanReqV2: ScanType=%d,BSS=%u,SSIDType=%d,Num=%u,Ext=%u,ChannelType=%d,Num=%d,Ext=%u,Seq=%u,Ver=%u,Dw=%u,Min=%u,Func=0x%X,Mac="
-		MACSTR "\n",
+	log_dbg(SCN, TRACE, "ScanReqV2: ScanType=%d,BSS=%u,SSIDType=%d,Num=%u,Ext=%u,ChannelType=%d,Num=%d,Ext=%u,Seq=%u,Ver=%u,Dw=%u,Min=%u,Func=0x%X,Mac="
+		MACSTR ",BSSID:"MACSTR"\n",
 		prCmdScanReq->ucScanType,
 		prCmdScanReq->ucBssIndex,
 		prCmdScanReq->ucSSIDType,
@@ -391,10 +437,11 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 		prCmdScanReq->u2ChannelDwellTime,
 		prCmdScanReq->u2ChannelMinDwellTime,
 		prCmdScanReq->ucScnFuncMask,
-		prCmdScanReq->aucRandomMac);
+		MAC2STR(prCmdScanReq->aucRandomMac),
+		MAC2STR(prCmdScanReq->aucBSSID));
 
-	scanLogCacheFlushAll(&(prScanInfo->rScanLogCache),
-		LOG_SCAN_REQ_D2F, SCAN_LOG_MSG_MAX_LEN);
+	scanLogCacheFlushAll(prAdapter, &(prScanInfo->rScanLogCache),
+		LOG_SCAN_REQ_D2F);
 	scanReqLog(prCmdScanReq);
 	if (prCmdScanReq->ucBssIndex == KAL_NETWORK_TYPE_AIS_INDEX)
 		scanInitEssResult(prAdapter);
@@ -410,6 +457,7 @@ void scnSendScanReqV2(IN struct ADAPTER *prAdapter)
 		(uint8_t *)prCmdScanReq, NULL, 0);
 	log_dbg(SCN, TRACE, "Send %zu bytes\n", sizeof(struct CMD_SCAN_REQ_V2));
 
+	GET_CURRENT_SYSTIME(&prScanInfo->rLastScanStartTime);
 
 	kalMemFree(prCmdScanReq, VIR_MEM_TYPE, sizeof(struct CMD_SCAN_REQ_V2));
 
@@ -648,10 +696,19 @@ void scnFsmHandleScanMsgV2(IN struct ADAPTER *prAdapter,
 	prScanParam->ucSSIDType = prScanReqMsg->ucSSIDType;
 	prScanParam->ucSSIDNum = prScanReqMsg->ucSSIDNum;
 	prScanParam->ucScnFuncMask |= prScanReqMsg->ucScnFuncMask;
+
 	kalMemCopy(prScanParam->aucRandomMac, prScanReqMsg->aucRandomMac,
 		MAC_ADDR_LEN);
+	/* for 6G OOB scan */
+	kalMemCopy(prScanParam->ucBssidMatchCh, prScanReqMsg->ucBssidMatchCh,
+			CFG_SCAN_OOB_MAX_NUM);
+	kalMemCopy(prScanParam->ucBssidMatchSsidInd,
+		prScanReqMsg->ucBssidMatchSsidInd, CFG_SCAN_OOB_MAX_NUM);
+	prScanParam->fg6gOobRnrParseEn = prScanReqMsg->fg6gOobRnrParseEn;
 
-	if (prScanParam->ucSSIDType & SCAN_REQ_SSID_SPECIFIED_ONLY) {
+	if ((prScanParam->ucSSIDType & SCAN_REQ_SSID_SPECIFIED_ONLY) &&
+		((prScanReqMsg->ucScnFuncMask &
+		ENUM_SCN_USE_PADDING_AS_BSSID) == 0)) {
 		prScanParam->ucSSIDNum = 1;
 		kalMemZero(prScanParam->ucSpecifiedSSIDLen,
 			   sizeof(prScanParam->ucSpecifiedSSIDLen));
@@ -703,6 +760,10 @@ void scnFsmHandleScanMsgV2(IN struct ADAPTER *prAdapter,
 	prScanParam->ucSeqNum = prScanReqMsg->ucSeqNum;
 	prScanParam->eMsgId = prScanReqMsg->rMsgHdr.eMsgId;
 	prScanParam->fgIsScanV2 = TRUE;
+
+	kalMemCopy(&prScanParam->aucBSSID[0][0],
+		&prScanReqMsg->aucExtBssid[0][0],
+		CFG_SCAN_OOB_MAX_NUM * MAC_ADDR_LEN);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -801,7 +862,7 @@ void scnEventScanDone(IN struct ADAPTER *prAdapter,
 {
 	struct SCAN_INFO *prScanInfo;
 	struct SCAN_PARAM *prScanParam;
-	uint32_t u4ChCnt = 0;
+	KAL_SPIN_LOCK_DECLARATION();
 
 	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
 	prScanParam = &prScanInfo->rScanParam;
@@ -815,8 +876,10 @@ void scnEventScanDone(IN struct ADAPTER *prAdapter,
 			prScanDone->u4ScanDurBcnCnt,
 			prScanDone->ucSeqNum);
 
+		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_BSSLIST_FW);
 		scanLogCacheFlushBSS(&(prScanInfo->rScanLogCache.rBSSListFW),
-			LOG_SCAN_DONE_F2D, SCAN_LOG_MSG_MAX_LEN);
+			LOG_SCAN_DONE_F2D);
+		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_BSSLIST_FW);
 
 		if (prScanDone->ucCurrentState != FW_SCAN_STATE_SCAN_DONE) {
 			log_dbg(SCN, INFO, "FW Scan timeout!generate ScanDone event at State%d complete chan count%d ucChannelListNum%d\n",
@@ -833,44 +896,7 @@ void scnEventScanDone(IN struct ADAPTER *prAdapter,
 
 	/* buffer empty channel information */
 	if (prScanDone->ucSparseChannelValid) {
-		int num = 0;
-		char strbuf[SCN_SCAN_DONE_PRINT_BUFFER_LENGTH];
-
-		prScanInfo->fgIsSparseChannelValid = TRUE;
-		prScanInfo->rSparseChannel.eBand
-			= (enum ENUM_BAND) prScanDone->rSparseChannel.ucBand;
-		prScanInfo->rSparseChannel.ucChannelNum
-			= prScanDone->rSparseChannel.ucChannelNum;
-		num = prScanInfo->ucSparseChannelArrayValidNum
-			= prScanDone->ucSparseChannelArrayValidNum;
-		log_dbg(SCN, INFO, "Country Code = %c%c, Detected_Channel_Num = %d\n",
-			((prAdapter->rWifiVar.u2CountryCode
-				& 0xff00) >> 8),
-			(prAdapter->rWifiVar.u2CountryCode
-				& 0x00ff), num);
-
-#define print_info(_Mod, _Clz, _Fmt, var) \
-		do { \
-			int written = 0; \
-		    int totalLen = SCN_SCAN_DONE_PRINT_BUFFER_LENGTH; \
-			for (u4ChCnt = 0; u4ChCnt < num; u4ChCnt++) { \
-				prScanInfo->var[u4ChCnt] \
-					= prScanDone->var[u4ChCnt]; \
-				written += kalSnprintf(strbuf + written, \
-					totalLen - written, "%7d", \
-					prScanInfo->var[u4ChCnt]); \
-			} \
-			log_dbg(_Mod, _Clz, _Fmt, strbuf); \
-		} while (0)
-
-		print_info(SCN, INFO, "Channel  : %s\n", aucChannelNum);
-		print_info(SCN, INFO, "IdleTime : %s\n", au2ChannelIdleTime);
-		print_info(SCN, INFO, "MdrdyCnt : %s\n", aucChannelMDRDYCnt);
-		print_info(SCN, INFO, "BAndPCnt : %s\n", aucChannelBAndPCnt);
-		if (prScanDone->ucScanDoneVersion >= 4)
-			print_info(SCN, LOUD,
-				"ScanTime : %s\n", au2ChannelScanTime);
-#undef	print_scan_info
+		scnFsmDumpScanDoneInfo(prAdapter, prScanDone);
 	} else {
 		prScanInfo->fgIsSparseChannelValid = FALSE;
 	}
@@ -879,13 +905,24 @@ void scnEventScanDone(IN struct ADAPTER *prAdapter,
 	if (prScanInfo->fgIsScanForFull2Partial &&
 		prScanInfo->ucFull2PartialSeq == prScanDone->ucSeqNum) {
 		uint32_t *pu4BitMap = &(prScanInfo->au4ChannelBitMap[0]);
-
+#if (CFG_SUPPORT_WIFI_6G == 1)
 		log_dbg(SCN, INFO,
-		"Full2Partial(%u):%08X %08X %08X %08X %08X %08X %08X %08X\n",
+			"Full2Partial(%u):%08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X\n",
+			scanCountBits(prScanInfo->au4ChannelBitMap,
+			sizeof(prScanInfo->au4ChannelBitMap)),
+			pu4BitMap[7], pu4BitMap[6], pu4BitMap[5], pu4BitMap[4],
+			pu4BitMap[3], pu4BitMap[2], pu4BitMap[1], pu4BitMap[0],
+			pu4BitMap[15], pu4BitMap[14], pu4BitMap[13],
+			pu4BitMap[12], pu4BitMap[11], pu4BitMap[10],
+			pu4BitMap[9], pu4BitMap[8]);
+#else
+		log_dbg(SCN, INFO,
+			"Full2Partial(%u):%08X %08X %08X %08X %08X %08X %08X %08X\n",
 			scanCountBits(prScanInfo->au4ChannelBitMap,
 			sizeof(prScanInfo->au4ChannelBitMap)),
 			pu4BitMap[7], pu4BitMap[6], pu4BitMap[5], pu4BitMap[4],
 			pu4BitMap[3], pu4BitMap[2], pu4BitMap[1], pu4BitMap[0]);
+#endif
 
 		prScanInfo->fgIsScanForFull2Partial = FALSE;
 	}
@@ -907,7 +944,127 @@ void scnEventScanDone(IN struct ADAPTER *prAdapter,
 			prScanDone->ucSeqNum,
 			prScanInfo->eCurrentState);
 	}
+#if CFG_SUPPORT_SCAN_NO_AP_RECOVERY
+	/* SCAN NO AP RECOVERY is only for AIS and not OOB scan,
+	 * FW report scan done, reset ScnTimeoutTimes and reset count to 0
+	 */
+	prScanInfo->ucScnTimeoutTimes = 0;
+	prScanInfo->ucScnTimeoutSubsysResetCnt = 0;
+
+	if (IS_FEATURE_ENABLED(prAdapter->rWifiVar.ucScanNoApRecover) &&
+		prScanInfo->fgIsSparseChannelValid &&
+		prScanDone->ucSparseChannelArrayValidNum > 3 &&
+		(prScanParam->eMsgId == MID_AIS_SCN_SCAN_REQ ||
+		prScanParam->eMsgId == MID_AIS_SCN_SCAN_REQ_V2) &&
+		!(prScanParam->ucScnFuncMask & ENUM_SCN_USE_PADDING_AS_BSSID)) {
+		scnDoZeroMdrdyRecoveryCheck(prAdapter, prScanDone,
+				prScanInfo, prScanParam->ucBssIndex);
+	}
+#endif
+
 }	/* end of scnEventScanDone */
+
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief
+ *
+ * \param[in]
+ *
+ * \return none
+ */
+/*----------------------------------------------------------------------------*/
+void
+scnFsmDumpScanDoneInfo(IN struct ADAPTER *prAdapter,
+	IN struct EVENT_SCAN_DONE *prScanDone)
+{
+	uint8_t ucScanChNum = 0;
+	uint8_t ucChCnt = 0;
+	struct SCAN_INFO *prScanInfo;
+	struct SCAN_PARAM *prScanParam;
+	char strbuf[SCN_SCAN_DONE_PRINT_BUFFER_LENGTH];
+
+	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
+	prScanParam = &prScanInfo->rScanParam;
+
+	prScanInfo->fgIsSparseChannelValid = TRUE;
+	prScanInfo->rSparseChannel.eBand
+		= (enum ENUM_BAND) prScanDone->rSparseChannel.ucBand;
+	prScanInfo->rSparseChannel.ucChannelNum
+		= prScanDone->rSparseChannel.ucChannelNum;
+	ucScanChNum = prScanInfo->ucSparseChannelArrayValidNum
+		= prScanDone->ucSparseChannelArrayValidNum;
+
+	if (prAdapter->rWifiVar.u2CountryCode) {
+		log_dbg(SCN, INFO,
+			"Country Code = %c%c, Detected_Channel_Num = %d\n",
+			((prAdapter->rWifiVar.u2CountryCode
+				& 0xff00) >> 8),
+			(prAdapter->rWifiVar.u2CountryCode
+				& 0x00ff), ucScanChNum);
+	} else {
+		log_dbg(SCN, INFO,
+			"Country Code is NULL, Detected_Channel_Num = %d\n",
+			ucScanChNum);
+	}
+
+#define print_info_ch(_Mod, _Clz, _Fmt, var) \
+	do { \
+		uint16_t u2Written = 0; \
+		uint16_t u2TotalLen = SCN_SCAN_DONE_PRINT_BUFFER_LENGTH; \
+		enum ENUM_BAND eBand = BAND_NULL; \
+		for (ucChCnt = 0; ucChCnt < ucScanChNum; ucChCnt++) { \
+			eBand = \
+			SCN_GET_EBAND_BY_CH_NUM( \
+			prScanDone->var[ucChCnt]); \
+			prScanInfo->aeChannelBand[ucChCnt] = eBand; \
+			prScanInfo->var[ucChCnt] \
+				= prScanDone->var[ucChCnt]; \
+			nicRxdChNumTranslate(eBand, \
+			&prScanInfo->var[ucChCnt]); \
+			u2Written += kalSnprintf(strbuf + u2Written, \
+				u2TotalLen - u2Written, "%6d", \
+				prScanInfo->var[ucChCnt]); \
+		} \
+		log_dbg(_Mod, _Clz, _Fmt, strbuf); \
+	} while (0)
+
+#define print_info(_Mod, _Clz, _Fmt, var) \
+	do { \
+		uint16_t u2Written = 0; \
+		uint16_t u2TotalLen = SCN_SCAN_DONE_PRINT_BUFFER_LENGTH; \
+		for (ucChCnt = 0; ucChCnt < ucScanChNum; ucChCnt++) { \
+			prScanInfo->var[ucChCnt] \
+				= prScanDone->var[ucChCnt]; \
+			u2Written += kalSnprintf(strbuf + u2Written, \
+				u2TotalLen - u2Written, "%6d", \
+				prScanInfo->var[ucChCnt]); \
+		} \
+		log_dbg(_Mod, _Clz, _Fmt, strbuf); \
+	} while (0)
+
+	/* If FW scan channel count more than Driver request,
+	*  means this scan done event might have something wrong,
+	*  not to print it to avoid unexpected issue
+	*/
+	if ((ucScanChNum > prScanParam->ucChannelListNum) &&
+		(prScanParam->ucChannelListNum != 0)) {
+		log_dbg(SCN, INFO,
+			"Driver request %d ch, but FW scan %d ch!\n",
+			prScanParam->ucChannelListNum,
+			ucScanChNum);
+		return;
+	}
+
+	print_info_ch(SCN, INFO, "Channel  : %s\n", aucChannelNum);
+	print_info(SCN, INFO, "IdleTime : %s\n", au2ChannelIdleTime);
+	print_info(SCN, INFO, "MdrdyCnt : %s\n", aucChannelMDRDYCnt);
+	print_info(SCN, INFO, "BAndPCnt : %s\n", aucChannelBAndPCnt);
+	if (prScanDone->ucScanDoneVersion >= 4)
+		print_info(SCN, LOUD,
+			"ScanTime : %s\n", au2ChannelScanTime);
+#undef	print_scan_info
+}
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1033,6 +1190,62 @@ void scnEventSchedScanDone(IN struct ADAPTER *prAdapter,
 	}
 }
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief        Function to check spilit scan enable or not
+ *
+ * \param[in]
+ *
+ * \return none
+ */
+/*----------------------------------------------------------------------------*/
+bool scnEnableSplitScan(struct ADAPTER *prAdapter, uint8_t ucBssIndex)
+{
+	uint8_t ucWfdEn = FALSE, ucTrxPktEn = FALSE, ucRoamingEn = FALSE;
+	struct PERF_MONITOR *prPerMonitor;
+	struct BSS_INFO *prBssInfo = NULL;
+	struct AIS_FSM_INFO *prAisFsmInfo;
+	unsigned long ulTrxPacketsDiffTotal = 0;
+
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
+	prPerMonitor = &prAdapter->rPerMonitor;
+
+	if (!prBssInfo)
+		return FALSE;
+	/* Enable condition 1: WFD case*/
+	ucWfdEn = wlanWfdEnabled(prAdapter);
+
+	/* Enable condition 2: (TX + RX) packets in last 1s > 30,
+	 * exclude P2P device because prPerMonitor not include P2P device
+	 */
+	if (ucBssIndex < P2P_DEV_BSS_INDEX && IS_BSS_ACTIVE(prBssInfo)) {
+		ulTrxPacketsDiffTotal +=
+			(prPerMonitor->ulTxPacketsDiffLastSec[ucBssIndex] +
+			prPerMonitor->ulRxPacketsDiffLastSec[ucBssIndex]);
+
+		if (ulTrxPacketsDiffTotal > SCAN_SPLIT_PACKETS_THRESHOLD) {
+			log_dbg(SCN, TRACE, "SplitScan: TRXPacket=%ld",
+				ulTrxPacketsDiffTotal);
+			ucTrxPktEn = TRUE;
+		}
+	}
+	/* Enable Pre-condition: not in roaming, avoid roaming scan too long */
+	if (ucBssIndex < KAL_AIS_NUM) {
+		prAisFsmInfo = aisGetAisFsmInfo(prAdapter, ucBssIndex);
+		if (prAisFsmInfo &&
+			prBssInfo->eConnectionState == MEDIA_STATE_CONNECTED &&
+			prAisFsmInfo->eCurrentState == AIS_STATE_LOOKING_FOR)
+			ucRoamingEn = TRUE;
+	}
+	log_dbg(SCN, TRACE, "SplitScan: Roam(%d),WFD(%d),TRX(%d)",
+				ucRoamingEn, ucWfdEn, ucTrxPktEn);
+	/* Enable split scan when (not in roam) & (WFD or TRX packet > 30) */
+	if ((!ucRoamingEn) && (ucWfdEn || ucTrxPktEn))
+		return TRUE;
+	else
+		return FALSE;
+}
+
 #if CFG_SUPPORT_SCHED_SCAN
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1136,28 +1349,33 @@ scnFsmSchedScanRequest(IN struct ADAPTER *prAdapter,
 		= prAdapter->aePreferBand[NETWORK_TYPE_AIS];
 	if (ePreferedChnl == BAND_2G4) {
 		prSchedScanCmd->ucChannelType =
-			SCHED_SCAN_CHANNEL_TYPE_2G4_ONLY;
+			SCAN_CHANNEL_2G4;
 		prSchedScanCmd->ucChnlNum = 0;
 	} else if (ePreferedChnl == BAND_5G) {
 		prSchedScanCmd->ucChannelType =
-			SCHED_SCAN_CHANNEL_TYPE_5G_ONLY;
+			SCAN_CHANNEL_5G;
 		prSchedScanCmd->ucChnlNum = 0;
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	} else if (ePreferedChnl == BAND_6G) {
+		prSchedScanCmd->ucChannelType =
+			SCAN_CHANNEL_6G;
+		prSchedScanCmd->ucChnlNum = 0;
+#endif
 	} else if (prRequest->ucChnlNum > 0 &&
 		prRequest->ucChnlNum <= MAXIMUM_OPERATION_CHANNEL_LIST) {
 		prSchedScanCmd->ucChannelType =
-			SCHED_SCAN_CHANNEL_TYPE_SPECIFIED;
+			SCAN_CHANNEL_SPECIFIED;
 		prSchedScanCmd->ucChnlNum = prRequest->ucChnlNum;
 		for (i = 0; i < prRequest->ucChnlNum; i++) {
 			prSchedScanCmd->aucChannel[i].ucChannelNum =
-				prRequest->pucChannels[i];
+				prRequest->aucChannel[i].ucChannelNum;
 			prSchedScanCmd->aucChannel[i].ucBand =
-				(prSchedScanCmd->aucChannel[i].ucChannelNum <=
-				HW_CHNL_NUM_MAX_2G4) ? BAND_2G4 : BAND_5G;
+				prRequest->aucChannel[i].ucBand;
 		}
 	} else {
 		prSchedScanCmd->ucChnlNum = 0;
 		prSchedScanCmd->ucChannelType =
-			SCHED_SCAN_CHANNEL_TYPE_DUAL_BAND;
+			SCAN_CHANNEL_FULL;
 	}
 
 	prSchedScanCmd->ucSeqNum = prSchedScanParam->ucSeqNum;
@@ -1347,3 +1565,209 @@ scnSetSchedScanPlan(IN struct ADAPTER *prAdapter,
 }
 
 #endif /* CFG_SUPPORT_SCHED_SCAN */
+
+#if CFG_SUPPORT_SCAN_NO_AP_RECOVERY
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief                 Check scan result Mdrdy is all zero or not
+ * \param aucChannelMDRDYCnt       Channel Mdrdy result
+ * \param ucChNum	  Scan channel count
+ *
+ * \return                void
+ */
+/*----------------------------------------------------------------------------*/
+void
+scnDoZeroMdrdyRecoveryCheck(IN struct ADAPTER *prAdapter,
+		IN struct EVENT_SCAN_DONE *prScanDone,
+		IN struct SCAN_INFO *prScanInfo, IN uint8_t ucBssIndex)
+{
+	struct BSS_INFO *prAisBssInfo;
+	struct WIFI_VAR *prWifiVar = &prAdapter->rWifiVar;
+	uint8_t i;
+	uint8_t fgZeroMdrdy = TRUE, fgZeroBeaconProbeReq = TRUE;
+
+	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
+
+	for (i = 0; i < prScanDone->ucSparseChannelArrayValidNum; i++) {
+		if (prScanDone->aucChannelMDRDYCnt[i] > 0)
+			fgZeroMdrdy = FALSE;
+		if (prScanDone->aucChannelBAndPCnt[i] > 0)
+			fgZeroBeaconProbeReq = FALSE;
+	}
+
+	/* Abnormal: total Mdrdy=0 or beacon+ProbReq=0 case */
+	if (fgZeroMdrdy || fgZeroBeaconProbeReq) {
+		prScanInfo->ucScnZeroMdrdyTimes++;
+
+		log_dbg(SCN, WARN, "ScanRecover: Mdrdy(%d),BandP(%d), Count(%d), Conn(%d), SER(%d), Reset(%d)",
+			fgZeroMdrdy, fgZeroBeaconProbeReq,
+			prScanInfo->ucScnZeroMdrdyTimes,
+			prAisBssInfo->eConnectionState,
+			prScanInfo->ucScnZeroMdrdySerCnt,
+			prScanInfo->ucScnZeroMdrdySubsysResetCnt);
+
+		/* Do L1 SER if continuous abnormal count >= 3,
+		 * if first L1 SER not useful, will do twice
+		 */
+		if (prScanInfo->ucScnZeroMdrdyTimes >= prWifiVar->
+			ucScanNoApRecoverTh)
+			if (prScanInfo->ucScnZeroMdrdySerCnt < 2) {
+				prScanInfo->ucScnZeroMdrdySerCnt++;
+				wlanoidSerExtCmd(prAdapter,
+						SER_ACTION_SET_ENABLE_MASK,
+						(SER_ENABLE_TRACKING |
+						SER_ENABLE_L1_RECOVER |
+						SER_ENABLE_L2_RECOVER |
+						SER_ENABLE_L3_RX_ABORT |
+						SER_ENABLE_L3_TX_ABORT |
+						SER_ENABLE_L3_TX_DISABLE |
+						SER_ENABLE_L3_BF_RECOVER), 0);
+				wlanoidSerExtCmd(prAdapter, SER_ACTION_RECOVER,
+					SER_SET_L1_RECOVER, 0);
+			}
+			/* TODO:
+			 * If still abnormal after do twice L1 SER
+			 * (ucScnZeroMdrdySerCnt >= 2)
+			 * do subsys reset if no connection.
+			 */
+#if 0
+			else if (prScanInfo->ucScnZeroMdrdySubsysResetCnt < 1) {
+				if (prAisBssInfo->eConnectionState
+					== MEDIA_STATE_DISCONNECTED) {
+					prScanInfo->
+						ucScnZeroMdrdySubsysResetCnt++;
+					glSetRstReason(RST_SCAN_RECOVERY);
+					GL_RESET_TRIGGER(prAdapter,
+						RST_FLAG_CHIP_RESET);
+				}
+			}
+#endif
+	}
+	/* Normal: Mdrdy>0 and beacon+ProbReq>0 case */
+	else {
+		prScanInfo->ucScnZeroMdrdyTimes = 0;
+		prScanInfo->ucScnZeroMdrdySerCnt = 0;
+		prScanInfo->ucScnZeroMdrdySubsysResetCnt = 0;
+	}
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief                 Check scan result Mdrdy is all zero or not
+ * \param aucChannelMDRDYCnt       Channel Mdrdy result
+ * \param ucChNum	  Scan channel count
+ *
+ * \return                void
+ */
+/*----------------------------------------------------------------------------*/
+void
+scnDoScanTimeoutRecoveryCheck(IN struct ADAPTER *prAdapter,
+			IN uint8_t ucBssIndex)
+{
+	struct BSS_INFO *prAisBssInfo;
+	struct SCAN_INFO *prScanInfo;
+	struct WIFI_VAR *prWifiVar = &prAdapter->rWifiVar;
+
+	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
+	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
+
+	prScanInfo->ucScnTimeoutTimes++;
+
+	log_dbg(SCN, WARN, "ScanRecover:Conn(%d), ScnTimeoutCount(%d), Reset(%d)",
+		prAisBssInfo->eConnectionState,
+		prScanInfo->ucScnTimeoutTimes,
+		prScanInfo->ucScnTimeoutSubsysResetCnt);
+
+	/* If scanDoneTimeout count > 3 and no connection, do subsys reset */
+	if (prScanInfo->ucScnTimeoutTimes >= prWifiVar->ucScanNoApRecoverTh) {
+		if (prScanInfo->ucScnTimeoutSubsysResetCnt < 1 &&
+		   prAisBssInfo->eConnectionState == MEDIA_STATE_DISCONNECTED) {
+			prScanInfo->ucScnTimeoutSubsysResetCnt++;
+			glSetRstReason(RST_SCAN_RECOVERY);
+			GL_RESET_TRIGGER(prAdapter,
+				RST_FLAG_CHIP_RESET);
+		}
+	}
+}
+
+#endif
+
+enum ENUM_SCN_DONE_REASON {
+	SCN_DONE_OK = 0,
+	SCN_DONE_TIMEOUT,
+	SCN_DONE_DRIVER_ABORT,
+	SCN_DONE_NUM
+};
+
+void
+scnFsmNotifyEvent(IN struct ADAPTER *prAdapter,
+		IN enum ENUM_SCAN_STATUS eStatus,
+		IN uint8_t ucBssIndex)
+{
+	struct SCAN_INFO *prScanInfo;
+	char uEvent[300], strbuf[200] = "N/A";
+	uint8_t fgIsScanNormal = TRUE, fgIsDbdcScan = TRUE;
+	uint8_t i, ucReasonInd, ucWritten = 0, fgAnyConnection = FALSE;
+	uint8_t ucTotalLen = 200;
+	uint8_t *apucScnReason[3] = {
+		(uint8_t *) DISP_STRING("OK"),
+		(uint8_t *) DISP_STRING("TIMEOUT"),
+		(uint8_t *) DISP_STRING("DRIVER ABORT"),
+	};
+	uint32_t u4ScanTime = 0;
+
+	/*
+	 * Status: NORMAL, ABNORMAL (scan timeout or driver abort scan both
+	 * classify to ABNORMAL)
+	 * DBDC: ENABLE, DISABLE
+	 * Reason: TIMEOUT, DRIVER ABORT (if status NORMAL, print OK)
+	 * Time: in ms
+	 * Channel: (divide by space) ex: 1 2 3 4 5 6
+	 *
+	 * eStatus = SCAN_STATUS_DONE --> normal scan done OR scan timeout!
+	 * eStatus = SCAN_STATUS_CANCELLED --> driver abort
+	 */
+	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
+
+	if (prScanInfo->fgIsScanTimeout || eStatus == SCAN_STATUS_CANCELLED) {
+		fgIsScanNormal = FALSE;
+		ucReasonInd = prScanInfo->fgIsScanTimeout ? SCN_DONE_TIMEOUT :
+				SCN_DONE_DRIVER_ABORT;
+		prScanInfo->fgIsScanTimeout = FALSE;
+	}
+	/* Currently FW only do DBDC scan when no connection, but this condition
+	 * might changed.
+	 */
+	for (i = 0; i < KAL_AIS_NUM; i++) {
+		if (IS_BSS_ALIVE(prAdapter, prAdapter->aprBssInfo[i])) {
+			fgAnyConnection	= TRUE;
+			break;
+		}
+	}
+	if (prAdapter->rWifiVar.eDbdcMode == ENUM_DBDC_MODE_DISABLED
+		|| fgAnyConnection)
+		fgIsDbdcScan = FALSE;
+
+	if (fgIsScanNormal) {
+		u4ScanTime = USEC_TO_MSEC(SYSTIME_TO_USEC(kalGetTimeTick()
+					- prScanInfo->rLastScanStartTime));
+		ucReasonInd = SCN_DONE_OK;
+		for (i = 0; i < prScanInfo->ucSparseChannelArrayValidNum; i++) {
+			ucWritten += kalSnprintf(strbuf + ucWritten,
+					ucTotalLen - ucWritten, "%d ",
+					prScanInfo->aucChannelNum[i]);
+		}
+	}
+	kalSnprintf(uEvent, sizeof(uEvent),
+		"Scan=Status:%s,DBDC:%s,Time:%d,Channel:%s,Reason:%s",
+		(fgIsScanNormal ? "NORMAL" : "ABNORMAL"),
+		(fgIsDbdcScan ? "ENABLE" : "DISABLE"),
+		u4ScanTime,
+		strbuf,
+		apucScnReason[ucReasonInd]);
+
+	DBGLOG(SCN, LOUD, "request uevent:%s\n", uEvent);
+	/* Only send Uevent if BSS is AIS */
+	if (IS_BSS_INDEX_AIS(prAdapter, ucBssIndex))
+		kalSendUevent(uEvent);
+}

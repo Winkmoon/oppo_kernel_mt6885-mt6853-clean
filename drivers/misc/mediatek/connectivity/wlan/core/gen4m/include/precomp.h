@@ -106,6 +106,10 @@
 #include "he_ie.h"
 #endif
 
+#if (CFG_SUPPORT_802_11BE == 1)
+#include "eht_ie.h"
+#endif
+
 #if CFG_SUPPORT_SWCR
 #include "swcr.h"
 #endif
@@ -188,10 +192,16 @@
 #include "cmm_asic_connac.h"
 #include "cmm_asic_connac2x.h"
 
+#include "pre_cal.h"
+
 #if (CFG_SUPPORT_802_11AX == 1)
 #include "he_rlm.h"
 #include "wlan_he.h"
 #endif /* CFG_SUPPORT_802_11AX == 1 */
+
+#if (CFG_SUPPORT_802_11BE == 1)
+#include "eht_rlm.h"
+#endif
 
 #if (CFG_SUPPORT_TWT == 1)
 #include "twt_req_fsm.h"
@@ -254,11 +264,26 @@
 #include "auth.h"
 #include "assoc.h"
 
+#if CFG_SUPPORT_NAN
+#include "gl_nan_os.h"
+#include "gl_vendor_nan.h"
+#include "nanDiscovery.h"
+#include "nanScheduler.h"
+#include "nanReg.h"
+#include "nan_base.h"
+#include "nan_data_engine.h"
+#include "nan_dev.h"
+#include "nan_intf.h"
+#include "nan_ranging.h"
+#endif
+
 #if CFG_SUPPORT_ROAMING
 #include "roaming_fsm.h"
 #endif /* CFG_SUPPORT_ROAMING */
 
 #include "ais_fsm.h"
+
+#include "mscs.h"
 
 #include "adapter.h"
 
@@ -273,6 +298,10 @@
 
 /* Support AP Selection */
 #include "ap_selection.h"
+
+#if (CFG_SUPPORT_POWER_THROTTLING == 1)
+#include "thrm.h"
+#endif
 
 /*------------------------------------------------------------------------------
  * NVRAM structure
@@ -304,6 +333,7 @@
 #include "ut_lib.h"
 #endif
 
+#include "ie_sort.h"
 /*******************************************************************************
  *                              C O N S T A N T S
  *******************************************************************************

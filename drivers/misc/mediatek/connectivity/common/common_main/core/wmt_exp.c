@@ -315,6 +315,12 @@ UINT32 mtk_wcn_wmt_ic_info_get(ENUM_WMT_CHIPINFO_TYPE_T type)
 }
 EXPORT_SYMBOL(mtk_wcn_wmt_ic_info_get);
 
+UINT32 mtk_wcn_wmt_adie_workable(VOID)
+{
+	return wmt_lib_get_adie_workable();
+}
+EXPORT_SYMBOL(mtk_wcn_wmt_adie_workable);
+
 MTK_WCN_BOOL mtk_wcn_wmt_dsns_ctrl(ENUM_WMTDSNS_TYPE_T eType)
 {
 	P_OSAL_OP pOp;

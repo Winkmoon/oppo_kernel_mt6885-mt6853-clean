@@ -148,6 +148,16 @@ struct NON_HT_PHY_ATTRIBUTE {
 	u_int8_t fgIsShortSlotTimeOptionImplemented;
 };
 
+#if CFG_SUPPORT_NAN
+struct NON_HT_ADHOC_MODE_ATTRIBUTE {
+	enum ENUM_PHY_TYPE_INDEX ePhyTypeIndex;
+
+	uint16_t u2BSSBasicRateSet;
+}; /* NON_HT_ADHOC_MODE_ATTRIBUTE_T, *P_NON_HT_ADHOC_MODE_ATTRIBUTE_T; */
+
+/* typedef NON_HT_ADHOC_MODE_ATTRIBUTE_T NON_HT_AP_MODE_ATTRIBUTE_T; */
+#endif
+
 struct NON_HT_ATTRIBUTE {
 	enum ENUM_PHY_TYPE_INDEX ePhyTypeIndex;
 
@@ -165,6 +175,9 @@ extern const struct NON_HT_ATTRIBUTE
 	rNonHTAdHocModeAttributes[];
 extern const struct NON_HT_ATTRIBUTE
 	rNonHTApModeAttributes[];
+#if CFG_SUPPORT_NAN
+extern struct NON_HT_ADHOC_MODE_ATTRIBUTE rNonHTNanModeAttr[];
+#endif
 
 /*******************************************************************************
  *                           P R I V A T E   D A T A

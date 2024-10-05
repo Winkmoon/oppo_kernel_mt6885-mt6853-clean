@@ -14,7 +14,7 @@
 /*****************************************************************************
  *	Macro
  *****************************************************************************/
-#define AGENT_CFG_ARGV_MAX 20
+#define AGENT_CFG_ARGV_MAX 35
 #define SERV_TEST_ON(_config) ((((_config)->op_mode) & \
 	OP_MODE_START) == OP_MODE_START)
 
@@ -130,6 +130,7 @@ struct GNU_PACKED hqa_frame {
 };
 
 struct GNU_PACKED hqa_frame_ctrl {
+	/* 0: hqa command format, 1: iwpriv command format */
 	int8_t type;
 	union {
 		struct hqa_frame *hqa_frame_eth;

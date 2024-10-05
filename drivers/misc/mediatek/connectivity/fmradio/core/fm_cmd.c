@@ -99,6 +99,33 @@ signed int fm_bop_rd_until(unsigned char addr, unsigned short mask, unsigned sho
 	return FM_RD_UNTIL_BASIC_OP_SIZE + 2;
 }
 
+signed int fm_bop_copy_by_mask(unsigned char src, unsigned char dst, unsigned short mask_and,
+						unsigned char *buf, signed int size)
+{
+	if (size < (FM_COPY_BY_MASK_BASIC_OP_SIZE + 2)) {
+		WCN_DBG(FM_ERR | CHIP, "%s : left size(%d)/need size(%d)\n",
+			__func__, size, FM_COPY_BY_MASK_BASIC_OP_SIZE + 2);
+		return -1;
+	}
+
+	if (buf == NULL) {
+		WCN_DBG(FM_ERR | CHIP, "%s :buf invalid pointer\n", __func__);
+		return -2;
+	}
+
+	buf[0] = FM_COPY_BY_MASK_BASIC_OP;
+	buf[1] = FM_COPY_BY_MASK_BASIC_OP_SIZE;
+	buf[2] = src;
+	buf[3] = dst;
+	buf[4] = (unsigned char) ((mask_and) & 0x00FF);
+	buf[5] = (unsigned char) ((mask_and >> 8) & 0x00FF);
+
+	WCN_DBG(FM_DBG | CHIP, "%02x %02x %02x %02x %02x %02x\n", buf[0], buf[1], buf[2],
+		buf[3], buf[4], buf[5]);
+
+	return FM_COPY_BY_MASK_BASIC_OP_SIZE + 2;
+}
+
 signed int fm_bop_modify(unsigned char addr, unsigned short mask_and, unsigned short mask_or,
 						unsigned char *buf, signed int size)
 {

@@ -373,7 +373,7 @@ int SetATEChannel(struct net_device *prNetDev,
 
 	rv = kstrtoint(prInBuf, 0, &i4SetChan);
 	if (rv == 0) {
-		i4SetFreq = nicChannelNum2Freq(i4SetChan);
+		i4SetFreq = nicChannelNum2Freq(i4SetChan, BAND_NULL);
 		i4Status = MT_ATESetChannel(prNetDev, 0, i4SetFreq);
 	} else
 		return -EINVAL;

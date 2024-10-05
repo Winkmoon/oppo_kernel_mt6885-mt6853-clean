@@ -274,7 +274,8 @@ extern signed int fm_rds_ops_register(struct fm_basic_interface *bi, struct fm_r
 extern signed int fm_rds_ops_unregister(struct fm_rds_interface *ri);
 extern signed int fm_wcn_ops_register(void);
 extern signed int fm_wcn_ops_unregister(void);
-extern int fm_register_irq(struct platform_driver *drv);
+extern int fm_register_irq(struct platform_driver *drv, unsigned int irq_num);
+extern int fm_register_plat(unsigned int family_id, unsigned int conn_id);
 
 /*
  * fm_get_channel_space - get the spcace of gived channel

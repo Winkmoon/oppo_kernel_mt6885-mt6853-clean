@@ -77,6 +77,7 @@
 #include "nic_init_cmd_event.h"
 #include "fw_dl.h"
 #include "queue.h"
+#include "cmd_buf.h"
 /*******************************************************************************
  *                              C O N S T A N T S
  *******************************************************************************
@@ -143,6 +144,12 @@
 /* Support Random P2P MAC */
 #define WIFI_FEATURE_P2P_RAND_MAC  (0x80000000)
 
+#ifdef OPLUS_BUG_COMPATIBILITY
+//Laixin@CONNECTIVITY.WIFI.BASIC.HARDWARE.1130116, 2019/03/22
+/* Support DBDC */
+#define WIFI_FEATURE_DBDC               (0x200000000L)
+#endif /* OPLUS_BUG_COMPATIBILITY */
+
 /* note: WIFI_FEATURE_GSCAN be enabled just for ACTS test item: scanner */
 #define WIFI_HAL_FEATURE_SET ((WIFI_FEATURE_P2P) |\
 			      (WIFI_FEATURE_SOFT_AP) |\
@@ -203,13 +210,17 @@
 #define WLAN_CFG_ARGV_MAX 20
 #endif
 #define WLAN_CFG_ARGV_MAX_LONG	22	/* for WOW, 2+20 */
-#define WLAN_CFG_ENTRY_NUM_MAX	200	/* 128 */
+#define WLAN_CFG_ENTRY_NUM_MAX	400	/* 128 */
 #define WLAN_CFG_KEY_LEN_MAX	32	/* include \x00  EOL */
 #define WLAN_CFG_VALUE_LEN_MAX	128	/* include \x00 EOL */
 #define WLAN_CFG_FLAG_SKIP_CB	BIT(0)
-#define WLAN_CFG_FILE_BUF_SIZE	2560
+/* Guotian.Wu@CONNECTIVITY.WIFI.BASIC.Crash.336013 2020/08/31 modify for memory out of bounds */
+//#define WLAN_CFG_FILE_BUF_SIZE	2048
+//#else
+#define WLAN_CFG_FILE_BUF_SIZE	4096
+//#endif
 
-#define WLAN_CFG_REC_ENTRY_NUM_MAX 200
+#define WLAN_CFG_REC_ENTRY_NUM_MAX 400
 
 
 
@@ -235,6 +246,15 @@
 #define WLAN_TX_STATS_LOG_TIMEOUT			30000
 #define WLAN_TX_STATS_LOG_DURATION			1500
 
+#define WLAN_TYPE_UNKNOWN 0
+#define WLAN_TYPE_LEGACY 1
+#define WLAN_TYPE_HE 2
+#define WLAN_TYPE_EHT 3
+
+#define WLAN_LEGACY_MAX_BA_SIZE 64
+#define WLAN_HE_MAX_BA_SIZE 256
+#define WLAN_EHT_MAX_BA_SIZE 1024
+
 /* Define for wifi path usage */
 #define WLAN_FLAG_2G4_WF0		BIT(0)	/*1: support, 0: NOT support */
 #define WLAN_FLAG_5G_WF0		BIT(1)	/*1: support, 0: NOT support */
@@ -244,6 +264,9 @@
 #define WLAN_FLAG_2G4_COANT_PATH	BIT(5)	/*1: WF1, 0:WF0 */
 #define WLAN_FLAG_5G_COANT_SUPPORT	BIT(6)	/*1: support, 0: NOT support */
 #define WLAN_FLAG_5G_COANT_PATH		BIT(7)	/*1: WF1, 0:WF0 */
+
+#define WLAN_FLAG_6G_WF0		BIT(0)	/*1: support, 0: NOT support */
+#define WLAN_FLAG_6G_WF1		BIT(1)	/*1: support, 0: NOT support */
 
 /* Define concurrent network channel number, using by CNM/CMD */
 #define MAX_OP_CHNL_NUM			3
@@ -297,6 +320,18 @@
 #define ACS_DIRTINESS_LEVEL_MID		40
 #define ACS_DIRTINESS_LEVEL_LOW		32
 
+#if CFG_SUPPORT_TPENHANCE_MODE
+#define TPENHANCE_SESSION_MAP_LEN	20
+#define TPENHANCE_PKT_LATCH_MIN	    10
+#define TPENHANCE_PKT_KEEP_MAX	    256
+struct TPENHANCE_PKT_MAP {
+	uint16_t au2SPort;
+	uint16_t au2DPort;
+	uint32_t au4Ip;
+	uint16_t au2Hit;
+};
+
+#endif /* CFG_SUPPORT_TPENHANCE_MODE */
 
 enum CMD_VER {
 	CMD_VER_1,	/* Type[2]+String[32]+Value[32] */
@@ -562,6 +597,26 @@ enum {
 	DEBUG_MSG_TYPE_END
 };
 
+
+#if (CFG_SUPPORT_PKT_OFLD == 1)
+
+#define PKT_OFLD_BUF_SIZE 1488
+enum {
+	PKT_OFLD_TYPE_APF = 0,
+	PKT_OFLD_TYPE_IGMP,
+	PKT_OFLD_TYPE_MDNS,
+	PKT_OFLD_TYPE_CUSTOM,
+	PKT_OFLD_TYPE_END
+};
+
+enum {
+	PKT_OFLD_OP_DISABLE = 0,
+	PKT_OFLD_OP_ENABLE,
+	PKT_OFLD_OP_INSTALL,
+	PKT_OFLD_OP_QUERY,
+	PKT_OFLD_OP_END
+};
+#endif /* CFG_SUPPORT_PKT_OFLD */
 #define CHIP_CONFIG_RESP_SIZE 320
 enum {
 	CHIP_CONFIG_TYPE_WO_RESPONSE = 0x00,
@@ -1084,6 +1139,7 @@ enum ENUM_MAX_BANDWIDTH_SETTING {
 	MAX_BW_80MHZ,
 	MAX_BW_160MHZ,
 	MAX_BW_80_80_MHZ,
+	MAX_BW_320MHZ,
 	MAX_BW_UNKNOWN
 };
 
@@ -1204,6 +1260,7 @@ enum ENUM_WLAN_IOT_AP_HANDLE_ACTION {
 	WLAN_IOT_AP_FIX_MODE,
 	WLAN_IOT_AP_DIS_2GHT40,
 	WLAN_IOT_AP_KEEP_EDCA_PARAM = 6,
+	WLAN_IOT_AP_COEX_DIS_RX_AMPDU,
 	WLAN_IOT_AP_ACT_MAX
 };
 
@@ -1223,6 +1280,14 @@ struct WLAN_IOT_AP_RULE_T {
 	uint8_t  ucAction;
 };
 #endif
+
+struct TRX_INFO {
+	uint32_t u4TxFail[2];		/* By Band */
+	uint32_t u4RxFail[2];		/* By Band */
+	uint32_t u4TxHwRetry[2];	/* By Band */
+	uint32_t u4TxOk[MAX_BSSID_NUM];	/* By BSSIDX */
+	uint32_t u4RxOk[MAX_BSSID_NUM];	/* By BSSIDX */
+};
 /*******************************************************************************
  *                            P U B L I C   D A T A
  *******************************************************************************
@@ -1272,7 +1337,7 @@ void wlanAdapterDestroy(IN struct ADAPTER *prAdapter);
 
 void wlanCardEjected(IN struct ADAPTER *prAdapter);
 
-void wlanIST(IN struct ADAPTER *prAdapter);
+void wlanIST(IN struct ADAPTER *prAdapter, bool fgEnInt);
 
 u_int8_t wlanISR(IN struct ADAPTER *prAdapter, IN u_int8_t fgGlobalIntrCtrl);
 
@@ -1503,6 +1568,12 @@ uint8_t wlanGetChannelNumberByNetwork(IN struct ADAPTER *prAdapter,
 				      IN uint8_t ucBssIndex);
 
 /*----------------------------------------------------------------------------*/
+/* get currently operating band information                                */
+/*----------------------------------------------------------------------------*/
+uint32_t wlanGetBandIndexByNetwork(IN struct ADAPTER *prAdapter,
+				IN uint8_t ucBssIndex);
+
+/*----------------------------------------------------------------------------*/
 /* check for system configuration to generate message on scan list            */
 /*----------------------------------------------------------------------------*/
 uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER *prAdapter);
@@ -1659,19 +1730,6 @@ void wlanTxLifetimeTagPacket(IN struct ADAPTER *prAdapter,
 			     IN struct MSDU_INFO *prMsduInfoListHead,
 			     IN enum ENUM_TX_PROFILING_TAG eTag);
 
-#if CFG_ASSERT_DUMP
-void wlanCorDumpTimerInit(IN struct ADAPTER *prAdapter, u_int8_t fgIsResetN9);
-
-void wlanCorDumpTimerReset(IN struct ADAPTER *prAdapter, u_int8_t fgIsResetN9);
-
-void wlanN9CorDumpTimeOut(IN struct ADAPTER *prAdapter,
-			  IN unsigned long ulParamPtr);
-
-void wlanCr4CorDumpTimeOut(IN struct ADAPTER *prAdapter,
-			   IN unsigned long ulParamPtr);
-#endif
-#endif /* _WLAN_LIB_H */
-
 
 u_int8_t wlanGetWlanIdxByAddress(IN struct ADAPTER *prAdapter,
 				 IN uint8_t *pucAddr, OUT uint8_t *pucIndex);
@@ -1707,9 +1765,6 @@ void wlanUpdateTxStatistics(IN struct ADAPTER *prAdapter,
 
 void wlanUpdateRxStatistics(IN struct ADAPTER *prAdapter,
 			    IN struct SW_RFB *prSwRfb);
-
-uint32_t wlanTriggerStatsLog(IN struct ADAPTER *prAdapter,
-			     IN uint32_t u4DurationInMs);
 
 uint32_t wlanPktTxDone(IN struct ADAPTER *prAdapter,
 		       IN struct MSDU_INFO *prMsduInfo,
@@ -1764,7 +1819,7 @@ uint32_t wlanSetLowLatencyMode(IN struct ADAPTER *prAdapter,
 #endif /* CFG_SUPPORT_LOWLATENCY_MODE */
 int32_t wlanGetFileContent(struct ADAPTER *prAdapter,
 	const uint8_t *pcFileName, uint8_t *pucBuf,
-	uint32_t u4MaxFileLen, uint32_t *pu4ReadFileLen, u_int8_t bReqFw);
+	uint32_t u4MaxFileLen, uint32_t *pu4ReadFileLen);
 
 #if CFG_SUPPORT_EASY_DEBUG
 uint32_t wlanFwCfgParse(IN struct ADAPTER *prAdapter, uint8_t *pucConfigBuf);
@@ -1787,10 +1842,13 @@ void
 wlanInitChnLoadInfoChannelList(IN struct ADAPTER *prAdapter);
 
 uint8_t
-wlanGetChannelIndex(IN uint8_t channel);
+wlanGetChannelIndex(IN enum ENUM_BAND band, IN uint8_t channel);
 
 uint8_t
 wlanGetChannelNumFromIndex(IN uint8_t ucIdx);
+
+enum ENUM_BAND
+wlanGetChannelBandFromIndex(IN uint8_t ucIdx);
 
 void
 wlanSortChannel(IN struct ADAPTER *prAdapter,
@@ -1799,7 +1857,7 @@ wlanSortChannel(IN struct ADAPTER *prAdapter,
 void wlanSuspendPmHandle(struct GLUE_INFO *prGlueInfo);
 void wlanResumePmHandle(struct GLUE_INFO *prGlueInfo);
 
-#if defined(CFG_REPORT_MAX_TX_RATE) && (CFG_REPORT_MAX_TX_RATE == 1)
+#if CFG_REPORT_MAX_TX_RATE
 int wlanGetMaxTxRate(IN struct ADAPTER *prAdapter,
 		 IN void *prBssPtr, IN struct STA_RECORD *prStaRec,
 		 OUT uint32_t *pu4CurRate, OUT uint32_t *pu4MaxRate);
@@ -1807,7 +1865,8 @@ int wlanGetMaxTxRate(IN struct ADAPTER *prAdapter,
 
 #ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
 int wlanGetRxRate(IN struct GLUE_INFO *prGlueInfo,
-		 OUT uint32_t *pu4CurRate, OUT uint32_t *pu4MaxRate);
+		IN uint8_t ucBssIdx, OUT uint32_t *pu4CurRate,
+		OUT uint32_t *pu4MaxRate, OUT uint32_t *pu4CurBw);
 uint32_t wlanLinkQualityMonitor(struct GLUE_INFO *prGlueInfo, bool bFgIsOid);
 void wlanFinishCollectingLinkQuality(struct GLUE_INFO *prGlueInfo);
 #endif /* CFG_SUPPORT_LINK_QUALITY_MONITOR */
@@ -1824,6 +1883,10 @@ int wlanQueryRateByTable(uint32_t txmode, uint32_t rate,
 void wlanCustomMonitorFunction(struct ADAPTER *prAdapter,
 	struct WIFI_LINK_QUALITY_INFO *prLinkQualityInfo, uint8_t ucBssIdx);
 #endif /* CFG_SUPPORT_DATA_STALL */
+
+uint8_t wlanCheckExtCapBit(struct STA_RECORD *prStaRec, uint8_t *pucIE,
+	uint8_t ucTargetBit);
+
 uint32_t wlanSetForceRTS(IN struct ADAPTER *prAdapter,
 	IN u_int8_t fgEnForceRTS);
 
@@ -1846,3 +1909,42 @@ uint32_t wlanNchoSetFWScanPeriod(IN struct ADAPTER *prAdapter,
 #endif
 
 u_int8_t wlanWfdEnabled(struct ADAPTER *prAdapter);
+
+int wlanChipConfig(struct ADAPTER *prAdapter,
+	char *pcCommand, int i4TotalLen);
+
+uint32_t wlanSetRxBaSize(IN struct GLUE_INFO *prGlueInfo,
+	int8_t i4Type, uint16_t u2BaSize);
+uint32_t wlanSetTxBaSize(IN struct GLUE_INFO *prGlueInfo,
+	int8_t i4Type, uint16_t u2BaSize);
+
+void
+wlanGetTRXInfo(IN struct ADAPTER *prAdapter,
+	OUT struct TRX_INFO *prTRxInfo);
+
+#if CFG_SUPPORT_TPENHANCE_MODE
+inline uint64_t wlanTpeTimeUs(void);
+void wlanTpeUpdate(struct GLUE_INFO *prGlueInfo, struct QUE *prSrcQue,
+		uint8_t ucPktJump);
+void wlanTpeFlush(struct GLUE_INFO *prGlueInfo);
+#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
+void wlanTpeTimeoutHandler(struct timer_list *timer);
+#else
+void wlanTpeTimeoutHandler(unsigned long ulData);
+#endif
+void wlanTpeInit(struct GLUE_INFO *prGlueInfo);
+void wlanTpeUninit(struct GLUE_INFO *prGlueInfo);
+int wlanTpeProcess(struct GLUE_INFO *prGlueInfo,
+			struct sk_buff *prSkb,
+			struct net_device *prDev);
+#endif /* CFG_SUPPORT_TPENHANCE_MODE */
+
+void wlanSetConnsysFwLog(IN struct ADAPTER *prAdapter);
+uint32_t wlanSendFwLogControlCmd(IN struct ADAPTER *prAdapter,
+				uint8_t ucCID,
+				PFN_CMD_DONE_HANDLER pfCmdDoneHandler,
+				PFN_CMD_TIMEOUT_HANDLER pfCmdTimeoutHandler,
+				uint32_t u4SetQueryInfoLen,
+				int8_t *pucInfoBuffer);
+
+#endif /* _WLAN_LIB_H */

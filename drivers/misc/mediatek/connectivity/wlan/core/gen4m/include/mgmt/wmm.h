@@ -184,6 +184,7 @@ void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
 	enum TSPEC_OP_CODE eOpCode, void *prStepParams, uint8_t ucBssIndex);
 uint8_t wmmHasActiveTspec(struct WMM_INFO *prWmmInfo);
 void wmmNotifyDisconnected(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
+void wmmReSyncPsParamWithFw(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
 void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 		      uint8_t *pucEventBuf);
 void wmmInit(IN struct ADAPTER *prAdapter);

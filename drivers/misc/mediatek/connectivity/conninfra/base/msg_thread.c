@@ -130,18 +130,14 @@ static bool msg_evt_opq_has_op(struct msg_op_q *op_q, struct msg_op *op)
  */
 static int msg_evt_put_op_to_q(struct msg_op_q *op_q, struct msg_op *op)
 {
-	int ret;
+	int ret = 0;
 
 	if (!op_q || !op) {
 		pr_err("invalid input param: pOpQ(0x%p), pLxOp(0x%p)\n", op_q, op);
 		return -1;
 	}
 
-	ret = osal_lock_sleepable_lock(&op_q->lock);
-	if (ret) {
-		pr_warn("osal_lock_sleepable_lock iRet(%d)\n", ret);
-		return -2;
-	}
+	spin_lock(&op_q->lock);
 
 #if defined(CONFIG_MTK_ENG_BUILD) || defined(CONFIG_MT_ENG_BUILD)
 	if (msg_evt_opq_has_op(op_q, op)) {
@@ -158,14 +154,8 @@ static int msg_evt_put_op_to_q(struct msg_op_q *op_q, struct msg_op *op)
 		ret = -4;
 	}
 
-	osal_unlock_sleepable_lock(&op_q->lock);
-
-	if (ret) {
-		//osal_opq_dump("FreeOpQ", &g_conninfra_ctx.rFreeOpQ);
-		//osal_opq_dump("ActiveOpQ", &g_conninfra_ctx.rActiveOpQ);
-		return ret;
-	}
-	return 0;
+	spin_unlock(&op_q->lock);
+	return ret;
 }
 
 
@@ -175,27 +165,21 @@ static int msg_evt_put_op_to_q(struct msg_op_q *op_q, struct msg_op *op)
 static struct msg_op *msg_evt_get_op_from_q(struct msg_op_q *op_q)
 {
 	struct msg_op *op;
-	int ret;
 
 	if (op_q == NULL) {
 		pr_err("pOpQ = NULL\n");
 		return NULL;
 	}
 
-	ret = osal_lock_sleepable_lock(&op_q->lock);
-	if (ret) {
-		pr_err("osal_lock_sleepable_lock iRet(%d)\n", ret);
-		return NULL;
-	}
+	spin_lock(&op_q->lock);
 
 	/* acquire lock success */
 	MSG_OP_GET(op_q, op);
-	osal_unlock_sleepable_lock(&op_q->lock);
+
+	spin_unlock(&op_q->lock);
 
 	if (op == NULL) {
 		pr_warn("MSG_OP_GET(%p) return NULL\n", op_q);
-	//osal_opq_dump("FreeOpQ", &g_conninfra_ctx.rFreeOpQ);
-		//osal_opq_dump("ActiveOpQ", &g_conninfra_ctx.rActiveOpQ);
 	}
 
 	return op;
@@ -336,14 +320,14 @@ int msg_thread_send_2(struct msg_thread_ctx *ctx, int opid,
 int msg_thread_send_wait(struct msg_thread_ctx *ctx, int opid,
 						int timeout)
 {
-	return msg_thread_send_wait_3(ctx, opid, timeout, 0, 0, 0);
+	return msg_thread_send_wait_4(ctx, opid, timeout, 0, 0, 0, 0);
 }
 
 int msg_thread_send_wait_1(struct msg_thread_ctx *ctx,
 							int opid, int timeout,
 							size_t param1)
 {
-	return msg_thread_send_wait_3(ctx, opid, timeout, param1, 0, 0);
+	return msg_thread_send_wait_4(ctx, opid, timeout, param1, 0, 0, 0);
 }
 
 
@@ -352,7 +336,7 @@ int msg_thread_send_wait_2(struct msg_thread_ctx *ctx,
 							size_t param1,
 							size_t param2)
 {
-	return msg_thread_send_wait_3(ctx, opid, timeout, param1, param2, 0);
+	return msg_thread_send_wait_4(ctx, opid, timeout, param1, param2, 0, 0);
 }
 
 int msg_thread_send_wait_3(struct msg_thread_ctx *ctx,
@@ -360,6 +344,16 @@ int msg_thread_send_wait_3(struct msg_thread_ctx *ctx,
 							size_t param1,
 							size_t param2,
 							size_t param3)
+{
+	return msg_thread_send_wait_4(ctx, opid, timeout, param1, param2, param3, 0);
+}
+
+int msg_thread_send_wait_4(struct msg_thread_ctx *ctx,
+							int opid, int timeout,
+							size_t param1,
+							size_t param2,
+							size_t param3,
+							size_t param4)
 {
 	struct msg_op *op = NULL;
 	P_OSAL_SIGNAL signal;
@@ -374,6 +368,7 @@ int msg_thread_send_wait_3(struct msg_thread_ctx *ctx,
 	op->op.op_data[0] = param1;
 	op->op.op_data[1] = param2;
 	op->op.op_data[2] = param3;
+	op->op.op_data[3] = param4;
 
 	signal = &op->signal;
 	signal->timeoutValue = timeout > 0 ? timeout : MSG_OP_TIMEOUT;
@@ -425,11 +420,17 @@ void msg_op_history_save(struct osal_op_history *log_history, struct msg_op *op)
 unsigned int msg_evt_wait_event_checker(P_OSAL_THREAD thread)
 {
 	struct msg_thread_ctx *ctx = NULL;
+	int ret;
 
 	if (thread) {
 		ctx = (struct msg_thread_ctx *) (thread->pThreadData);
-		return !MSG_OP_EMPTY(&ctx->active_op_q);
+
+		spin_lock(&ctx->active_op_q.lock);
+		ret = !MSG_OP_EMPTY(&ctx->active_op_q);
+		spin_unlock(&ctx->active_op_q.lock);
+		return ret;
 	}
+
 	return 0;
 }
 
@@ -551,8 +552,8 @@ int msg_thread_init(struct msg_thread_ctx *ctx,
 	}
 
 	osal_event_init(&ctx->evt);
-	osal_sleepable_lock_init(&ctx->active_op_q.lock);
-	osal_sleepable_lock_init(&ctx->free_op_q.lock);
+	spin_lock_init(&ctx->active_op_q.lock);
+	spin_lock_init(&ctx->free_op_q.lock);
 
 	/* Initialize op queue */
 	MSG_OP_INIT(&ctx->free_op_q, MSG_THREAD_OP_BUF_SIZE);
@@ -588,9 +589,6 @@ int msg_thread_deinit(struct msg_thread_ctx *ctx)
 
 	for (i = 0; i < MSG_THREAD_OP_BUF_SIZE; i++)
 		osal_signal_deinit(&(ctx->op_q_inst[i].signal));
-
-	osal_sleepable_lock_deinit(&ctx->free_op_q.lock);
-	osal_sleepable_lock_deinit(&ctx->active_op_q.lock);
 
 	r = osal_thread_destroy(p_thraed);
 	if (r) {

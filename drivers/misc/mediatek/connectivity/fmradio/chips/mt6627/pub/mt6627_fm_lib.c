@@ -1141,15 +1141,15 @@ static signed int mt6627_full_cqi_get(signed int min_freq, signed int max_freq, 
 		freq = min;
 		pos = 0;
 		fm_memcpy(cqi_log_path, FM_CQI_LOG_PATH, strlen(FM_CQI_LOG_PATH));
-		sprintf(&cqi_log_path[strlen(FM_CQI_LOG_PATH)], "%d.txt", k + 1);
+		if (sprintf(&cqi_log_path[strlen(FM_CQI_LOG_PATH)], "%d.txt", k + 1) < 0)
+			WCN_DBG(FM_NTC | CHIP, "sprintf fail\n");
 		fm_file_write(cqi_log_path, cqi_log_title, strlen(cqi_log_title), &pos);
 		for (j = 0; j < num; j++) {
 			if (FM_LOCK(cmd_buf_lock))
 				return -FM_ELOCK;
 			pkt_size = fm_full_cqi_req(cmd_buf, TX_BUF_SIZE, &freq, 1, 1);
-			ret =
-			    fm_cmd_tx(cmd_buf, pkt_size, FLAG_SM_TUNE, SW_RETRY_CNT,
-				      SM_TUNE_TIMEOUT, fm_get_read_result);
+			ret = fm_cmd_tx(cmd_buf, pkt_size, FLAG_SM_TUNE, SW_RETRY_CNT,
+					SM_TUNE_TIMEOUT, fm_get_read_result);
 			FM_UNLOCK(cmd_buf_lock);
 
 			if (!ret && fm_res) {
@@ -1164,12 +1164,13 @@ static signed int mt6627_full_cqi_get(signed int min_freq, signed int max_freq, 
 						p_cqi[i].atdc, p_cqi[i].prx, p_cqi[i].atdev,
 						p_cqi[i].smg, p_cqi[i].drssi);
 					/* format to buffer */
-					sprintf(cqi_log_buf,
-						"%04d,%04x,%04x,%04x,%04x,%04x,%04x,%04x,%04x,%04x,%04x,\n",
-						p_cqi[i].ch, p_cqi[i].rssi, p_cqi[i].pamd,
-						p_cqi[i].pr, p_cqi[i].fpamd, p_cqi[i].mr,
-						p_cqi[i].atdc, p_cqi[i].prx, p_cqi[i].atdev,
-						p_cqi[i].smg, p_cqi[i].drssi);
+					if (sprintf(cqi_log_buf,
+							"%04d, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x, %04x,\n",
+							p_cqi[i].ch, p_cqi[i].rssi, p_cqi[i].pamd,
+							p_cqi[i].pr, p_cqi[i].fpamd, p_cqi[i].mr,
+							p_cqi[i].atdc, p_cqi[i].prx, p_cqi[i].atdev,
+							p_cqi[i].smg, p_cqi[i].drssi) < 0)
+						WCN_DBG(FM_NTC | CHIP, "sprintf fail\n");
 					/* write back to log file */
 					fm_file_write(cqi_log_path, cqi_log_buf, strlen(cqi_log_buf), &pos);
 				}

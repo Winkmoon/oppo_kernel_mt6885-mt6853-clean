@@ -108,6 +108,45 @@
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief This routine is called to dump a segment of memory in bytes with
+ *        32 bytes in each line.
+ *
+ * \param[in] pucStartAddr   Pointer to the starting address of the memory
+ *                           to be dumped.
+ * \param[in] u2Length       Length of the memory to be dumped.
+ *
+ * \return (none)
+ */
+/*----------------------------------------------------------------------------*/
+void dumpHex(IN uint8_t *pucStartAddr, uint16_t u2Length)
+{
+#if !DBG_DISABLE_ALL_LOG
+#define BUFSIZE 100
+	uint8_t output[BUFSIZE] = {0};
+	uint8_t i = 0;
+	uint8_t printed = 0;
+	uint8_t offset = 0;
+
+	ASSERT(pucStartAddr);
+	LOG_FUNC("DUMPHEX ADDRESS: 0x%x, Length: %d", pucStartAddr, u2Length);
+
+	while (u2Length > 0) {
+		for (i = 0, offset = 0; i < 32 && u2Length; i++) {
+			offset += snprintf(output + offset, BUFSIZE - offset,
+					"%02x %s",
+					pucStartAddr[printed + i],
+					i + 1 == 16 ? "- " :
+					(i + 1) % 16 == 8 ? " " : "");
+			u2Length--;
+		}
+		LOG_FUNC("%04x: %s", printed, output);
+		printed += 32;
+	}
+#endif
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief This routine is called to dump a segment of memory in bytes.
  *
  * \param[in] pucStartAddr   Pointer to the starting address of the memory
@@ -122,35 +161,35 @@ void dumpMemory8(IN uint8_t *pucStartAddr,
 {
 	ASSERT(pucStartAddr);
 
-	LOG_FUNC("DUMP8 ADDRESS: %p, Length: %d\n", pucStartAddr,
+	LOG_FUNC("DUMP8 ADDRESS: 0x%x, Length: %d\n", pucStartAddr,
 		 u4Length);
 
-#define case16 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case16 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x %02x %02x  %02x %02x %02x %02x\n"
 
-#define case07 "(%p) %02x %02x %02x %02x  %02x %02x %02x\n"
+#define case07 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x\n"
 
-#define case08 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x\n"
+#define case08 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x\n"
 
-#define case09 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case09 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x\n"
 
-#define case10 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case10 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x\n"
 
-#define case11 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case11 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x %02x\n"
 
-#define case12 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case12 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x %02x %02x\n"
 
-#define case13 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case13 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x %02x %02x  %02x\n"
 
-#define case14 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case14 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x %02x %02x  %02x %02x\n"
 
-#define case15 "(%p) %02x %02x %02x %02x  %02x %02x %02x %02x" \
+#define case15 "(0x%x) %02x %02x %02x %02x  %02x %02x %02x %02x" \
 			" - %02x %02x %02x %02x  %02x %02x %02x\n"
 
 	while (u4Length > 0) {
@@ -169,26 +208,26 @@ void dumpMemory8(IN uint8_t *pucStartAddr,
 		} else {
 			switch (u4Length) {
 			case 1:
-				LOG_FUNC("(%p) %02x\n", pucStartAddr,
+				LOG_FUNC("(0x%x) %02x\n", pucStartAddr,
 					 pucStartAddr[0]);
 				break;
 			case 2:
-				LOG_FUNC("(%p) %02x %02x\n", pucStartAddr,
+				LOG_FUNC("(0x%x) %02x %02x\n", pucStartAddr,
 					 pucStartAddr[0], pucStartAddr[1]);
 				break;
 			case 3:
-				LOG_FUNC("(%p) %02x %02x %02x\n",
+				LOG_FUNC("(0x%x) %02x %02x %02x\n",
 					 pucStartAddr, pucStartAddr[0],
 					 pucStartAddr[1], pucStartAddr[2]);
 				break;
 			case 4:
-				LOG_FUNC("(%p) %02x %02x %02x %02x\n",
+				LOG_FUNC("(0x%x) %02x %02x %02x %02x\n",
 					 pucStartAddr,
 					 pucStartAddr[0], pucStartAddr[1],
 					 pucStartAddr[2], pucStartAddr[3]);
 				break;
 			case 5:
-				LOG_FUNC("(%p) %02x %02x %02x %02x  %02x\n",
+				LOG_FUNC("(0x%x) %02x %02x %02x %02x  %02x\n",
 					 pucStartAddr,
 					 pucStartAddr[0], pucStartAddr[1],
 					 pucStartAddr[2], pucStartAddr[3],
@@ -196,7 +235,7 @@ void dumpMemory8(IN uint8_t *pucStartAddr,
 				break;
 			case 6:
 				LOG_FUNC
-				("(%p) %02x %02x %02x %02x  %02x %02x\n",
+				("(0x%x) %02x %02x %02x %02x  %02x %02x\n",
 				 pucStartAddr, pucStartAddr[0],
 				 pucStartAddr[1], pucStartAddr[2],
 				 pucStartAddr[3], pucStartAddr[4],
@@ -317,10 +356,11 @@ void dumpMemory32(IN uint32_t *pu4StartAddr,
 		  IN uint32_t u4Length)
 {
 	uint8_t *pucAddr;
+#define DM32_CASE15 "(0x%x) %08x %08x %08x --%02x%02x%02x\n"
 
 	ASSERT(pu4StartAddr);
 
-	LOG_FUNC("DUMP32 ADDRESS: %p, Length: %d\n", pu4StartAddr,
+	LOG_FUNC("DUMP32 ADDRESS: 0x%x, Length: %d\n", pu4StartAddr,
 		 u4Length);
 
 	if (IS_NOT_ALIGN_4((unsigned long)pu4StartAddr)) {
@@ -334,14 +374,15 @@ void dumpMemory32(IN uint32_t *pu4StartAddr,
 
 		switch (u4ProtrudeLen) {
 		case 1:
-			LOG_FUNC("(%p) %02x------\n", pu4StartAddr, pucAddr[0]);
+			LOG_FUNC("(0x%x) %02x------\n", pu4StartAddr,
+				pucAddr[0]);
 			break;
 		case 2:
-			LOG_FUNC("(%p) %02x%02x----\n", pu4StartAddr,
+			LOG_FUNC("(0x%x) %02x%02x----\n", pu4StartAddr,
 				 pucAddr[1], pucAddr[0]);
 			break;
 		case 3:
-			LOG_FUNC("(%p) %02x%02x%02x--\n", pu4StartAddr,
+			LOG_FUNC("(0x%x) %02x%02x%02x--\n", pu4StartAddr,
 				 pucAddr[2], pucAddr[1], pucAddr[0]);
 			break;
 		default:
@@ -355,7 +396,7 @@ void dumpMemory32(IN uint32_t *pu4StartAddr,
 
 	while (u4Length > 0) {
 		if (u4Length >= 16) {
-			LOG_FUNC("(%p) %08x %08x %08x %08x\n",
+			LOG_FUNC("(0x%x) %08x %08x %08x %08x\n",
 				 pu4StartAddr,
 				 pu4StartAddr[0], pu4StartAddr[1],
 				 pu4StartAddr[2], pu4StartAddr[3]);
@@ -365,80 +406,82 @@ void dumpMemory32(IN uint32_t *pu4StartAddr,
 			switch (u4Length) {
 			case 1:
 				pucAddr = (uint8_t *) &pu4StartAddr[0];
-				LOG_FUNC("(%p) ------%02x\n",
+				LOG_FUNC("(0x%x) ------%02x\n",
 					 pu4StartAddr, pucAddr[0]);
 				break;
 			case 2:
 				pucAddr = (uint8_t *) &pu4StartAddr[0];
-				LOG_FUNC("(%p) ----%02x%02x\n", pu4StartAddr,
+				LOG_FUNC("(0x%x) ----%02x%02x\n", pu4StartAddr,
 					 pucAddr[1], pucAddr[0]);
 				break;
 			case 3:
 				pucAddr = (uint8_t *) &pu4StartAddr[0];
-				LOG_FUNC("(%p) --%02x%02x%02x\n", pu4StartAddr,
-					 pucAddr[2], pucAddr[1], pucAddr[0]);
+				LOG_FUNC("(0x%x) --%02x%02x%02x\n",
+					pu4StartAddr,
+					pucAddr[2], pucAddr[1], pucAddr[0]);
 				break;
 			case 4:
-				LOG_FUNC("(%p) %08x\n", pu4StartAddr,
+				LOG_FUNC("(0x%x) %08x\n", pu4StartAddr,
 					 pu4StartAddr[0]);
 				break;
 			case 5:
 				pucAddr = (uint8_t *) &pu4StartAddr[1];
-				LOG_FUNC("(%p) %08x ------%02x\n", pu4StartAddr,
-					 pu4StartAddr[0], pucAddr[0]);
+				LOG_FUNC("(0x%x) %08x ------%02x\n",
+					pu4StartAddr,
+					pu4StartAddr[0], pucAddr[0]);
 				break;
 			case 6:
 				pucAddr = (uint8_t *) &pu4StartAddr[1];
-				LOG_FUNC("(%p) %08x ----%02x%02x\n",
+				LOG_FUNC("(0x%x) %08x ----%02x%02x\n",
 					 pu4StartAddr, pu4StartAddr[0],
 					 pucAddr[1], pucAddr[0]);
 				break;
 			case 7:
 				pucAddr = (uint8_t *) &pu4StartAddr[1];
-				LOG_FUNC("(%p) %08x --%02x%02x%02x\n",
+				LOG_FUNC("(0x%x) %08x --%02x%02x%02x\n",
 					 pu4StartAddr, pu4StartAddr[0],
 					 pucAddr[2], pucAddr[1], pucAddr[0]);
 				break;
 			case 8:
-				LOG_FUNC("(%p) %08x %08x\n", pu4StartAddr,
+				LOG_FUNC("(0x%x) %08x %08x\n", pu4StartAddr,
 					 pu4StartAddr[0], pu4StartAddr[1]);
 				break;
 			case 9:
 				pucAddr = (uint8_t *) &pu4StartAddr[2];
-				LOG_FUNC("(%p) %08x %08x ------%02x\n",
+				LOG_FUNC("(0x%x) %08x %08x ------%02x\n",
 					 pu4StartAddr, pu4StartAddr[0],
 					 pu4StartAddr[1], pucAddr[0]);
 				break;
 			case 10:
 				pucAddr = (uint8_t *) &pu4StartAddr[2];
-				LOG_FUNC("(%p) %08x %08x ----%02x%02x\n",
+				LOG_FUNC("(0x%x) %08x %08x ----%02x%02x\n",
 					 pu4StartAddr, pu4StartAddr[0],
 					 pu4StartAddr[1], pucAddr[1],
 					 pucAddr[0]);
 				break;
 			case 11:
 				pucAddr = (uint8_t *) &pu4StartAddr[2];
-				LOG_FUNC("(%p) %08x %08x --%02x%02x%02x\n",
+				LOG_FUNC("(0x%x) %08x %08x --%02x%02x%02x\n",
 					 pu4StartAddr,
 					 pu4StartAddr[0], pu4StartAddr[1],
 					 pucAddr[2], pucAddr[1], pucAddr[0]);
 				break;
 			case 12:
-				LOG_FUNC("(%p) %08x %08x %08x\n",
+				LOG_FUNC("(0x%x) %08x %08x %08x\n",
 					 pu4StartAddr,
 					 pu4StartAddr[0], pu4StartAddr[1],
 					 pu4StartAddr[2]);
 				break;
 			case 13:
 				pucAddr = (uint8_t *) &pu4StartAddr[3];
-				LOG_FUNC("(%p) %08x %08x %08x ------%02x\n",
+				LOG_FUNC("(0x%x) %08x %08x %08x ------%02x\n",
 					 pu4StartAddr,
 					 pu4StartAddr[0], pu4StartAddr[1],
 					 pu4StartAddr[2], pucAddr[0]);
 				break;
 			case 14:
 				pucAddr = (uint8_t *) &pu4StartAddr[3];
-				LOG_FUNC("(%p) %08x %08x %08x ----%02x%02x\n",
+				LOG_FUNC("(0x%x) %08x %08x %08x ----%02x%02x\n",
 					 pu4StartAddr,
 					 pu4StartAddr[0], pu4StartAddr[1],
 					 pu4StartAddr[2],
@@ -447,7 +490,7 @@ void dumpMemory32(IN uint32_t *pu4StartAddr,
 			case 15:
 			default:
 				pucAddr = (uint8_t *) &pu4StartAddr[3];
-				LOG_FUNC("(%p) %08x %08x %08x --%02x%02x%02x\n",
+				LOG_FUNC(DM32_CASE15,
 					 pu4StartAddr,
 					 pu4StartAddr[0], pu4StartAddr[1],
 					 pu4StartAddr[2],
@@ -459,3 +502,181 @@ void dumpMemory32(IN uint32_t *pu4StartAddr,
 	}
 }				/* end of dumpMemory32() */
 
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief This routine is called to dump a segment of memory in 4 double words.
+ *
+ * \param[in] pucStartAddr   Pointer to the starting address of the memory
+ *                           to be dumped.
+ * \param[in] u4Length       Length of the memory to be dumped.
+ *
+ * \return (none)
+ */
+/*----------------------------------------------------------------------------*/
+void dumpMemory128(IN uint32_t *pu4StartAddr,
+		  IN uint32_t u4Length)
+{
+	uint8_t *pucAddr;
+#define DM128_LEN64 "(0x%x) %08x %08x %08x %08x" \
+					" %08x %08x %08x %08x" \
+					" %08x %08x %08x %08x" \
+					" %08x %08x %08x %08x\n"
+#define DM128_CASE15 "(0x%x) %08x %08x %08x --%02x%02x%02x\n"
+
+	ASSERT(pu4StartAddr);
+
+	LOG_FUNC("DUMP32 ADDRESS: 0x%x, Length: %d ", pu4StartAddr,
+		 u4Length);
+
+	if (IS_NOT_ALIGN_4((unsigned long)pu4StartAddr)) {
+		uint32_t u4ProtrudeLen =
+			sizeof(uint32_t) - ((unsigned long)pu4StartAddr % 4);
+
+		u4ProtrudeLen =
+			((u4Length < u4ProtrudeLen) ? u4Length : u4ProtrudeLen);
+		LOG_FUNC("pu4StartAddr is not at DW boundary.\n");
+		pucAddr = (uint8_t *) &pu4StartAddr[0];
+
+		switch (u4ProtrudeLen) {
+		case 1:
+			LOG_FUNC("(0x%x) %02x------\n", pu4StartAddr,
+				pucAddr[0]);
+			break;
+		case 2:
+			LOG_FUNC("(0x%x) %02x%02x----\n", pu4StartAddr,
+				 pucAddr[1], pucAddr[0]);
+			break;
+		case 3:
+			LOG_FUNC("(0x%x) %02x%02x%02x--\n", pu4StartAddr,
+				 pucAddr[2], pucAddr[1], pucAddr[0]);
+			break;
+		default:
+			break;
+		}
+
+		u4Length -= u4ProtrudeLen;
+		pu4StartAddr = (uint32_t *)
+			       ((unsigned long)pu4StartAddr + u4ProtrudeLen);
+	}
+
+	while (u4Length > 0) {
+		if (u4Length >= 64) {
+			LOG_FUNC(DM128_LEN64,
+				 pu4StartAddr,
+				 pu4StartAddr[0], pu4StartAddr[1],
+				 pu4StartAddr[2], pu4StartAddr[3],
+				 pu4StartAddr[4], pu4StartAddr[5],
+				 pu4StartAddr[6], pu4StartAddr[7],
+				 pu4StartAddr[8], pu4StartAddr[9],
+				 pu4StartAddr[10], pu4StartAddr[11],
+				 pu4StartAddr[12], pu4StartAddr[13],
+				 pu4StartAddr[14], pu4StartAddr[15]);
+			pu4StartAddr += 16;
+			u4Length -= 64;
+		} else if (u4Length >= 16) {
+			LOG_FUNC("(0x%x) %08x %08x %08x %08x\n",
+				 pu4StartAddr,
+				 pu4StartAddr[0], pu4StartAddr[1],
+				 pu4StartAddr[2], pu4StartAddr[3]);
+			pu4StartAddr += 4;
+			u4Length -= 16;
+		} else {
+			switch (u4Length) {
+			case 1:
+				pucAddr = (uint8_t *) &pu4StartAddr[0];
+				LOG_FUNC("(0x%x) ------%02x\n",
+					 pu4StartAddr, pucAddr[0]);
+				break;
+			case 2:
+				pucAddr = (uint8_t *) &pu4StartAddr[0];
+				LOG_FUNC("(0x%x) ----%02x%02x\n", pu4StartAddr,
+					 pucAddr[1], pucAddr[0]);
+				break;
+			case 3:
+				pucAddr = (uint8_t *) &pu4StartAddr[0];
+				LOG_FUNC("(0x%x) --%02x%02x%02x\n",
+					pu4StartAddr,
+					pucAddr[2], pucAddr[1], pucAddr[0]);
+				break;
+			case 4:
+				LOG_FUNC("(0x%x) %08x\n", pu4StartAddr,
+					 pu4StartAddr[0]);
+				break;
+			case 5:
+				pucAddr = (uint8_t *) &pu4StartAddr[1];
+				LOG_FUNC("(0x%x) %08x ------%02x\n",
+					pu4StartAddr,
+					pu4StartAddr[0], pucAddr[0]);
+				break;
+			case 6:
+				pucAddr = (uint8_t *) &pu4StartAddr[1];
+				LOG_FUNC("(0x%x) %08x ----%02x%02x\n",
+					 pu4StartAddr, pu4StartAddr[0],
+					 pucAddr[1], pucAddr[0]);
+				break;
+			case 7:
+				pucAddr = (uint8_t *) &pu4StartAddr[1];
+				LOG_FUNC("(0x%x) %08x --%02x%02x%02x\n",
+					 pu4StartAddr, pu4StartAddr[0],
+					 pucAddr[2], pucAddr[1], pucAddr[0]);
+				break;
+			case 8:
+				LOG_FUNC("(0x%x) %08x %08x\n", pu4StartAddr,
+					 pu4StartAddr[0], pu4StartAddr[1]);
+				break;
+			case 9:
+				pucAddr = (uint8_t *) &pu4StartAddr[2];
+				LOG_FUNC("(0x%x) %08x %08x ------%02x\n",
+					 pu4StartAddr, pu4StartAddr[0],
+					 pu4StartAddr[1], pucAddr[0]);
+				break;
+			case 10:
+				pucAddr = (uint8_t *) &pu4StartAddr[2];
+				LOG_FUNC("(0x%x) %08x %08x ----%02x%02x\n",
+					 pu4StartAddr, pu4StartAddr[0],
+					 pu4StartAddr[1], pucAddr[1],
+					 pucAddr[0]);
+				break;
+			case 11:
+				pucAddr = (uint8_t *) &pu4StartAddr[2];
+				LOG_FUNC("(0x%x) %08x %08x --%02x%02x%02x\n",
+					 pu4StartAddr,
+					 pu4StartAddr[0], pu4StartAddr[1],
+					 pucAddr[2], pucAddr[1], pucAddr[0]);
+				break;
+			case 12:
+				LOG_FUNC("(0x%x) %08x %08x %08x\n",
+					 pu4StartAddr,
+					 pu4StartAddr[0], pu4StartAddr[1],
+					 pu4StartAddr[2]);
+				break;
+			case 13:
+				pucAddr = (uint8_t *) &pu4StartAddr[3];
+				LOG_FUNC("(0x%x) %08x %08x %08x ------%02x\n",
+					 pu4StartAddr,
+					 pu4StartAddr[0], pu4StartAddr[1],
+					 pu4StartAddr[2], pucAddr[0]);
+				break;
+			case 14:
+				pucAddr = (uint8_t *) &pu4StartAddr[3];
+				LOG_FUNC("(0x%x) %08x %08x %08x ----%02x%02x\n",
+					 pu4StartAddr,
+					 pu4StartAddr[0], pu4StartAddr[1],
+					 pu4StartAddr[2],
+					 pucAddr[1], pucAddr[0]);
+				break;
+			case 15:
+			default:
+				pucAddr = (uint8_t *) &pu4StartAddr[3];
+				LOG_FUNC(DM128_CASE15,
+					 pu4StartAddr,
+					 pu4StartAddr[0], pu4StartAddr[1],
+					 pu4StartAddr[2],
+					 pucAddr[2], pucAddr[1], pucAddr[0]);
+				break;
+			}
+			u4Length = 0;
+		}
+	}
+}				/* end of dumpMemory32() */

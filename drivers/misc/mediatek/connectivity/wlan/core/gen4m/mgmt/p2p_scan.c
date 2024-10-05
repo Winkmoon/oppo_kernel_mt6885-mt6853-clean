@@ -204,7 +204,7 @@ scanP2pProcessBeaconAndProbeResp(IN struct ADAPTER *prAdapter,
 		rChannelInfo.eBand = prBssDesc->eBand;
 		prBssDesc->fgIsP2PReport = TRUE;
 
-		DBGLOG(P2P, INFO,
+		DBGLOG(P2P, TRACE,
 			"indicate [" MACSTR "][%s][%s][ch %d][r %d][t %u]\n",
 			MAC2STR(prWlanBeaconFrame->aucBSSID),
 			fgIsBeacon ? "Beacon" : "Probe Response",

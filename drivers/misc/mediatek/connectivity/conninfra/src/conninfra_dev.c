@@ -19,7 +19,13 @@
 #include <linux/platform_device.h>
 #include <linux/cdev.h>
 #include <linux/module.h>
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+#include <linux/mm.h>
+#include "mtk_disp_notify.h"
+#else
 #include <linux/fb.h>
+#endif
 #include <linux/workqueue.h>
 #include "conninfra.h"
 #include "conninfra_conf.h"
@@ -37,7 +43,12 @@
 #include "conninfra_test.h"
 #endif
 
+#if IS_ENABLED(CONFIG_MTK_DEVAPC)
 #include <devapc_public.h>
+#endif
+
+#include <linux/thermal.h>
+#include "conn_power_throttling.h"
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -50,7 +61,6 @@
 */
 
 #define CONNINFRA_DEV_MAJOR 164
-//#define WMT_DETECT_MAJOR 154
 #define CONNINFRA_DEV_NUM 1
 #define CONNINFRA_DRVIER_NAME "conninfra_drv"
 #define CONNINFRA_DEVICE_NAME "conninfra_dev"
@@ -59,8 +69,14 @@
 #define CONNINFRA_IOCTL_GET_CHIP_ID _IOR(CONNINFRA_DEV_IOC_MAGIC, 0, int)
 #define CONNINFRA_IOCTL_SET_COREDUMP_MODE _IOW(CONNINFRA_DEV_IOC_MAGIC, 1, unsigned int)
 #define CONNINFRA_IOCTL_DO_MODULE_INIT _IOR(CONNINFRA_DEV_IOC_MAGIC, 2, int)
+#define CONNINFRA_IOCTL_GET_ADIE_CHIP_ID _IOR(CONNINFRA_DEV_IOC_MAGIC, 3, int)
 
 #define CONNINFRA_DEV_INIT_TO_MS (2 * 1000)
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) \
+	&& LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0))
+#define SSPM_DEBUG_DUMP
+#endif
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -85,6 +101,11 @@ static wait_queue_head_t g_conninfra_init_wq;
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
+struct conninfra_pmic_work {
+	unsigned int id;
+	unsigned int event;
+	struct work_struct pmic_work;
+};
 
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S
@@ -114,8 +135,14 @@ static void conninfra_clock_fail_dump_cb(void);
 static int conninfra_conn_reg_readable(void);
 static int conninfra_conn_is_bus_hang(void);
 
+#ifdef SSPM_DEBUG_DUMP
+static int conninfra_conn_bus_dump(void);
+#endif
+
+#if IS_ENABLED(CONFIG_MTK_DEVAPC)
 static void conninfra_devapc_violation_cb(void);
 static void conninfra_register_devapc_callback(void);
+#endif
 
 static int conninfra_dev_suspend_cb(void);
 static int conninfra_dev_resume_cb(void);
@@ -152,7 +179,14 @@ struct wmt_platform_bridge g_plat_bridge = {
 	.thermal_query_cb = conninfra_thermal_query_cb,
 	.clock_fail_dump_cb  = conninfra_clock_fail_dump_cb,
 	.conninfra_reg_readable_cb = conninfra_conn_reg_readable,
-	.conninfra_reg_is_bus_hang_cb = conninfra_conn_is_bus_hang
+#ifdef SSPM_DEBUG_DUMP
+	.conninfra_reg_is_bus_hang_cb = conninfra_conn_is_bus_hang,
+	.conninfra_reg_is_bus_hang_no_lock_cb = conninfra_conn_bus_dump,
+#else
+	.conninfra_reg_is_bus_hang_cb = conninfra_conn_is_bus_hang,
+#endif
+	.debug_write_cb = conninfra_dbg_write,
+	.debug_read_cb = conninfra_dbg_read,
 };
 
 
@@ -164,19 +198,28 @@ static struct work_struct gPwrOnOffWork;
 static atomic_t g_es_lr_flag_for_blank = ATOMIC_INIT(0); /* for ctrl blank flag */
 static int last_thermal_value;
 static int g_temp_thermal_value;
+#if IS_ENABLED(CONFIG_MTK_DEVAPC)
 /* For DEVAPC callback */
 static struct work_struct g_conninfra_devapc_work;
 static struct devapc_vio_callbacks conninfra_devapc_handle = {
 	.id = INFRA_SUBSYS_CONN,
 	.debug_dump = conninfra_devapc_violation_cb,
 };
-
+#endif
+/* For PMIC callback */
+static struct conninfra_pmic_work g_conninfra_pmic_work;
 
 static struct conninfra_dev_cb g_conninfra_dev_cb = {
 	.conninfra_suspend_cb = conninfra_dev_suspend_cb,
 	.conninfra_resume_cb = conninfra_dev_resume_cb,
 	.conninfra_pmic_event_notifier = conninfra_dev_pmic_event_cb,
 };
+
+static int conninfra_thermal_get_temp_cb(void *data, int *temp);
+static const struct thermal_zone_of_device_ops tz_conninfra_thermal_ops = {
+	.get_temp = conninfra_thermal_get_temp_cb,
+};
+
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -267,6 +310,9 @@ static long conninfra_dev_unlocked_ioctl(struct file *filp, unsigned int cmd, un
 	case CONNINFRA_IOCTL_SET_COREDUMP_MODE:
 		connsys_coredump_set_dump_mode(arg);
 		break;
+	case CONNINFRA_IOCTL_GET_ADIE_CHIP_ID:
+		retval = consys_hw_detect_adie_chipid();
+		break;
 	}
 
 	return retval;
@@ -325,16 +371,40 @@ static int conninfra_dev_get_blank_state(void)
 	return atomic_read(&g_es_lr_flag_for_blank);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+int conninfra_dev_fb_notifier_callback(struct notifier_block *self, unsigned long event, void *v)
+{
+	int *data = (int *)v;
+
+	if (event != MTK_DISP_EVENT_BLANK) {
+		return 0;
+	}
+
+	pr_info("%s+\n", __func__);
+
+	if (*data == MTK_DISP_BLANK_UNBLANK) {
+		atomic_set(&g_es_lr_flag_for_blank, 1);
+		pr_info("@@@@@@@@@@ Conninfra enter UNBLANK @@@@@@@@@@@@@@\n");
+		schedule_work(&gPwrOnOffWork);
+	} else if (*data == MTK_DISP_BLANK_POWERDOWN) {
+		atomic_set(&g_es_lr_flag_for_blank, 0);
+		pr_info("@@@@@@@@@@ Conninfra enter early POWERDOWN @@@@@@@@@@@@@@\n");
+		schedule_work(&gPwrOnOffWork);
+	}
+
+	pr_info("%s-\n", __func__);
+
+	return 0;
+}
+#else
 int conninfra_dev_fb_notifier_callback(struct notifier_block *self,
 				unsigned long event, void *data)
 {
 	struct fb_event *evdata = data;
 	int blank;
 
-	pr_debug("conninfra_dev_fb_notifier_callback event=[%u]\n", event);
-
 	/* If we aren't interested in this event, skip it immediately ... */
-	if (event != FB_EARLY_EVENT_BLANK)
+	if (event != FB_EVENT_BLANK)
 		return 0;
 
 	blank = *(int *)evdata->data;
@@ -355,11 +425,10 @@ int conninfra_dev_fb_notifier_callback(struct notifier_block *self,
 	}
 	return 0;
 }
+#endif
 
 static void conninfra_dev_pwr_on_off_handler(struct work_struct *work)
 {
-	pr_debug("conninfra_dev_pwr_on_off_handler start to run\n");
-
 	/* Update blank on status after wmt power on */
 	if (conninfra_dev_get_blank_state() == 1) {
 		conninfra_core_screen_on();
@@ -385,6 +454,56 @@ static int conninfra_thermal_query_cb(void)
 		conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_CONNINFRA, "Query thermal wakeup fail");
 
 	return last_thermal_value;
+}
+
+/* for Linux thermal framework */
+static int conninfra_thermal_get_temp_cb(void *data, int *temp)
+{
+	int ret;
+
+	if (!temp)
+		return 0;
+
+	/* if rst is ongoing, return THERMAL_TEMP_INVALID */
+	if (conninfra_core_is_rst_locking()) {
+		pr_info("[%s] rst is locking, return invalid value ", __func__);
+		*temp = THERMAL_TEMP_INVALID;
+		return 0;
+	}
+
+	ret = conninfra_core_thermal_query(&g_temp_thermal_value);
+	if (ret == 0)
+		*temp = g_temp_thermal_value * 1000;
+	else if (ret == CONNINFRA_ERR_WAKEUP_FAIL) {
+		conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_CONNINFRA, "Query thermal wakeup fail");
+		*temp = THERMAL_TEMP_INVALID;
+	} else
+		*temp = THERMAL_TEMP_INVALID;
+
+	return 0;
+}
+
+static void conninfra_register_thermal_callback(void)
+{
+	struct thermal_zone_device *tz;
+	struct platform_device *pdev = get_consys_device();
+	int ret;
+
+	if (!pdev) {
+		pr_info("get_consys_device return NULL\n");
+		return;
+	}
+
+	/* register thermal zone */
+	tz = devm_thermal_zone_of_sensor_register(
+		&pdev->dev, 0, NULL, &tz_conninfra_thermal_ops);
+
+	if (IS_ERR(tz)) {
+		ret = PTR_ERR(tz);
+		pr_info("Failed to register thermal zone device %d\n", ret);
+		return;
+	}
+	pr_info("Register thermal zone device.\n");
 }
 
 static void conninfra_clock_fail_dump_cb(void)
@@ -414,6 +533,17 @@ static int conninfra_conn_is_bus_hang(void)
 	return conninfra_core_is_bus_hang();
 }
 
+/* For sspm debug dump
+ * To dump connsys bus status when sspm ipi timeout
+ */
+#ifdef SSPM_DEBUG_DUMP
+static int conninfra_conn_bus_dump(void)
+{
+	return conninfra_core_conn_bus_dump();
+}
+#endif
+
+#if IS_ENABLED(CONFIG_MTK_DEVAPC)
 static void conninfra_devapc_violation_cb(void)
 {
 	schedule_work(&g_conninfra_devapc_work);
@@ -429,28 +559,66 @@ static void conninfra_register_devapc_callback(void)
 	INIT_WORK(&g_conninfra_devapc_work, conninfra_devapc_handler);
 	register_devapc_vio_callback(&conninfra_devapc_handle);
 }
-
+#endif
 
 static int conninfra_dev_suspend_cb(void)
 {
+	connsys_dedicated_log_set_ap_state(0);
+	conninfra_core_reset_power_state();
 	return 0;
 }
 
 static int conninfra_dev_resume_cb(void)
 {
-	conninfra_core_dump_power_state();
+	conninfra_core_dump_power_state(NULL, 0);
+	connsys_dedicated_log_set_ap_state(1);
 	return 0;
 }
 
 static int conninfra_dev_pmic_event_cb(unsigned int id, unsigned int event)
 {
-	conninfra_core_pmic_event_cb(id, event);
+	g_conninfra_pmic_work.id = id;
+	g_conninfra_pmic_work.event = event;
+	schedule_work(&g_conninfra_pmic_work.pmic_work);
 
 	return 0;
 }
 
+static void conninfra_dev_pmic_event_handler(struct work_struct *work)
+{
+	unsigned int id, event;
+	struct conninfra_pmic_work *pmic_work =
+		container_of(work, struct conninfra_pmic_work, pmic_work);
+
+	if (pmic_work) {
+		id = pmic_work->id;
+		event = pmic_work->event;
+		conninfra_core_pmic_event_cb(id, event);
+	} else
+		pr_info("[%s] pmic_work is null", __func__);
+
+}
+
+static void conninfra_register_pmic_callback(void)
+{
+	INIT_WORK(&g_conninfra_pmic_work.pmic_work, conninfra_dev_pmic_event_handler);
+}
+
+static void conninfra_register_power_throttling_callback(void)
+{
+	struct conn_pwr_plat_info pwr_info;
+	int ret;
+
+	pwr_info.chip_id = consys_hw_chipid_get();
+	pwr_info.adie_id = consys_hw_detect_adie_chipid();
+	pwr_info.get_temp = conninfra_core_thermal_query;
+	ret = conn_pwr_init(&pwr_info);
+	if (ret < 0)
+		pr_info("conn_pwr_init is failed %d.", ret);
+}
+
 /************************************************************************/
-static int conninfra_dev_do_drv_init(void)
+static int conninfra_dev_do_drv_init()
 {
 	static int init_done = 0;
 	int iret = 0;
@@ -461,16 +629,6 @@ static int conninfra_dev_do_drv_init(void)
 	}
 	init_done = 1;
 
-		/* init power on off handler */
-	INIT_WORK(&gPwrOnOffWork, conninfra_dev_pwr_on_off_handler);
-	conninfra_fb_notifier.notifier_call
-				= conninfra_dev_fb_notifier_callback;
-	iret = fb_register_client(&conninfra_fb_notifier);
-	if (iret)
-		pr_err("register fb_notifier fail");
-	else
-		pr_info("register fb_notifier success");
-
 #ifdef CFG_CONNINFRA_UT_SUPPORT
 	iret = conninfra_test_setup();
 	if (iret)
@@ -480,7 +638,6 @@ static int conninfra_dev_do_drv_init(void)
 	iret = conninfra_conf_init();
 	if (iret)
 		pr_warn("init conf fail\n");
-	pr_info("Skip config init");
 
 	iret = consys_hw_init(&g_conninfra_dev_cb);
 	if (iret) {
@@ -500,7 +657,29 @@ static int conninfra_dev_do_drv_init(void)
 
 	wmt_export_platform_bridge_register(&g_plat_bridge);
 
+	/* init power on off handler */
+	INIT_WORK(&gPwrOnOffWork, conninfra_dev_pwr_on_off_handler);
+	conninfra_fb_notifier.notifier_call
+				= conninfra_dev_fb_notifier_callback;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+#if IS_ENABLED(CONFIG_DRM_MEDIATEK)
+	iret = mtk_disp_notifier_register("conninfra_driver", &conninfra_fb_notifier);
+#endif
+#else
+	iret = fb_register_client(&conninfra_fb_notifier);
+#endif
+	if (iret)
+		pr_info("register fb_notifier fail");
+	else
+		pr_info("register fb_notifier success");
+
+#if IS_ENABLED(CONFIG_MTK_DEVAPC)
 	conninfra_register_devapc_callback();
+#endif
+	conninfra_register_pmic_callback();
+	conninfra_register_thermal_callback();
+	conninfra_register_power_throttling_callback();
 
 	pr_info("ConnInfra Dev: init (%d)\n", iret);
 	g_conninfra_init_status = CONNINFRA_INIT_DONE;
@@ -592,7 +771,15 @@ static void conninfra_dev_deinit(void)
 	int iret = 0;
 
 	g_conninfra_init_status = CONNINFRA_INIT_NOT_START;
+
+	conn_pwr_deinit();
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+#if IS_ENABLED(CONFIG_DRM_MEDIATEK)
+	mtk_disp_notifier_unregister(&conninfra_fb_notifier);
+#endif
+#else
 	fb_unregister_client(&conninfra_fb_notifier);
+#endif
 
 	iret = conninfra_dev_dbg_deinit();
 #ifdef CFG_CONNINFRA_UT_SUPPORT

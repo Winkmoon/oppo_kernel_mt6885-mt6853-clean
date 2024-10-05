@@ -20,6 +20,5 @@
 #define _PLATFORM_DEF_H_
 
 #include <linux/delay.h>
-#include <sync_write.h>
 
 #endif				/* _PLATFORM_DEF_H_ */

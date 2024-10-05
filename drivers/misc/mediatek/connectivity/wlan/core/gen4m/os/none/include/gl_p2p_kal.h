@@ -232,6 +232,12 @@ uint8_t kalP2PGetWscMode(IN struct GLUE_INFO *prGlueInfo);
 #define kalP2PGenP2P_IE(_prGlueInfo, _ucIndex, _pucBuffer, _ucRoleIdx) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
 
+#define kalP2PTxCarrierOn(_prGlueInfo, _prBssInfo) \
+		KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
+
+#define kalP2PEnableNetDev(_prGlueInfo, _prBssInfo) \
+	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
+
 #define kalP2PUpdateP2P_IE(_prGlueInfo, _ucIndex, _pucBuffer, \
 	_u2BufferLength, _ucRoleIdx) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
@@ -259,6 +265,12 @@ void kalP2PGenP2P_IE(IN struct GLUE_INFO *prGlueInfo,
 		IN uint8_t ucIndex,
 		IN uint8_t *pucBuffer,
 		IN uint8_t ucRoleIdx);
+
+void kalP2PTxCarrierOn(IN struct GLUE_INFO *prGlueInfo,
+		IN struct BSS_INFO *prBssInfo);
+
+void kalP2PEnableNetDev(IN struct GLUE_INFO *prGlueInfo,
+		IN struct BSS_INFO *prBssInfo);
 
 void kalP2PUpdateP2P_IE(IN struct GLUE_INFO *prGlueInfo,
 		IN uint8_t ucIndex,
@@ -322,7 +334,7 @@ void kalP2PIndicateSecCheckRsp(IN struct GLUE_INFO *prGlueInfo,
 	_prChannelInfo, _i4SignalStrength) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
 
-#define kalP2PIndicateRxMgmtFrame(_prGlueInfo, _prSwRfb, \
+#define kalP2PIndicateRxMgmtFrame(_prAdapter, _prGlueInfo, _prSwRfb, \
 	_fgIsDevInterface, _ucRoleIdx) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
 
@@ -360,7 +372,8 @@ kalP2PIndicateBssInfo(IN struct GLUE_INFO *prGlueInfo,
 		IN int32_t i4SignalStrength);
 
 void
-kalP2PIndicateRxMgmtFrame(IN struct GLUE_INFO *prGlueInfo,
+kalP2PIndicateRxMgmtFrame(IN struct ADAPTER *prAdapter,
+		IN struct GLUE_INFO *prGlueInfo,
 		IN struct SW_RFB *prSwRfb,
 		IN u_int8_t fgIsDevInterface,
 		IN uint8_t ucRoleIdx);
@@ -398,6 +411,9 @@ kalP2PGOStationUpdate(IN struct GLUE_INFO *prGlueInfo,
 
 #define kalP2PCacFinishedUpdate(_prGlueInfo, _ucRoleIndex) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
+
+#define kalP2PCacStartedUpdate(_prGlueInfo, _ucRoleIndex) \
+	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
 #else
 void
 kalP2PRddDetectUpdate(IN struct GLUE_INFO *prGlueInfo,
@@ -406,6 +422,11 @@ kalP2PRddDetectUpdate(IN struct GLUE_INFO *prGlueInfo,
 void
 kalP2PCacFinishedUpdate(IN struct GLUE_INFO *prGlueInfo,
 		IN uint8_t ucRoleIndex);
+
+void
+kalP2PCacStartedUpdate(IN struct GLUE_INFO *prGlueInfo,
+		IN uint8_t ucRoleIndex);
+
 #endif
 #endif
 
@@ -447,11 +468,18 @@ u_int8_t kalP2PMaxClients(IN struct GLUE_INFO *prGlueInfo,
 #define kalP2pIndicateQueuedMgmtFrame(_prGlueInfo, _prFrame) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
 
-#define kalP2pIndicateAcsResult(_prGlueInfo, _ucRoleIndex, _ucPrimaryCh,\
-	_ucSecondCh, _ucSeg0Ch, _ucSeg1Ch, _eChnlBw) \
+#define kalP2pIndicateAcsResult(_prGlueInfo, _eBand, _ucRoleIndex, \
+	_ucPrimaryCh, _ucSecondCh, _ucSeg0Ch, _ucSeg1Ch, _eChnlBw, eHwMode) \
+	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
+
+#define  kalP2pPreStartRdd( \
+		prGlueInfo, ucRoleIdx, ucPrimaryCh, eBand) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__, _prGlueInfo)
 
 #define kalP2pNotifyStopApComplete(_prAdapter, _ucRoleIndex) \
+	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__)
+
+#define kalP2pIsStoppingAp(_prAdapter, _ucRoleIndex) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__)
 
 #define kalP2pIndicateChnlSwitch(_prAdapter, _prBssInfo) \
@@ -462,16 +490,32 @@ void kalP2pUnlinkBss(IN struct GLUE_INFO *prGlueInfo, IN uint8_t aucBSSID[]);
 void kalP2pIndicateQueuedMgmtFrame(IN struct GLUE_INFO *prGlueInfo,
 		IN struct P2P_QUEUED_ACTION_FRAME *prFrame);
 
+void kalP2pPreStartRdd(
+		IN struct GLUE_INFO *prGlueInfo,
+		IN uint8_t ucRoleIdx,
+		IN uint32_t ucPrimaryCh,
+		IN enum ENUM_BAND eBand);
+
 void kalP2pIndicateAcsResult(IN struct GLUE_INFO *prGlueInfo,
 		IN uint8_t ucRoleIndex,
+		IN enum ENUM_BAND eBand,
 		IN uint8_t ucPrimaryCh,
 		IN uint8_t ucSecondCh,
 		IN uint8_t ucSeg0Ch,
 		IN uint8_t ucSeg1Ch,
-		IN enum ENUM_MAX_BANDWIDTH_SETTING eChnlBw);
+		IN enum ENUM_MAX_BANDWIDTH_SETTING eChnlBw,
+		IN enum P2P_VENDOR_ACS_HW_MODE eHwMode);
+
+void kalP2pIndicateRadarEvent(IN struct GLUE_INFO *prGlueInfo,
+		IN uint8_t ucRoleIndex,
+		IN uint32_t event,
+		IN uint32_t freq);
 
 void kalP2pNotifyStopApComplete(IN struct ADAPTER *prAdapter,
 		IN uint8_t ucRoleIndex);
+
+u_int8_t kalP2pIsStoppingAp(IN struct ADAPTER *prAdapter,
+	IN struct BSS_INFO *prBssInfo);
 
 void kalP2pIndicateChnlSwitch(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prBssInfo);

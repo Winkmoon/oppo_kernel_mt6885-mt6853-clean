@@ -65,7 +65,7 @@ struct msg_op {
 
 
 struct msg_op_q {
-	OSAL_SLEEPABLE_LOCK lock;
+	spinlock_t lock;
 	unsigned int write;
 	unsigned int read;
 	unsigned int size;
@@ -120,7 +120,8 @@ int msg_thread_send_wait_2(struct msg_thread_ctx *ctx, int opid,
 							int timeout, size_t param1, size_t param2);
 int msg_thread_send_wait_3(struct msg_thread_ctx *ctx, int opid, int timeout, size_t param1,
 							size_t param2,size_t param3);
-
+int msg_thread_send_wait_4(struct msg_thread_ctx *ctx, int opid, int timeout, size_t param1,
+							size_t param2, size_t param3, size_t param4);
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A

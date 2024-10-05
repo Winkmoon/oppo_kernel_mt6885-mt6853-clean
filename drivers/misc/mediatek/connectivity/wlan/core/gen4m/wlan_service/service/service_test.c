@@ -110,6 +110,7 @@ static s_int32 mt_serv_init_op(struct test_operation *ops)
 	ops->op_read_bulk_rf_reg = mt_op_read_bulk_rf_reg;
 	ops->op_write_bulk_rf_reg = mt_op_write_bulk_rf_reg;
 	ops->op_read_bulk_eeprom = mt_op_read_bulk_eeprom;
+	ops->op_listmode_cmd = mt_op_listmode_cmd;
 
 	return SERV_STATUS_SUCCESS;
 }
@@ -1724,10 +1725,10 @@ s_int32 mt_serv_get_band_mode(
 		 */
 		if (IS_TEST_DBDC(serv_test->test_winfo))
 			band_type = (ctrl_band_idx == TEST_DBDC_BAND0)
-					? TEST_BAND_TYPE_G : TEST_BAND_TYPE_A;
+				? TEST_BAND_TYPE_2_4G : TEST_BAND_TYPE_5G;
 		else {
-			/* Always report 2.4+5G*/
-			band_type = TEST_BAND_TYPE_ALL;
+			/* Always report 2.4+5G */
+			band_type = TEST_BAND_TYPE_2_4G_5G;
 
 			/*
 			 * If IS_TEST_DBDC=0,
@@ -1736,24 +1737,28 @@ s_int32 mt_serv_get_band_mode(
 			if (ctrl_band_idx == TEST_DBDC_BAND1)
 				band_type = TEST_BAND_TYPE_UNUSE;
 		}
-
-		SERV_LOG(SERV_DBG_CAT_TEST, SERV_DBG_LVL_ERROR,
-			("%s: band_type=%u\n", __func__, band_type));
 	} else {
 		ret = ops->op_set_band_mode(
 			serv_test->test_winfo,
 			&serv_test->test_bstat);
 
 		if (ctrl_band_idx == TEST_DBDC_BAND0)
-			band_type = TEST_BAND_TYPE_ALL;
+			band_type = TEST_BAND_TYPE_2_4G_5G;
 		else {
 			if (serv_test->test_bstat.band_mode ==
 				TEST_BAND_MODE_DUAL)
-				band_type = TEST_BAND_TYPE_ALL;
+				band_type = TEST_BAND_TYPE_2_4G_5G;
 			else
 				band_type = TEST_BAND_TYPE_UNUSE;
 		}
 	}
+
+	if ((band_type != TEST_BAND_TYPE_UNUSE) &&
+		serv_test->test_winfo->chip_cap.support_6g)
+		band_type |= TEST_BAND_TYPE_6G;
+
+	SERV_LOG(SERV_DBG_CAT_TEST, SERV_DBG_LVL_ERROR,
+		("%s: band_type=%u\n", __func__, band_type));
 
 	BSTATE_SET_PARAM(serv_test, band_type, band_type);
 
@@ -2477,3 +2482,19 @@ s_int32 mt_serv_main(struct service_test *serv_test, u_int32 test_item)
 
 	return ret;
 }
+
+s_int32 mt_serv_listmode_cmd(struct service_test *serv_test,
+	u_int8 *para, u_int16 para_len, u_int32 *rsp_len, void *rsp_data)
+{
+	s_int32 ret = SERV_STATUS_SUCCESS;
+
+	ret = serv_test->test_op->op_listmode_cmd(
+		serv_test->test_winfo, para, para_len, rsp_len, rsp_data);
+
+	if (ret)
+		SERV_LOG(SERV_DBG_CAT_TEST, SERV_DBG_LVL_ERROR,
+			("%s: err=0x%08x\n", __func__, ret));
+
+	return ret;
+}
+

@@ -264,6 +264,7 @@ static _osal_inline_ INT32 stp_dbg_soc_paged_dump(INT32 dump_sink)
 				break;
 			}
 			STP_DBG_PR_DBG("waiting chip put done, chip_state: %d\n", chip_state);
+/* WMT_DBG_SUPPORT is 1 if not user load */
 #if WMT_DBG_SUPPORT
 			if (chip_state == 0 && __ratelimit(&_rs))
 				stp_dbg_poll_cpupcr(5, 1, 1);
@@ -404,7 +405,6 @@ paged_dump_end:
 				stp_dbg_nl_send_data(FAKECOREDUMPEND, osal_sizeof(FAKECOREDUMPEND));
 			stp_dbg_set_coredump_timer_state(CORE_DUMP_TIMEOUT);
 			stp_dbg_poll_cpupcr(5, 5, 0);
-			stp_dbg_poll_dmaregs(5, 1);
 			ret = -1;
 			break;
 		}
@@ -513,8 +513,9 @@ PUINT8 stp_dbg_soc_id_to_task(UINT32 id)
 		patch_name = p_patch_info->patchName;
 
 	if (patch_name == NULL) {
-		STP_DBG_PR_ERR("patch_name is null\n");
-		return NULL;
+		STP_DBG_PR_INFO("patch_name is null\n");
+		/* For projects without patch download */
+		return soc_task_str[id];
 	}
 
 	if (osal_strncmp(patch_name, ROM_V2_PATCH, strlen(ROM_V2_PATCH)) == 0) {
@@ -534,44 +535,12 @@ PUINT8 stp_dbg_soc_id_to_task(UINT32 id)
 	return soc_task_str[temp_id];
 }
 
-UINT32 stp_dbg_soc_read_debug_crs(ENUM_CONNSYS_DEBUG_CR cr)
+INT32 stp_dbg_soc_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 {
-#define CONSYS_REG_READ(addr) (*((volatile UINT32 *)(addr)))
-#ifdef CONFIG_OF		/*use DT */
-	P_CONSYS_EMI_ADDR_INFO emi_phy_addr;
-	UINT32 chip_id = 0;
+	if (times > WMT_CORE_DMP_CPUPCR_NUM)
+		times = WMT_CORE_DMP_CPUPCR_NUM;
 
-	chip_id = wmt_plat_get_soc_chipid();
-	emi_phy_addr = mtk_wcn_consys_soc_get_emi_phy_add();
-
-	if (cr == CONNSYS_EMI_REMAP) {
-		if (emi_phy_addr != NULL && emi_phy_addr->emi_remap_offset)
-			return CONSYS_REG_READ(conn_reg.topckgen_base +
-					emi_phy_addr->emi_remap_offset);
-		else
-			STP_DBG_PR_INFO("EMI remap has no value\n");
-	}
-
-	if (chip_id == 0x6765 || chip_id == 0x3967 || chip_id == 0x6761
-			|| chip_id == 0x6779 || chip_id == 0x6768 || chip_id == 0x6785
-			|| chip_id == 0x6873 || chip_id == 0x8168 || chip_id == 0x6853
-			|| chip_id == 0x6833)
-		return 0;
-
-	if (conn_reg.mcu_base) {
-		switch (cr) {
-		case CONNSYS_CPU_CLK:
-			return CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_CPU_CLK_STATUS_OFFSET);
-		case CONNSYS_BUS_CLK:
-			return CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_BUS_CLK_STATUS_OFFSET);
-		case CONNSYS_DEBUG_CR1:
-			return CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_DBG_CR1_OFFSET);
-		case CONNSYS_DEBUG_CR2:
-			return CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_DBG_CR2_OFFSET);
-		default:
-			return 0;
-		}
-	}
-#endif
-	return -1;
+	if (wmt_lib_dump_cpupcr(times, sleep) == MTK_WCN_BOOL_FALSE)
+		pr_info("dump_cpupcr fail");
+	return 0;
 }

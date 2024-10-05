@@ -152,9 +152,9 @@ struct MSG_P2P_CONNECTION_REQUEST {
 	uint8_t aucSrcMacAddr[MAC_ADDR_LEN];
 	enum ENUM_CHNL_EXT eChnlSco;
 	struct RF_CHANNEL_INFO rChannelInfo;
+	enum ENUM_PARAM_AUTH_MODE eAuthMode;
 	uint32_t u4IELen;
 	uint8_t aucIEBuf[1];
-	/* TODO: Auth Type, OPEN, SHARED, FT, EAP... */
 };
 
 struct MSG_P2P_CONNECTION_ABORT {
@@ -196,27 +196,36 @@ struct MSG_P2P_RADAR_DETECT {
 };
 
 struct P2P_RADAR_INFO {
-	uint8_t ucRadarReportMode;
-	/*0: Only report radar detected;   1:  Add parameter reports*/
-	uint8_t ucRddIdx;
-	uint8_t ucLongDetected;
-	uint8_t ucPeriodicDetected;
-	uint8_t ucLPBNum;
-	uint8_t ucPPBNum;
-	uint8_t ucLPBPeriodValid;
-	uint8_t ucLPBWidthValid;
-	uint8_t ucPRICountM1;
-	uint8_t ucPRICountM1TH;
-	uint8_t ucPRICountM2;
-	uint8_t ucPRICountM2TH;
-	uint32_t u4PRI1stUs;
-	struct LONG_PULSE_BUFFER arLpbContent[32];
-	struct PERIODIC_PULSE_BUFFER arPpbContent[32];
+	uint8_t u1RddIdx;
+	uint8_t u1LongDetected;
+	uint8_t u1ConstantPRFDetected;
+	uint8_t u1StaggeredPRFDetected;
+	uint8_t u1RadarTypeIdx;
+	uint8_t u1PeriodicPulseNum;
+	uint8_t u1LongPulseNum;
+	uint8_t u1HwPulseNum;
+	uint8_t u1OutLPN;	 /* Long Pulse Number */
+	uint8_t u1OutSPN;	 /* Short Pulse Number */
+	uint8_t u1OutCRPN;
+	uint8_t u1OutCRPW;	 /* Constant PRF Radar: Pulse Number */
+	uint8_t u1OutCRBN;	 /* Constant PRF Radar: Burst Number */
+	uint8_t u1OutSTGPN;  /* Staggered PRF radar: Staggered pulse number */
+	uint8_t u1OutSTGPW;  /* Staggered PRF radar: maximum pulse width */
+	uint8_t u1Reserve;
+	uint32_t u4OutPRI_CONST;
+	uint32_t u4OutPRI_STG1;
+	uint32_t u4OutPRI_STG2;
+	uint32_t u4OutPRI_STG3;
+	uint32_t u4OutPRIStgDmin;
+	/* Staggered PRF radar: min PRI Difference between 1st and 2nd  */
+	struct LONG_PULSE_BUFFER arLongPulse[32];
+	struct PERIODIC_PULSE_BUFFER arPeriodicPulse[32];
+	struct WH_RDD_PULSE_CONTENT arContent[32];
 };
 
 struct MSG_P2P_SET_NEW_CHANNEL {
 	struct MSG_HDR rMsgHdr;
-	enum ENUM_CHANNEL_WIDTH eChannelWidth;
+	struct RF_CHANNEL_INFO rRfChannelInfo;
 	uint8_t ucRoleIdx;
 	uint8_t ucBssIndex;
 };
@@ -315,6 +324,8 @@ struct P2P_CONNECTION_REQ_INFO {
 	/* For ASSOC Req. */
 	uint32_t u4BufLength;
 	uint8_t aucIEBuf[MAX_IE_LENGTH];
+
+	struct MSG_P2P_START_AP rMsgStartAp;
 };
 
 #define P2P_ROLE_INDEX_2_ROLE_FSM_INFO(_prAdapter, _RoleIndex) \
@@ -324,6 +335,8 @@ struct P2P_ROLE_FSM_INFO {
 	uint8_t ucRoleIndex;
 
 	uint8_t ucBssIndex;
+
+	uint8_t fgIsChannelSelectByAcs;
 
 	/* State related. */
 	enum ENUM_P2P_ROLE_STATE eCurrentState;
@@ -375,6 +388,9 @@ void p2pRoleFsmUninit(IN struct ADAPTER *prAdapter, IN uint8_t ucRoleIdx);
 
 void p2pRoleFsmRunEventAbort(IN struct ADAPTER *prAdapter,
 		IN struct P2P_ROLE_FSM_INFO *prP2pRoleFsmInfo);
+
+void p2pRoleFsmRunEventPreStartAP(IN struct ADAPTER *prAdapter,
+		IN struct MSG_HDR *prMsgHdr);
 
 void p2pRoleFsmRunEventStartAP(IN struct ADAPTER *prAdapter,
 		IN struct MSG_HDR *prMsgHdr);
@@ -489,6 +505,13 @@ void p2pRoleFsmNotifyEapolTxStatus(IN struct ADAPTER *prAdapter,
 		IN enum ENUM_EAPOL_KEY_TYPE_T rEapolKeyType,
 		IN enum ENUM_TX_RESULT_CODE rTxDoneStatus);
 
+void p2pRoleFsmNotifyDhcpDone(IN struct ADAPTER *prAdapter,
+		IN uint8_t ucBssIndex);
+
+void p2pRoleFsmStateTransition(IN struct ADAPTER *prAdapter,
+		IN struct P2P_ROLE_FSM_INFO *prP2pRoleFsmInfo,
+		IN enum ENUM_P2P_ROLE_STATE eNextState);
+
 void p2pRoleFsmRunEventMgmtTx(IN struct ADAPTER *prAdapter,
 		IN struct MSG_HDR *prMsgHdr);
 
@@ -497,5 +520,8 @@ void p2pRoleFsmRunEventTxCancelWait(IN struct ADAPTER *prAdapter,
 
 void p2pRoleFsmRunEventAcs(IN struct ADAPTER *prAdapter,
 		IN struct MSG_HDR *prMsgHdr);
+
+void p2pRoleFsmRunEventScanAbort(IN struct ADAPTER *prAdapter,
+		IN uint8_t ucBssIdx);
 
 #endif

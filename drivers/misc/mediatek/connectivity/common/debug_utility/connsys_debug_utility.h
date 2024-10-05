@@ -85,5 +85,6 @@ ssize_t connsys_log_read(int conn_type, char *buf, size_t count);
 int connsys_log_alarm_enable(unsigned int sec);
 int connsys_log_alarm_disable(void);
 int connsys_log_blank_state_changed(int blank_state);
+int connsys_dedicated_log_set_ap_state(int state);
 
 #endif /*_CONNSYS_DEBUG_UTILITY_H_*/

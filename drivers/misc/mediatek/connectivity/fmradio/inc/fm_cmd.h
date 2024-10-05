@@ -44,11 +44,14 @@ enum IMG_TYPE {
 #define FM_RD_UNTIL_BASIC_OP_SIZE   (5)
 #define FM_MODIFY_BASIC_OP_SIZE     (5)
 #define FM_MSLEEP_BASIC_OP_SIZE     (4)
+#define FM_COPY_BY_MASK_BASIC_OP_SIZE (4)
 
 signed int fm_bop_write(unsigned char addr, unsigned short value, unsigned char *buf, signed int size);
 signed int fm_bop_udelay(unsigned int value, unsigned char *buf, signed int size);
 signed int fm_bop_rd_until(unsigned char addr, unsigned short mask, unsigned short value, unsigned char *buf,
 						signed int size);
+signed int fm_bop_copy_by_mask(unsigned char src, unsigned char dst, unsigned short mask_and,
+						unsigned char *buf, signed int size);
 signed int fm_bop_modify(unsigned char addr, unsigned short mask_and, unsigned short mask_or, unsigned char *buf,
 						signed int size);
 signed int fm_bop_top_write(unsigned short addr, unsigned int value, unsigned char *buf, signed int size);

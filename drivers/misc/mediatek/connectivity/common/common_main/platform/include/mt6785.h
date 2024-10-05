@@ -258,6 +258,20 @@ extern struct bt_wifi_v33_status gBtWifiV33;
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
+extern INT32 dump_conn_debug_dump_mt6785(const char *trg_str);
+extern INT32 dump_conn_mcu_debug_flag_mt6785(const char *trg_str);
+extern INT32 dump_conn_mcu_apb0_bus_mt6785(const char *trg_str);
+extern INT32 dump_conn_mcu_apb1_bus_mt6785(const char *trg_str);
+extern INT32 dump_conn_bus_timeout_mt6785(const char *trg_str);
+extern INT32 dump_conn_mcu_pc_log_mt6785(const char *trg_str);
+extern INT32 dump_conn_cfg_on_debug_signal_mt6785(const char *trg_str);
+extern INT32 dump_conn_cfg_on_register_mt6785(const char *trg_str);
+extern INT32 dump_conn_cmdbt_debug_signal_mt6785(const char *trg_str);
+extern INT32 dump_conn_emi_detect_mt6785(const char *trg_str);
+extern INT32 dump_conn_slp_protect_debug_mt6785(const char *trg_str);
+extern INT32 dump_conn_spm_r13_mt6785(const char *trg_str);
+extern INT32 dump_conn_bus_timeout_debug_mt6785(const char *trg_str);
+extern INT32 dump_conn_ILM_corrupt_issue_debug_mt6785(const char *trg_str);
 
 /*******************************************************************************
 *                              F U N C T I O N S

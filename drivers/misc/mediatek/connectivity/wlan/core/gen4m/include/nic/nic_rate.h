@@ -81,14 +81,20 @@ extern char *HW_TX_RATE_BW[];
  *                              C O N S T A N T S
  *******************************************************************************
  */
-#define BW_20		0
-#define BW_40		1
-#define BW_80		2
-#define BW_160		3
-#define BW_10		4
-#define BW_5		6
-#define BW_8080		7
-#define BW_ALL		0xFF
+enum ENUM_BAND_WIDTH {
+	BW_20 = 0,
+	BW_40,
+	BW_80,
+	BW_160,
+	BW_10,
+	BW_5,
+	BW_8080,
+	BW_320,
+	BW_25,
+	BW_20_242TONE,
+	BW_NUM,
+	BW_ALL	= 0xFF
+};
 
 #define TX_RATE_MODE_CCK	0
 #define TX_RATE_MODE_OFDM	1
@@ -100,9 +106,27 @@ extern char *HW_TX_RATE_BW[];
 #define TX_RATE_MODE_HE_ER      9
 #define TX_RATE_MODE_HE_TRIG    10
 #define TX_RATE_MODE_HE_MU      11
+#define TX_RATE_MODE_EHT        12
+#define TX_RATE_MODE_EHT_ER     13
+#define TX_RATE_MODE_EHT_TRIG   14
+#define TX_RATE_MODE_EHT_MU     15
 
 #define RATE_VER_1	0	/* AC */
 #define RATE_VER_2	1	/* HE */
+
+/* Define max MCS index by 802.11 specification for reporting max rate.
+ *
+ * The rate tables are used for finding both current rate and max rate,
+ * In some cases, the current rate can exceed the specification,
+ * for example, 802.11ac with MCS11.
+ * For current rate, this table support the actual rate in use.
+ * For max rate, limit the return values based on standard defined max index.
+ */
+#define MCS_IDX_MAX_RATE_CCK  3
+#define MCS_IDX_MAX_RATE_OFDM  7
+#define MCS_IDX_MAX_RATE_HT  7
+#define MCS_IDX_MAX_RATE_VHT 9
+#define MCS_IDX_MAX_RATE_HE 11
 
 /*******************************************************************************
  *                         D A T A   T Y P E S
@@ -126,6 +150,9 @@ enum ENUM_TX_MODE_STR_IDX {
 	ENUM_TX_MODE_HE_ER,
 	ENUM_TX_MODE_HE_TRIG,
 	ENUM_TX_MODE_HE_MU,
+#endif
+#if (CFG_SUPPORT_802_11BE == 1)
+	ENUM_TX_MODE_EHT = TX_RATE_MODE_EHT,
 #endif
 	ENUM_TX_MODE_NUM
 };

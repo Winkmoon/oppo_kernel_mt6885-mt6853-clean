@@ -144,11 +144,18 @@ static ssize_t wmt_dev_proc_for_dump_info_write(struct file *filp, const char __
 
 INT32 wmt_dev_proc_for_dump_info_setup(VOID)
 {
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 	static const struct file_operations wmt_dump_info_fops = {
 		.owner = THIS_MODULE,
 		.read = wmt_dev_proc_for_dump_info_read,
 		.write = wmt_dev_proc_for_dump_info_write,
 	};
+#else
+	static const struct proc_ops wmt_dump_info_fops = {
+		.proc_read = wmt_dev_proc_for_dump_info_read,
+		.proc_write = wmt_dev_proc_for_dump_info_write,
+	};
+#endif
 
 	osal_sleepable_lock_init(&g_dump_info_read_lock);
 
@@ -239,11 +246,18 @@ static ssize_t wmt_dev_proc_for_aee_write(struct file *filp, const char __user *
 
 INT32 wmt_dev_proc_for_aee_setup(VOID)
 {
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 	static const struct file_operations wmt_aee_fops = {
 		.owner = THIS_MODULE,
 		.read = wmt_dev_proc_for_aee_read,
 		.write = wmt_dev_proc_for_aee_write,
 	};
+#else
+	static const struct proc_ops wmt_aee_fops = {
+		.proc_read = wmt_dev_proc_for_aee_read,
+		.proc_write = wmt_dev_proc_for_aee_write,
+	};
+#endif
 
 	osal_sleepable_lock_init(&g_aee_read_lock);
 	gWmtAeeEntry = proc_create(WMT_AEE_PROCNAME, 0664, NULL, &wmt_aee_fops);

@@ -24,8 +24,12 @@
 #include <mt_emi_api.h>
 #endif
 #include <linux/of_reserved_mem.h>
-
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#include <soc/mediatek/emi.h>
+#else
 #include <memory/mediatek/emi.h>
+#endif
 #include "mt6885_emi.h"
 #include "mt6885.h"
 #include "mt6885_consys_reg.h"
@@ -49,6 +53,7 @@
 
 #define	DOMAIN_AP	0
 #define	DOMAIN_CONN	2
+#define	DOMAIN_SCP	3
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -69,6 +74,8 @@
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
+static int consys_emi_mpu_set_region_protection_mt6885(void);
+
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -77,10 +84,10 @@
 extern unsigned long long gConEmiSize;
 extern phys_addr_t gConEmiPhyBase;
 
-struct consys_platform_emi_ops g_consys_platform_emi_ops = {
-	.consys_ic_emi_mpu_set_region_protection = consys_emi_mpu_set_region_protection,
-	.consys_ic_emi_set_remapping_reg = consys_emi_set_remapping_reg,
-	.consys_ic_emi_get_md_shared_emi = consys_emi_get_md_shared_emi,
+struct consys_platform_emi_ops g_consys_platform_emi_ops_mt6885 = {
+	.consys_ic_emi_mpu_set_region_protection = consys_emi_mpu_set_region_protection_mt6885,
+	.consys_ic_emi_set_remapping_reg = consys_emi_set_remapping_reg_mt6885,
+	.consys_ic_emi_get_md_shared_emi = consys_emi_get_md_shared_emi_mt6885,
 };
 
 /*******************************************************************************
@@ -93,13 +100,9 @@ struct consys_platform_emi_ops g_consys_platform_emi_ops = {
 ********************************************************************************
 */
 
-struct consys_platform_emi_ops* get_consys_platform_emi_ops(void)
+static int consys_emi_mpu_set_region_protection_mt6885(void)
 {
-	return &g_consys_platform_emi_ops;
-}
-
-int consys_emi_mpu_set_region_protection(void)
-{
+#if IS_ENABLED(CONFIG_MEDIATEK_EMI) || IS_ENABLED(CONFIG_MTK_EMI)
 	struct emimpu_region_t region;
 	unsigned long long start = gConEmiPhyBase;
 	unsigned long long end = gConEmiPhyBase + gConEmiSize - 1;
@@ -108,14 +111,19 @@ int consys_emi_mpu_set_region_protection(void)
 	mtk_emimpu_set_addr(&region, start, end);
 	mtk_emimpu_set_apc(&region, DOMAIN_AP, MTK_EMIMPU_NO_PROTECTION);
 	mtk_emimpu_set_apc(&region, DOMAIN_CONN, MTK_EMIMPU_NO_PROTECTION);
+	/* for scp */
+	mtk_emimpu_set_apc(&region, DOMAIN_SCP, MTK_EMIMPU_NO_PROTECTION);
 	mtk_emimpu_set_protection(&region);
 	mtk_emimpu_free_region(&region);
 
 	pr_info("setting MPU for EMI share memory\n");
+#else
+	pr_info("[%s] not enable\n", __func__);
+#endif
 	return 0;
 }
 
-void consys_emi_get_md_shared_emi(phys_addr_t* base, unsigned int* size)
+void consys_emi_get_md_shared_emi_mt6885(phys_addr_t* base, unsigned int* size)
 {
 	phys_addr_t mdPhy = 0;
 	int ret = 0;

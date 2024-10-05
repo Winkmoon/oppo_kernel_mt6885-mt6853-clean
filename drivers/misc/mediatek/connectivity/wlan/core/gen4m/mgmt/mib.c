@@ -117,6 +117,22 @@ const struct NON_HT_ATTRIBUTE rNonHTApModeAttributes[AP_MODE_NUM] = {
 	,			/* For AP_MODE_11A(4) */
 };
 
+#if CFG_SUPPORT_NAN
+struct NON_HT_ADHOC_MODE_ATTRIBUTE rNonHTNanModeAttr[NAN_MODE_NUM] = {
+	/* For NAN_MODE_11B(0) */
+	{ PHY_TYPE_HR_DSSS_INDEX, BASIC_RATE_SET_HR_DSSS },
+
+	/* For NAN_MODE_MIXED_11BG(1) */
+	{ PHY_TYPE_ERP_INDEX, BASIC_RATE_SET_HR_DSSS_ERP },
+
+	/* For NAN_MODE_11G(2) */
+	{ PHY_TYPE_ERP_INDEX, BASIC_RATE_SET_ERP },
+
+	/* For NAN_MODE_11A(3) */
+	{ PHY_TYPE_OFDM_INDEX, BASIC_RATE_SET_OFDM },
+};
+#endif /* CFG_SUPPORT_NAN */
+
 /*******************************************************************************
  *                           P R I V A T E   D A T A
  *******************************************************************************

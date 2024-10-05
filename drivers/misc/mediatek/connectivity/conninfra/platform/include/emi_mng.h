@@ -20,7 +20,11 @@
 #define _PLATFORM_EMI_MNG_H_
 
 #include <linux/types.h>
+#include <linux/platform_device.h>
+
 #include "osal.h"
+#include "consys_hw.h"
+
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
@@ -54,10 +58,13 @@ struct consys_emi_addr_info {
 	/* MCIF EMI get from MD */
 	phys_addr_t md_emi_phy_addr;
 	unsigned int md_emi_size;
+	/* GPS EMI */
+	phys_addr_t gps_emi_phy_addr;
+	unsigned int gps_emi_size;
 };
 
 typedef int(*CONSYS_IC_EMI_MPU_SET_REGION_PROTECTION) (void);
-typedef unsigned int(*CONSYS_IC_EMI_SET_REMAPPING_REG) (phys_addr_t, phys_addr_t);
+typedef unsigned int(*CONSYS_IC_EMI_SET_REMAPPING_REG) (phys_addr_t, phys_addr_t, phys_addr_t);
 typedef void(*CONSYS_IC_EMI_GET_MD_SHARED_EMI) (phys_addr_t* phy_addr, unsigned int *size);
 
 struct consys_platform_emi_ops {
@@ -81,7 +88,7 @@ struct consys_platform_emi_ops {
 ********************************************************************************
 */
 
-int emi_mng_init(void);
+int emi_mng_init(struct platform_device *pdev, const struct conninfra_plat_data* plat_data);
 int emi_mng_deinit(void);
 
 int emi_mng_set_region_protection(void);

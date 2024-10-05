@@ -24,7 +24,7 @@
 */
 #include "precomp.h"
 
-#if CFG_MTK_MCIF_WIFI_SUPPORT
+#if CFG_MTK_MDDP_SUPPORT
 
 #include "gl_os.h"
 #include "mddp_export.h"
@@ -44,12 +44,51 @@
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+enum ENUM_MDDPW_DRV_INFO_STATUS {
+	MDDPW_DRV_INFO_STATUS_ON_START   = 0,
+	MDDPW_DRV_INFO_STATUS_ON_END     = 1,
+	MDDPW_DRV_INFO_STATUS_OFF_START  = 2,
+	MDDPW_DRV_INFO_STATUS_OFF_END    = 3,
+	MDDPW_DRV_INFO_STATUS_ON_END_QOS = 4,
+};
+
+enum ENUM_MDDPW_MD_INFO {
+	MDDPW_MD_INFO_RESET_IND     = 1,
+	MDDPW_MD_INFO_DRV_EXCEPTION = 2,
+	MDDPW_MD_EVENT_NOTIFY_MD_INFO_EMI = 3,
+	MDDPW_MD_EVENT_COMMUNICATION = 4,
+};
+
+/* MDDPW_MD_INFO_DRV_EXCEPTION */
+struct wsvc_md_event_exception_t {
+	uint32_t u4RstReason;
+	uint32_t u4RstFlag;
+	uint32_t u4Line;
+	char pucFuncName[64];
+};
+
+enum EMUM_MD_NOTIFY_REASON_TYPE_T {
+	MD_INFORMATION_DUMP = 1,
+	MD_DRV_OWN_FAIL,
+	MD_INIT_FAIL,
+	MD_STATE_ABNORMAL,
+	MD_TX_DATA_HANG,
+	MD_TX_CMD_FAIL,
+	MD_ENUM_MAX,
+};
+
+/* MDDPW_MD_EVENT_COMMUNICATION */
+struct wsvc_md_event_comm_t {
+	uint32_t u4Reason;
+	uint32_t u4RstFlag;
+	uint32_t u4Line;
+	uint32_t dump_payload[32];
+	uint8_t  dump_size;
+	char pucFuncName[64];
+};
+
 struct mddpw_drv_handle_t gMddpWFunc = {
-	mddpMdNotifyInfo,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
+	.notify_md_info = mddpMdNotifyInfo,
 };
 
 struct mddp_drv_conf_t gMddpDrvConf = {
@@ -57,45 +96,39 @@ struct mddp_drv_conf_t gMddpDrvConf = {
 };
 
 struct mddp_drv_handle_t gMddpFunc = {
-#if CFG_MTK_MDDP_WH_SUPPORT
 	.change_state = mddpChangeState,
-#endif
 };
-
-#define MD_ON_OFF_TIMEOUT 1000
-#ifdef SOC3_0
-#define MD_STATUS_SYNC_CR 0x180600F4
-#else
-#define MD_STATUS_SYNC_CR 0x1800701C
-#endif
-#define MD_SUPPORT_MDDP_STATUS_SYNC_CR_BIT BIT(0)
-#define MD_STATUS_OFF_SYNC_BIT BIT(1)
-#define MD_STATUS_ON_SYNC_BIT BIT(2)
-
-#if (CFG_SUPPORT_CONNAC2X == 0)
-/* Use SER dummy register for mddp support flag */
-#define MDDP_SUPPORT_CR 0x820600d0
-#define MDDP_SUPPORT_CR_BIT BIT(23)
-#endif
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
 ********************************************************************************
 */
-#define MAC_ADDR_LEN            6
+#define MAC_ADDR_LEN		6
+
+#if CFG_TRI_TX_RING
+#define TX_DATA_RING_NUM	4
+#endif
 
 struct mddp_txd_t {
-uint8_t version;
-uint8_t wlan_idx;
-uint8_t sta_idx;
-uint8_t nw_if_name[8];
-uint8_t sta_mode;
-uint8_t bss_id;
-uint8_t wmmset;
-uint8_t aucMacAddr[MAC_ADDR_LEN];
-uint8_t txd_length;
-uint8_t txd[0];
+	uint8_t version;
+	uint8_t wlan_idx;
+	uint8_t sta_idx;
+	uint8_t nw_if_name[8];
+	uint8_t sta_mode;
+	uint8_t bss_id;
+	uint8_t wmmset;
+	uint8_t aucMacAddr[MAC_ADDR_LEN];
+	uint8_t local_mac[MAC_ADDR_LEN];
+	uint8_t txd_length;
+	uint8_t txd[0];
 } __packed;
+
+#if CFG_TRI_TX_RING
+struct mddp_info_t {
+	uint8_t status;
+	uint8_t ring_num;
+};
+#endif
 
 struct tag_bootmode {
 	u32 size;
@@ -122,6 +155,8 @@ enum BOOTMODE {
 
 enum BOOTMODE g_wifi_boot_mode = NORMAL_BOOT;
 u_int8_t g_fgMddpEnabled = TRUE;
+struct MDDP_SETTINGS g_rSettings;
+bool g_fgIsMdReady;
 
 struct mddpw_net_stat_ext_t stats;
 
@@ -130,10 +165,57 @@ struct mddpw_net_stat_ext_t stats;
 ********************************************************************************
 */
 
-static void clear_md_wifi_off_bit(void);
-static void clear_md_wifi_on_bit(void);
 static bool wait_for_md_on_complete(void);
+static bool wait_for_md_off_complete(void);
 static void save_mddp_stats(void);
+
+static void mddpRdFunc(struct MDDP_SETTINGS *prSettings, uint32_t *pu4Val)
+{
+	if (!prSettings->u4SyncAddr)
+		return;
+
+	wf_ioremap_read(prSettings->u4SyncAddr, pu4Val);
+}
+
+static void mddpSetFuncV1(struct MDDP_SETTINGS *prSettings, uint32_t u4Bit)
+{
+	uint32_t u4Value = 0;
+
+	if (!prSettings->u4SyncAddr || u4Bit == 0)
+		return;
+
+	wf_ioremap_read(prSettings->u4SyncAddr, &u4Value);
+	u4Value |= u4Bit;
+	wf_ioremap_write(prSettings->u4SyncAddr, u4Value);
+}
+
+static void mddpClrFuncV1(struct MDDP_SETTINGS *prSettings, uint32_t u4Bit)
+{
+	uint32_t u4Value = 0;
+
+	if (!prSettings->u4SyncAddr || u4Bit == 0)
+		return;
+
+	wf_ioremap_read(prSettings->u4SyncAddr, &u4Value);
+	u4Value &= ~u4Bit;
+	wf_ioremap_write(prSettings->u4SyncAddr, u4Value);
+}
+
+static void mddpSetFuncV2(struct MDDP_SETTINGS *prSettings, uint32_t u4Bit)
+{
+	if (!prSettings->u4SyncSetAddr || u4Bit == 0)
+		return;
+
+	wf_ioremap_write(prSettings->u4SyncSetAddr, u4Bit);
+}
+
+static void mddpClrFuncV2(struct MDDP_SETTINGS *prSettings, uint32_t u4Bit)
+{
+	if (!prSettings->u4SyncClrAddr || u4Bit == 0)
+		return;
+
+	wf_ioremap_write(prSettings->u4SyncClrAddr, u4Bit);
+}
 
 static int32_t mddpRegisterCb(void)
 {
@@ -151,10 +233,6 @@ static int32_t mddpRegisterCb(void)
 
 	ret = mddp_drv_attach(&gMddpDrvConf, &gMddpFunc);
 
-#if (CFG_SUPPORT_CONNAC2X == 0)
-	mtk_ccci_register_md_state_cb(&mddpMdStateChangedCb);
-#endif
-
 	DBGLOG(INIT, INFO, "mddp_drv_attach ret: %d, g_fgMddpEnabled: %d\n",
 			ret, g_fgMddpEnabled);
 
@@ -168,6 +246,7 @@ static void mddpUnregisterCb(void)
 	DBGLOG(INIT, INFO, "mddp_drv_detach\n");
 	mddp_drv_detach(&gMddpDrvConf, &gMddpFunc);
 	gMddpFunc.wifi_handle = NULL;
+	g_fgIsMdReady = false;
 }
 
 int32_t mddpGetMdStats(IN struct net_device *prDev)
@@ -178,6 +257,9 @@ int32_t mddpGetMdStats(IN struct net_device *prDev)
 	struct mddpw_net_stat_ext_t mddpNetStats;
 	int32_t ret;
 	uint8_t i = 0;
+
+	if (!mddpIsSupportMcifWifi() || !mddpIsSupportMddpWh())
+		return 0;
 
 	if (!gMddpWFunc.get_net_stat_ext)
 		return 0;
@@ -224,47 +306,6 @@ int32_t mddpGetMdStats(IN struct net_device *prDev)
 			element->rx_dropped + prev->rx_dropped;
 		prStats->tx_dropped +=
 			element->tx_dropped + prev->tx_dropped;
-	}
-
-	return 0;
-}
-
-int32_t mddpSetTxDescTemplate(IN struct ADAPTER *prAdapter,
-	IN struct STA_RECORD *prStaRec,
-	IN uint8_t fgActivate)
-{
-	struct mddpw_txd_t *prMddpTxd;
-	uint32_t u32BufSize = 0;
-	uint8_t *buff = NULL;
-
-	if (gMddpWFunc.add_txd) {
-		int32_t ret;
-
-		u32BufSize = (sizeof(struct mddpw_txd_t) +
-			NIC_TX_DESC_LONG_FORMAT_LENGTH);
-		buff = kalMemAlloc(u32BufSize, VIR_MEM_TYPE);
-
-		if (buff == NULL) {
-			DBGLOG(NIC, ERROR, "Can't allocate TXD buffer.\n");
-			return -1;
-		}
-		prMddpTxd = (struct mddpw_txd_t *) buff;
-		prMddpTxd->version = 0;
-		prMddpTxd->sta_idx = prStaRec->ucIndex;
-		prMddpTxd->wlan_idx = prStaRec->ucWlanIndex;
-		memcpy(prMddpTxd->aucMacAddr,
-			prStaRec->aucMacAddr, MAC_ADDR_LEN);
-		if (fgActivate)
-			prMddpTxd->txd_length = NIC_TX_DESC_LONG_FORMAT_LENGTH;
-		else
-			prMddpTxd->txd_length = 0;
-		memcpy(prMddpTxd->txd,
-			prStaRec->aprTxDescTemplate[0], prMddpTxd->txd_length);
-		ret = gMddpWFunc.add_txd(prMddpTxd);
-		DBGLOG(NIC, INFO, "ret: %d\n", ret);
-		kalMemFree(buff, VIR_MEM_TYPE, u32BufSize);
-	} else {
-		DBGLOG(INIT, ERROR, "add_txd is NULL.\n");
 	}
 
 	return 0;
@@ -352,6 +393,9 @@ int32_t mddpNotifyDrvTxd(IN struct ADAPTER *prAdapter,
 	struct BSS_INFO *prBssInfo = (struct BSS_INFO *) NULL;
 	struct net_device *prNetdev;
 	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPrivate;
+#if CFG_TRI_TX_RING
+	struct BUS_INFO *bus_info;
+#endif
 	uint32_t u32BufSize = 0;
 	uint8_t *buff = NULL;
 	int32_t ret = 0;
@@ -385,6 +429,9 @@ int32_t mddpNotifyDrvTxd(IN struct ADAPTER *prAdapter,
 			prAdapter->prGlueInfo, prStaRec->ucBssIndex);
 	prNetDevPrivate = (struct NETDEV_PRIVATE_GLUE_INFO *)
 			netdev_priv(prNetdev);
+#if CFG_TRI_TX_RING
+	bus_info = prAdapter->chip_info->bus_info;
+#endif
 
 	if (!prNetDevPrivate->ucMddpSupport) {
 		goto exit;
@@ -412,15 +459,25 @@ int32_t mddpNotifyDrvTxd(IN struct ADAPTER *prAdapter,
 	prDrvInfo->info_len = (sizeof(struct mddpw_txd_t) +
 			NIC_TX_DESC_LONG_FORMAT_LENGTH);
 	prMddpTxd = (struct mddp_txd_t *) &(prDrvInfo->info[0]);
-	prMddpTxd->version = 0;
+	prMddpTxd->version = 1;
 	prMddpTxd->sta_idx = prStaRec->ucIndex;
 	prMddpTxd->wlan_idx = prStaRec->ucWlanIndex;
 	prMddpTxd->sta_mode = prStaRec->eStaType;
 	prMddpTxd->bss_id = prStaRec->ucBssIndex;
-	prMddpTxd->wmmset = prBssInfo->ucWmmQueSet;
+	/* TODO: Create a new msg for DMASHDL BMP */
+#if CFG_TRI_TX_RING
+	if (bus_info->tx_ring0_data_idx != bus_info->tx_ring3_data_idx)
+		prMddpTxd->wmmset = prBssInfo->ucWmmQueSet % 3;
+	else
+		prMddpTxd->wmmset = prBssInfo->ucWmmQueSet % 2;
+#else
+	prMddpTxd->wmmset = prBssInfo->ucWmmQueSet % 2;
+#endif
 	kalMemCopy(prMddpTxd->nw_if_name, prNetdev->name,
 			sizeof(prMddpTxd->nw_if_name));
 	kalMemCopy(prMddpTxd->aucMacAddr, prStaRec->aucMacAddr, MAC_ADDR_LEN);
+	kalMemCopy(prMddpTxd->local_mac,
+		   prBssInfo->aucOwnMacAddr, MAC_ADDR_LEN);
 	if (fgActivate) {
 		prMddpTxd->txd_length = NIC_TX_DESC_LONG_FORMAT_LENGTH;
 		kalMemCopy(prMddpTxd->txd, prStaRec->aprTxDescTemplate[0],
@@ -451,60 +508,53 @@ exit:
 	return ret;
 }
 
-int32_t mddpNotifyDrvMac(IN struct ADAPTER *prAdapter)
+int32_t mddpNotifyWifiStatus(IN enum ENUM_MDDPW_DRV_INFO_STATUS status)
 {
 	struct mddpw_drv_notify_info_t *prNotifyInfo;
 	struct mddpw_drv_info_t *prDrvInfo;
+#if CFG_TRI_TX_RING
+	struct mddp_info_t *prMddpInfo;
+#endif
 	uint32_t u32BufSize = 0;
 	uint8_t *buff = NULL;
-	struct BSS_INFO *prAisBssInfo = (struct BSS_INFO *) NULL;
+	int32_t ret = 0, feature = 0;
+
+	if (gMddpWFunc.get_mddp_feature)
+		feature = gMddpWFunc.get_mddp_feature();
 
 	if (gMddpWFunc.notify_drv_info) {
 		int32_t ret;
-
-		u32BufSize = (sizeof(struct mddpw_drv_notify_info_t) +
-			sizeof(struct mddpw_drv_info_t) + MAC_ADDR_LEN);
+#if CFG_TRI_TX_RING
+		u32BufSize = sizeof(struct mddpw_drv_notify_info_t) +
+			sizeof(struct mddpw_drv_info_t) +
+			sizeof(struct mddp_info_t);
 		buff = kalMemAlloc(u32BufSize, VIR_MEM_TYPE);
 
 		if (buff == NULL) {
-			DBGLOG(NIC, ERROR, "Can't allocate TXD buffer.\n");
+			DBGLOG(NIC, ERROR, "Can't allocate buffer.\n");
 			return -1;
 		}
 		prNotifyInfo = (struct mddpw_drv_notify_info_t *) buff;
 		prNotifyInfo->version = 0;
 		prNotifyInfo->buf_len = sizeof(struct mddpw_drv_info_t) +
-				MAC_ADDR_LEN;
+				sizeof(struct mddp_info_t);
 		prNotifyInfo->info_num = 1;
 		prDrvInfo = (struct mddpw_drv_info_t *) &(prNotifyInfo->buf[0]);
-		prDrvInfo->info_id = MDDPW_DRV_INFO_DEVICE_MAC;
-		prDrvInfo->info_len = MAC_ADDR_LEN;
-    /*SY MCIF TBC 0916*/
-		prAisBssInfo = prAdapter->prAisBssInfo[0];
-		COPY_MAC_ADDR(prDrvInfo->info, prAisBssInfo->aucOwnMacAddr);
+		prDrvInfo->info_id = MDDPW_DRV_INFO_NOTIFY_WIFI_ONOFF;
+		prDrvInfo->info_len = sizeof(struct mddp_info_t);
+		prMddpInfo = (struct mddp_info_t *) &(prDrvInfo->info[0]);
+		prMddpInfo->status = status;
+		prMddpInfo->ring_num = TX_DATA_RING_NUM;
 
 		ret = gMddpWFunc.notify_drv_info(prNotifyInfo);
-		DBGLOG(INIT, INFO, "ret: %d.\n", ret);
+		DBGLOG(INIT, INFO, "power: %d, ret: %d, feature:%d, ring:%d.\n",
+			status, ret, feature, TX_DATA_RING_NUM);
 		kalMemFree(buff, VIR_MEM_TYPE, u32BufSize);
-	} else {
-		DBGLOG(INIT, ERROR, "notify_drv_info is NULL.\n");
-	}
 
-	return 0;
-}
-
-int32_t mddpNotifyWifiStatus(IN enum mddp_drv_onoff_status wifiOnOffStatus)
-{
-	struct mddpw_drv_notify_info_t *prNotifyInfo;
-	struct mddpw_drv_info_t *prDrvInfo;
-	uint32_t u32BufSize = 0;
-	uint8_t *buff = NULL;
-	int32_t ret = 0;
-
-	if (gMddpWFunc.notify_drv_info) {
-		int32_t ret;
-
-		u32BufSize = (sizeof(struct mddpw_drv_notify_info_t) +
-			sizeof(struct mddpw_drv_info_t) + sizeof(bool));
+#else /* CFG_TRI_TX_RING */
+		u32BufSize = sizeof(struct mddpw_drv_notify_info_t) +
+			sizeof(struct mddpw_drv_info_t) +
+			sizeof(bool);
 		buff = kalMemAlloc(u32BufSize, VIR_MEM_TYPE);
 
 		if (buff == NULL) {
@@ -519,12 +569,13 @@ int32_t mddpNotifyWifiStatus(IN enum mddp_drv_onoff_status wifiOnOffStatus)
 		prDrvInfo = (struct mddpw_drv_info_t *) &(prNotifyInfo->buf[0]);
 		prDrvInfo->info_id = MDDPW_DRV_INFO_NOTIFY_WIFI_ONOFF;
 		prDrvInfo->info_len = WIFI_ONOFF_NOTIFICATION_LEN;
-		prDrvInfo->info[0] = wifiOnOffStatus;
+		prDrvInfo->info[0] = status;
 
 		ret = gMddpWFunc.notify_drv_info(prNotifyInfo);
-		DBGLOG(INIT, INFO, "power: %d, ret: %d.\n",
-			wifiOnOffStatus, ret);
+		DBGLOG(INIT, INFO, "power: %d, ret: %d, feature:%d.\n",
+			status, ret, feature);
 		kalMemFree(buff, VIR_MEM_TYPE, u32BufSize);
+#endif /* CFG_TRI_TX_RING */
 	} else {
 		DBGLOG(INIT, ERROR, "notify_drv_info is NULL.\n");
 		ret = -1;
@@ -533,22 +584,169 @@ int32_t mddpNotifyWifiStatus(IN enum mddp_drv_onoff_status wifiOnOffStatus)
 	return ret;
 }
 
+static bool mddpIsCasanFWload(void)
+{
+	struct GLUE_INFO *prGlueInfo = NULL;
+	struct ADAPTER *prAdapter = NULL;
+	bool ret = FALSE;
+
+	if (gPrDev == NULL) {
+		DBGLOG(INIT, ERROR, "gPrDev is NULL.\n");
+		goto exit;
+	}
+
+	prGlueInfo = *((struct GLUE_INFO **)netdev_priv(gPrDev));
+	if (prGlueInfo == NULL) {
+		DBGLOG(INIT, ERROR, "prGlueInfo is NULL.\n");
+		goto exit;
+	}
+
+	prAdapter = prGlueInfo->prAdapter;
+	if (prAdapter == NULL) {
+		DBGLOG(INIT, ERROR, "prAdapter is NULL.\n");
+		goto exit;
+	}
+
+	if (prAdapter->u4CasanLoadType == 1)
+		ret = TRUE;
+
+exit:
+	return ret;
+}
+
+int32_t mddpNotifyDrvOwnTimeoutTime(void)
+{
+	struct mddpw_drv_notify_info_t *prNotifyInfo;
+	struct mddpw_drv_info_t *prDrvInfo;
+	int32_t ret = 0;
+	uint32_t u32BufSize = 0;
+	uint32_t u32DrvOwnTimeoutTime = LP_OWN_BACK_FAILED_LOG_SKIP_MS;
+	uint8_t *buff = NULL;
+
+	DBGLOG(INIT, INFO, "Wi-Fi Notify MD Drv Own Timeout time.\n");
+
+	if (!gMddpWFunc.notify_drv_info) {
+		DBGLOG(NIC, ERROR, "notify_drv_info callback NOT exist.\n");
+		ret = -1;
+		goto exit;
+	}
+
+	if (mddpIsCasanFWload() == TRUE)
+		u32DrvOwnTimeoutTime = LP_OWN_BACK_FAILED_LOG_SKIP_CASAN_MS;
+	else
+		goto exit;
+
+	u32BufSize = (sizeof(struct mddpw_drv_notify_info_t) +
+			sizeof(struct mddpw_drv_info_t) + sizeof(uint32_t));
+
+	buff = kalMemAlloc(u32BufSize, VIR_MEM_TYPE);
+
+	if (buff == NULL) {
+		DBGLOG(NIC, ERROR, "buffer allocation failed.\n");
+		ret = -ENODEV;
+		goto exit;
+	}
+
+	prNotifyInfo = (struct mddpw_drv_notify_info_t *) buff;
+	prNotifyInfo->version = 0;
+	prNotifyInfo->buf_len = sizeof(struct mddpw_drv_info_t) +
+			sizeof(uint32_t);
+	prNotifyInfo->info_num = 1;
+	prDrvInfo = (struct mddpw_drv_info_t *) &(prNotifyInfo->buf[0]);
+	prDrvInfo->info_id = 5; /* WSVC_DRVINFO_DRVOWN_TIME_SET */
+	prDrvInfo->info_len = sizeof(uint32_t);
+
+	kalMemCopy((uint32_t *) &(prDrvInfo->info[0]), &u32DrvOwnTimeoutTime,
+			sizeof(uint32_t));
+
+	ret = gMddpWFunc.notify_drv_info(prNotifyInfo);
+
+exit:
+	if (buff)
+		kalMemFree(buff, VIR_MEM_TYPE, u32BufSize);
+
+	DBGLOG(INIT, INFO, "ret: %d, timeout: %d.\n",
+				   ret, u32DrvOwnTimeoutTime);
+	return ret;
+}
+
+void mddpNotifyDumpDebugInfo(void)
+{
+	struct mddpw_drv_notify_info_t *prNotifyInfo;
+	struct mddpw_drv_info_t *prDrvInfo;
+	uint32_t u32BufSize = 0;
+	uint8_t *buff = NULL;
+
+	if (!g_fgIsMdReady) {
+		DBGLOG(NIC, ERROR, "MD isn't ready, skip dump.\n");
+		return;
+	}
+
+	if (gMddpWFunc.notify_drv_info) {
+		int32_t ret;
+
+		u32BufSize = (sizeof(struct mddpw_drv_notify_info_t) +
+			sizeof(struct mddpw_drv_info_t) + sizeof(bool));
+		buff = kalMemAlloc(u32BufSize, VIR_MEM_TYPE);
+
+		if (buff == NULL) {
+			DBGLOG(NIC, ERROR, "Can't allocate buffer.\n");
+			return;
+		}
+		prNotifyInfo = (struct mddpw_drv_notify_info_t *) buff;
+		prNotifyInfo->version = 0;
+		prNotifyInfo->buf_len = sizeof(struct mddpw_drv_info_t) +
+				sizeof(bool);
+		prNotifyInfo->info_num = 1;
+		prDrvInfo = (struct mddpw_drv_info_t *) &(prNotifyInfo->buf[0]);
+		prDrvInfo->info_id = 4;
+		prDrvInfo->info_len = 1;
+		prDrvInfo->info[0] = 0;
+
+		ret = gMddpWFunc.notify_drv_info(prNotifyInfo);
+		DBGLOG(INIT, INFO, "notify md dump debug info ret=%d\n", ret);
+		kalMemFree(buff, VIR_MEM_TYPE, u32BufSize);
+	} else {
+		DBGLOG(INIT, ERROR, "notify_drv_info is NULL.\n");
+	}
+}
+
 void mddpNotifyWifiOnStart(void)
 {
-	mddpRegisterCb();
-	mddpNotifyWifiStatus(MDDPW_DRV_INFO_WLAN_ON_START);
+	if (!mddpIsSupportMcifWifi())
+		return;
+
+	mtk_ccci_register_md_state_cb(&mddpMdStateChangedCb);
+
+	mddpNotifyWifiStatus(MDDPW_DRV_INFO_STATUS_ON_START);
 }
 
 int32_t mddpNotifyWifiOnEnd(void)
 {
-	int32_t ret;
+	int32_t ret = 0;
 
-	clear_md_wifi_on_bit();
-	ret = mddpNotifyWifiStatus(MDDPW_DRV_INFO_WLAN_ON_END);
+	if (!mddpIsSupportMcifWifi())
+		return ret;
+
+	/* Notify Driver own timeout time before Wi-Fi on end */
+	mddpNotifyDrvOwnTimeoutTime();
+
+	if (g_rSettings.rOps.set)
+		g_rSettings.rOps.set(&g_rSettings, g_rSettings.u4WifiOnBit);
+
+	if (g_rSettings.rOps.clr)
+		g_rSettings.rOps.clr(&g_rSettings, g_rSettings.u4MdOnBit);
+#if (CFG_SUPPORT_CONNAC2X == 0 || CFG_TRI_TX_RING == 1)
+	ret = mddpNotifyWifiStatus(MDDPW_DRV_INFO_STATUS_ON_END);
+#else
+	ret = mddpNotifyWifiStatus(MDDPW_DRV_INFO_STATUS_ON_END_QOS);
+#endif
 	if (ret == 0)
 		ret = wait_for_md_on_complete() ?
 				WLAN_STATUS_SUCCESS :
 				WLAN_STATUS_FAILURE;
+	if (ret == WLAN_STATUS_SUCCESS)
+		g_fgIsMdReady = true;
 	return ret;
 }
 
@@ -556,52 +754,84 @@ void mddpNotifyWifiOffStart(void)
 {
 	int32_t ret;
 
-#if (CFG_SUPPORT_CONNAC2X == 0)
+	if (!mddpIsSupportMcifWifi())
+		return;
+
+	mddpSetMDFwOwn();
+
 	mtk_ccci_register_md_state_cb(NULL);
-#endif
-	clear_md_wifi_off_bit();
-	ret = mddpNotifyWifiStatus(MDDPW_DRV_INFO_WLAN_OFF_START);
+
+	DBGLOG(INIT, INFO, "md off start.\n");
+	if (g_rSettings.rOps.set)
+		g_rSettings.rOps.set(&g_rSettings, g_rSettings.u4MdOffBit);
+
+	ret = mddpNotifyWifiStatus(MDDPW_DRV_INFO_STATUS_OFF_START);
+	if (ret == 0)
+		wait_for_md_off_complete();
 }
 
 void mddpNotifyWifiOffEnd(void)
 {
-	mddpNotifyWifiStatus(MDDPW_DRV_INFO_WLAN_OFF_END);
-	mddpUnregisterCb();
+	if (!mddpIsSupportMcifWifi())
+		return;
+
+	if (g_rSettings.rOps.clr) {
+		g_rSettings.rOps.clr(
+			&g_rSettings,
+			g_rSettings.u4WifiOnBit | g_rSettings.u4MdInitBit);
+	}
+
+	mddpNotifyWifiStatus(MDDPW_DRV_INFO_STATUS_OFF_END);
+}
+
+void mddpNotifyWifiReset(void)
+{
+	if (!mddpIsSupportMcifWifi())
+		return;
+
+	if (g_rSettings.rOps.clr)
+		g_rSettings.rOps.clr(&g_rSettings, g_rSettings.u4WifiOnBit);
 }
 
 int32_t mddpMdNotifyInfo(struct mddpw_md_notify_info_t *prMdInfo)
 {
 	struct GLUE_INFO *prGlueInfo = NULL;
 	struct ADAPTER *prAdapter = NULL;
+	int32_t ret = 0;
 	u_int8_t fgHalted = kalIsHalted();
 
 	DBGLOG(INIT, INFO, "MD notify mddpMdNotifyInfo.\n");
 
 	if (gPrDev == NULL) {
 		DBGLOG(INIT, ERROR, "gPrDev is NULL.\n");
-		return 0;
+		ret = -ENODEV;
+		goto exit;
 	}
 
 	prGlueInfo = *((struct GLUE_INFO **)netdev_priv(gPrDev));
 	if (prGlueInfo == NULL) {
 		DBGLOG(INIT, ERROR, "prGlueInfo is NULL.\n");
-		return 0;
+		ret = -ENODEV;
+		goto exit;
 	}
 	prAdapter = prGlueInfo->prAdapter;
 	if (prAdapter == NULL) {
 		DBGLOG(INIT, ERROR, "prAdapter is NULL.\n");
-		return 0;
+		ret = -ENODEV;
+		goto exit;
 	}
 
 	if (fgHalted || !prGlueInfo->u4ReadyFlag) {
 		DBGLOG(INIT, INFO,
 			"Skip update info. to MD, fgHalted: %d, u4ReadyFlag: %d\n",
 			fgHalted, prGlueInfo->u4ReadyFlag);
-		return 0;
+		ret = -ENODEV;
+		goto exit;
 	}
 
-	if (prMdInfo->info_type == 1) {
+	if (prMdInfo->info_type == MDDPW_MD_INFO_RESET_IND) {
 		uint32_t i;
+		struct BSS_INFO *prSapBssInfo = (struct BSS_INFO *) NULL;
 		struct BSS_INFO *prP2pBssInfo = (struct BSS_INFO *) NULL;
 		int32_t ret;
 
@@ -612,7 +842,6 @@ int32_t mddpMdNotifyInfo(struct mddpw_md_notify_info_t *prMdInfo)
 			DBGLOG(INIT, INFO, "mddpNotifyWifiOnEnd failed.\n");
 			return 0;
 		}
-		mddpNotifyDrvMac(prAdapter);
 
 		/* Notify STA's TXD to MD */
 		for (i = 0; i < KAL_AIS_NUM; i++) {
@@ -642,11 +871,96 @@ int32_t mddpMdNotifyInfo(struct mddpw_md_notify_info_t *prMdInfo)
 						TRUE);
 			}
 		}
+		prSapBssInfo = cnmGetOtherSapBssInfo(prAdapter, prP2pBssInfo);
+		if (prSapBssInfo) {
+			struct LINK *prClientList;
+			struct STA_RECORD *prCurrStaRec;
+
+			prClientList = &prSapBssInfo->rStaRecOfClientList;
+			LINK_FOR_EACH_ENTRY(prCurrStaRec, prClientList,
+					rLinkEntry, struct STA_RECORD) {
+				if (!prCurrStaRec)
+					break;
+				mddpNotifyDrvTxd(prAdapter,
+						prCurrStaRec,
+						TRUE);
+			}
+		}
+	} else if (prMdInfo->info_type == MDDPW_MD_INFO_DRV_EXCEPTION) {
+		struct wsvc_md_event_exception_t *event;
+
+		if (prMdInfo->buf_len != sizeof(
+				struct wsvc_md_event_exception_t)) {
+			DBGLOG(INIT, ERROR,
+				"Invalid args from MD, expect %u but %u\n",
+				sizeof(struct wsvc_md_event_exception_t),
+				prMdInfo->buf_len);
+			ret = -EINVAL;
+			goto exit;
+		}
+		event = (struct wsvc_md_event_exception_t *)
+				&(prMdInfo->buf[1]);
+		DBGLOG(INIT, WARN, "reason: %d, flag: %d, line: %d, func: %s\n",
+				event->u4RstReason,
+				event->u4RstFlag,
+				event->u4Line,
+				event->pucFuncName);
+		glSetRstReason(RST_MDDP_MD_TRIGGER_EXCEPTION);
+		GL_RESET_TRIGGER(prAdapter, event->u4RstFlag
+			| RST_FLAG_DO_CORE_DUMP);
+	} else if (prMdInfo->info_type == MDDPW_MD_EVENT_COMMUNICATION) {
+		struct wsvc_md_event_comm_t *event;
+
+		if (prMdInfo->buf_len != sizeof(
+				struct wsvc_md_event_comm_t)) {
+			DBGLOG(INIT, ERROR,
+				"Invalid args from MD, expect %u but %u\n",
+				sizeof(struct wsvc_md_event_comm_t),
+				prMdInfo->buf_len);
+			ret = -EINVAL;
+			goto exit;
+		}
+		event = (struct wsvc_md_event_comm_t *)
+				&(prMdInfo->buf[1]);
+		DBGLOG(INIT, WARN,
+			"reason:%d, flag:%d, line:%d, func:%s, bssIdx:%d\n",
+				event->u4Reason,
+				event->u4RstFlag,
+				event->u4Line,
+				event->pucFuncName,
+				event->dump_payload[1]);
+		if (event->u4Reason == MD_TX_DATA_HANG) {
+			prAdapter->u4HifChkFlag |= HIF_CHK_TX_HANG;
+			prAdapter->u4HifChkFlag |= HIF_CHK_MD_TX_HANG;
+			prAdapter->ucMddpBssIndex =
+				(uint8_t) event->dump_payload[1];
+		} else {
+			glSetRstReason(RST_MDDP_MD_TRIGGER_EXCEPTION);
+			GL_RESET_TRIGGER(prAdapter, event->u4RstFlag
+				| RST_FLAG_DO_CORE_DUMP);
+		}
+	} else if (prMdInfo->info_type == MDDPW_MD_EVENT_NOTIFY_MD_INFO_EMI) {
+		struct mddpw_get_drv_emi *prEmi =
+			(struct mddpw_get_drv_emi *)&(prMdInfo->buf[1]);
+		uint32_t u4Size = prEmi->emi_size;
+
+		if (u4Size > MD_MAX_EMI_SIZE)
+			u4Size = MD_MAX_EMI_SIZE;
+		DBGLOG(INIT, INFO, "emi_start_addr=0x%08x\n",
+		       prEmi->emi_start_addr);
+		DBGLOG_MEM32(INIT, INFO, prEmi->emi_payload, u4Size);
+		DBGLOG_MEM32(INIT, INFO, prMdInfo, 64);
+	} else {
+		DBGLOG(INIT, ERROR, "unknown MD info type: %d\n",
+			prMdInfo->info_type);
+		ret = -ENODEV;
+		goto exit;
 	}
-	return 0;
+
+exit:
+	return ret;
 }
 
-#if CFG_MTK_MDDP_WH_SUPPORT
 int32_t mddpChangeState(enum mddp_state_e event, void *buf, uint32_t *buf_len)
 {
 	struct GLUE_INFO *prGlueInfo = NULL;
@@ -707,25 +1021,40 @@ int32_t mddpChangeState(enum mddp_state_e event, void *buf, uint32_t *buf_len)
 	return 0;
 
 }
-#endif
 
-static void clear_md_wifi_off_bit(void)
+static bool wait_for_md_off_complete(void)
 {
 	uint32_t u4Value = 0;
+	uint32_t u4StartTime, u4CurTime;
+	bool fgTimeout = false;
+	uint32_t u4MDOffTimeoutTime = MD_ON_OFF_TIMEOUT;
 
-	DBGLOG(INIT, INFO, "md off start.\n");
-	wf_ioremap_read(MD_STATUS_SYNC_CR, &u4Value);
-	u4Value |= MD_STATUS_OFF_SYNC_BIT;
-	wf_ioremap_write(MD_STATUS_SYNC_CR, u4Value);
-}
+	if (mddpIsCasanFWload() == TRUE)
+		u4MDOffTimeoutTime = MD_ON_OFF_TIMEOUT_CASAN;
 
-static void clear_md_wifi_on_bit(void)
-{
-	uint32_t u4Value = 0;
+	u4StartTime = kalGetTimeTick();
 
-	wf_ioremap_read(MD_STATUS_SYNC_CR, &u4Value);
-	u4Value &= ~MD_STATUS_ON_SYNC_BIT;
-	wf_ioremap_write(MD_STATUS_SYNC_CR, u4Value);
+	do {
+		if (g_rSettings.rOps.rd)
+			g_rSettings.rOps.rd(&g_rSettings, &u4Value);
+
+		if ((u4Value & g_rSettings.u4MdOffBit) == 0) {
+			DBGLOG(INIT, INFO, "md off end.\n");
+			break;
+		}
+
+		u4CurTime = kalGetTimeTick();
+		if (CHECK_FOR_TIMEOUT(u4CurTime, u4StartTime,
+				u4MDOffTimeoutTime)) {
+			DBGLOG(INIT, ERROR, "wait for md off timeout\n");
+			fgTimeout = true;
+			break;
+		}
+
+		kalMsleep(CFG_RESPONSE_POLLING_DELAY);
+	} while (TRUE);
+
+	return !fgTimeout;
 }
 
 static bool wait_for_md_on_complete(void)
@@ -734,6 +1063,7 @@ static bool wait_for_md_on_complete(void)
 	uint32_t u4StartTime, u4CurTime;
 	bool fgCompletion = false;
 	struct GLUE_INFO *prGlueInfo = NULL;
+	uint32_t u4MDOnTimeoutTime = MD_ON_OFF_TIMEOUT;
 
 	u4StartTime = kalGetTimeTick();
 	prGlueInfo = *((struct GLUE_INFO **) netdev_priv(gPrDev));
@@ -742,10 +1072,14 @@ static bool wait_for_md_on_complete(void)
 		return false;
 	}
 
-	do {
-		wf_ioremap_read(MD_STATUS_SYNC_CR, &u4Value);
+	if (mddpIsCasanFWload() == TRUE)
+		u4MDOnTimeoutTime = MD_ON_OFF_TIMEOUT_CASAN;
 
-		if ((u4Value & MD_STATUS_ON_SYNC_BIT) > 0) {
+	do {
+		if (g_rSettings.rOps.rd)
+			g_rSettings.rOps.rd(&g_rSettings, &u4Value);
+
+		if ((u4Value & g_rSettings.u4MdOnBit) > 0) {
 			DBGLOG(INIT, INFO, "md on end.\n");
 			fgCompletion = true;
 			break;
@@ -757,7 +1091,7 @@ static bool wait_for_md_on_complete(void)
 
 		u4CurTime = kalGetTimeTick();
 		if (CHECK_FOR_TIMEOUT(u4CurTime, u4StartTime,
-				MD_ON_OFF_TIMEOUT)) {
+				u4MDOnTimeoutTime)) {
 			DBGLOG(INIT, ERROR, "wait for md on timeout\n");
 			fgCompletion = false;
 			break;
@@ -771,9 +1105,34 @@ static bool wait_for_md_on_complete(void)
 
 void setMddpSupportRegister(IN struct ADAPTER *prAdapter)
 {
+	struct mt66xx_chip_info *prChipInfo;
 #if (CFG_SUPPORT_CONNAC2X == 0)
 	uint32_t u4Val = 0;
+#endif
 
+	prChipInfo = prAdapter->chip_info;
+
+	if (prChipInfo->isSupportMddpAOR) {
+		g_rSettings.rOps.rd = mddpRdFunc;
+		g_rSettings.rOps.set = mddpSetFuncV2;
+		g_rSettings.rOps.clr = mddpClrFuncV2;
+		g_rSettings.u4SyncAddr = MD_AOR_RD_CR_ADDR;
+		g_rSettings.u4SyncSetAddr = MD_AOR_SET_CR_ADDR;
+		g_rSettings.u4SyncClrAddr = MD_AOR_CLR_CR_ADDR;
+		g_rSettings.u4MdInitBit = MD_AOR_MD_INIT_BIT;
+		g_rSettings.u4MdOnBit = MD_AOR_MD_RDY_BIT;
+		g_rSettings.u4MdOffBit = MD_AOR_MD_OFF_BIT;
+		g_rSettings.u4WifiOnBit = MD_AOR_WIFI_ON_BIT;
+	} else {
+		g_rSettings.rOps.rd = mddpRdFunc;
+		g_rSettings.rOps.set = mddpSetFuncV1;
+		g_rSettings.rOps.clr = mddpClrFuncV1;
+		g_rSettings.u4SyncAddr = MD_STATUS_SYNC_CR;
+		g_rSettings.u4MdOnBit = MD_STATUS_ON_SYNC_BIT;
+		g_rSettings.u4MdOffBit = MD_STATUS_OFF_SYNC_BIT;
+	}
+
+#if (CFG_SUPPORT_CONNAC2X == 0)
 	HAL_MCR_RD(prAdapter, MDDP_SUPPORT_CR, &u4Val);
 	if (g_fgMddpEnabled)
 		u4Val |= MDDP_SUPPORT_CR_BIT;
@@ -803,6 +1162,13 @@ void mddpInit(void)
 
 	DBGLOG(INIT, INFO, "bootmode: 0x%x\n", tag->bootmode);
 	g_wifi_boot_mode = tag->bootmode;
+
+	mddpRegisterCb();
+}
+
+void mddpUninit(void)
+{
+	mddpUnregisterCb();
 }
 
 static void notifyMdCrash2FW(void)
@@ -819,6 +1185,13 @@ static void notifyMdCrash2FW(void)
 		DBGLOG(INIT, ERROR, "Invalid drv state.\n");
 		return;
 	}
+
+	/*
+	 * Set MD FW Own before Notify FW MD crash
+	 * Reason: MD cannt set FW own itself when MD crash
+	 */
+	mddpSetMDFwOwn();
+
 	kalSetMdCrashEvent(prGlueInfo);
 }
 
@@ -870,4 +1243,26 @@ static void save_mddp_stats(void)
 	}
 }
 
-#endif
+void mddpSetMDFwOwn(void)
+{
+	wf_ioremap_write(MD_LPCTL_ADDR, MDDP_LPCR_MD_SET_FW_OWN);
+	DBGLOG(INIT, INFO, "Set MD Fw Own.\n");
+}
+
+bool mddpIsSupportMcifWifi(void)
+{
+	if (!gMddpWFunc.get_mddp_feature)
+		return false;
+
+	return (gMddpWFunc.get_mddp_feature() & MDDP_FEATURE_MCIF_WIFI) != 0;
+}
+
+bool mddpIsSupportMddpWh(void)
+{
+	if (!gMddpWFunc.get_mddp_feature)
+		return false;
+
+	return (gMddpWFunc.get_mddp_feature() & MDDP_FEATURE_MDDP_WH) != 0;
+}
+
+#endif /* CFG_MTK_MDDP_SUPPORT */

@@ -68,12 +68,16 @@
 #define MINIMUM_RSSI_2G4                        -94
 /* Link speed 6Mbps need at least rssi -86dbm for 5G */
 #define MINIMUM_RSSI_5G                         -86
+#if (CFG_SUPPORT_WIFI_6G == 1)
+/* Link speed 6Mbps need at least rssi -86dbm for 6G */
+#define MINIMUM_RSSI_6G                         -86
+#endif
 
 /* level of rssi range on StatusBar */
 #define RSSI_MAX_LEVEL                          -55
 #define RSSI_SECOND_LEVEL                       -66
 
-#if CFG_TC10_FEATURE
+#if (CFG_TC10_FEATURE == 1)
 #define RCPI_FOR_DONT_ROAM                      80 /*-70dbm*/
 #else
 #define RCPI_FOR_DONT_ROAM                      60 /*-80dbm*/
@@ -89,24 +93,10 @@
 /* Support driver triggers roaming */
 #define RCPI_DIFF_DRIVER_ROAM			20 /* 10 dbm */
 
-/* In case 2.4G->5G, the trigger rssi is RSSI_BAD_NEED_ROAM_24G_TO_5G
- * In other case(2.4G->2.4G/5G->2.4G/5G->5G), the trigger
- * rssi is RSSI_BAD_NEED_ROAM
- *
- * The reason of using two rssi threshold is that we only
- * want to benifit 2.4G->5G case, and keep original logic in
- * other cases.
- */
-#define RSSI_BAD_NEED_ROAM_24G_TO_5G		-10 /* dbm */
-#define RSSI_BAD_NEED_ROAM			-80 /* dbm */
+#define RSSI_BAD_NEED_ROAM                      -80 /* dbm */
 
 #define CHNL_DWELL_TIME_DEFAULT  100
 #define CHNL_DWELL_TIME_ONLINE   50
-
-/* When roam to 5G AP, the AP's rcpi should great than
- * RCPI_THRESHOLD_ROAM_2_5G dbm
- */
-#define RCPI_THRESHOLD_ROAM_TO_5G  90 /* rssi -65 */
 
 #define WEIGHT_IDX_CHNL_UTIL                    0
 #define WEIGHT_IDX_RSSI                         2
@@ -120,8 +110,10 @@
 #define WEIGHT_IDX_DEAUTH_LAST                  1
 #define WEIGHT_IDX_BLACK_LIST                   2
 #define WEIGHT_IDX_SAA                          0
-#define WEIGHT_IDX_CHNL_IDLE                    0
+#define WEIGHT_IDX_CHNL_IDLE                    1
 #define WEIGHT_IDX_OPCHNL                       0
+#define WEIGHT_IDX_TPUT                         1
+#define WEIGHT_IDX_PREFERENCE                   2
 
 #define WEIGHT_IDX_CHNL_UTIL_PER                0
 #define WEIGHT_IDX_RSSI_PER                     4
@@ -137,6 +129,8 @@
 #define WEIGHT_IDX_SAA_PER                      1
 #define WEIGHT_IDX_CHNL_IDLE_PER                6
 #define WEIGHT_IDX_OPCHNL_PER                   6
+#define WEIGHT_IDX_TPUT_PER                     2
+#define WEIGHT_IDX_PREFERENCE_PER               2
 
 struct WEIGHT_CONFIG {
 	uint8_t ucChnlUtilWeight;
@@ -154,6 +148,8 @@ struct WEIGHT_CONFIG {
 	uint8_t ucSaaWeight;
 	uint8_t ucChnlIdleWeight;
 	uint8_t ucOpchnlWeight;
+	uint8_t ucTputWeight;
+	uint8_t ucPreferenceWeight;
 };
 
 struct WEIGHT_CONFIG gasMtkWeightConfig[ROAM_TYPE_NUM] = {
@@ -171,7 +167,9 @@ struct WEIGHT_CONFIG gasMtkWeightConfig[ROAM_TYPE_NUM] = {
 		.ucBlackListWeight = WEIGHT_IDX_BLACK_LIST,
 		.ucSaaWeight = WEIGHT_IDX_SAA,
 		.ucChnlIdleWeight = WEIGHT_IDX_CHNL_IDLE,
-		.ucOpchnlWeight = WEIGHT_IDX_OPCHNL
+		.ucOpchnlWeight = WEIGHT_IDX_OPCHNL,
+		.ucTputWeight = WEIGHT_IDX_TPUT,
+		.ucPreferenceWeight = WEIGHT_IDX_PREFERENCE
 	},
 	[ROAM_TYPE_PER] = {
 		.ucChnlUtilWeight = WEIGHT_IDX_CHNL_UTIL_PER,
@@ -187,11 +185,40 @@ struct WEIGHT_CONFIG gasMtkWeightConfig[ROAM_TYPE_NUM] = {
 		.ucBlackListWeight = WEIGHT_IDX_BLACK_LIST_PER,
 		.ucSaaWeight = WEIGHT_IDX_SAA_PER,
 		.ucChnlIdleWeight = WEIGHT_IDX_CHNL_IDLE_PER,
-		.ucOpchnlWeight = WEIGHT_IDX_OPCHNL_PER
+		.ucOpchnlWeight = WEIGHT_IDX_OPCHNL_PER,
+		.ucTputWeight = WEIGHT_IDX_TPUT_PER,
+		.ucPreferenceWeight = WEIGHT_IDX_PREFERENCE_PER
 	}
 };
 
-uint8_t mtk_reason_to_type[ROAMING_REASON_NUM] = {
+static uint8_t *apucBandStr[BAND_NUM] = {
+	(uint8_t *) DISP_STRING("NULL"),
+	(uint8_t *) DISP_STRING("2.4G"),
+	(uint8_t *) DISP_STRING("5G")
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	,
+	(uint8_t *) DISP_STRING("6G")
+#endif
+};
+
+struct NETWORK_SELECTION_POLICY_BY_BAND networkReplaceHandler[BAND_NUM] = {
+	[BAND_2G4] = {BAND_2G4, scanNetworkReplaceHandler2G4},
+	[BAND_5G]  = {BAND_5G,  scanNetworkReplaceHandler5G},
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	[BAND_6G]  = {BAND_6G,  scanNetworkReplaceHandler6G},
+#endif
+};
+
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+const struct WFA_DESENSE_CHANNEL_LIST desenseChList[BAND_NUM] = {
+	[BAND_5G]  = {120, 157},
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	[BAND_6G]  = {13,  53},
+#endif
+};
+#endif
+
+uint8_t roamReasonToType[ROAMING_REASON_NUM] = {
 	[0 ... ROAMING_REASON_NUM - 1] = ROAM_TYPE_RCPI,
 	[ROAMING_REASON_TX_ERR]	       = ROAM_TYPE_PER,
 };
@@ -202,6 +229,9 @@ uint8_t mtk_reason_to_type[ROAMING_REASON_NUM] = {
 	((prAdapter->rWifiVar).ucApSelAxWeight * \
 	(prBssDesc->fgIsHEPresent ? \
 	(BSS_FULL_SCORE/(prAdapter->rWifiVar).ucApSelAxScoreDiv) : 0)):0)
+#endif
+#if (CFG_SUPPORT_802_11BE == 1)
+/* TODO */
 #endif
 
 #define CALCULATE_SCORE_BY_PROBE_RSP(prBssDesc, eRoamType) \
@@ -215,10 +245,18 @@ uint8_t mtk_reason_to_type[ROAMING_REASON_NUM] = {
 	(BSS_FULL_SCORE - (prAdapter->rWifiVar.rScanInfo.u4ScanUpdateIdx - \
 	prBssDesc->u4UpdateIdx) * 25)))
 
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#define CALCULATE_SCORE_BY_BAND(prAdapter, prBssDesc, cRssi, eRoamType) \
+	(gasMtkWeightConfig[eRoamType].ucBandWeight * \
+	((((prBssDesc->eBand == BAND_5G && prAdapter->fgEnable5GBand) || \
+	   (prBssDesc->eBand == BAND_6G && prAdapter->fgIsHwSupport6G)) && \
+	cRssi > -70) ? BSS_FULL_SCORE : 0))
+#else
 #define CALCULATE_SCORE_BY_BAND(prAdapter, prBssDesc, cRssi, eRoamType) \
 	(gasMtkWeightConfig[eRoamType].ucBandWeight * \
 	((prBssDesc->eBand == BAND_5G && prAdapter->fgEnable5GBand && \
 	cRssi > -70) ? BSS_FULL_SCORE : 0))
+#endif
 
 #define CALCULATE_SCORE_BY_STBC(prAdapter, prBssDesc, eRoamType) \
 	(gasMtkWeightConfig[eRoamType].ucStbcWeight * \
@@ -297,6 +335,9 @@ static uint16_t scanCalculateScoreByBandwidth(struct ADAPTER *prAdapter,
 {
 	uint16_t u2Score = 0;
 	enum ENUM_CHANNEL_WIDTH eChannelWidth = prBssDesc->eChannelWidth;
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	uint8_t ucSta6GBW = prAdapter->rWifiVar.ucSta6gBandwidth;
+#endif
 	uint8_t ucSta5GBW = prAdapter->rWifiVar.ucSta5gBandwidth;
 	uint8_t ucSta2GBW = prAdapter->rWifiVar.ucSta2gBandwidth;
 	uint8_t ucStaBW = prAdapter->rWifiVar.ucStaBandwidth;
@@ -337,6 +378,14 @@ static uint16_t scanCalculateScoreByBandwidth(struct ADAPTER *prAdapter,
 			u2Score = (prBssDesc->eSco == 0 ||
 					ucSta5GBW == MAX_BW_20MHZ) ? 40:60;
 		}
+#if (CFG_SUPPORT_WIFI_6G == 1)
+		else if (prBssDesc->eBand == BAND_6G) {
+			if (ucSta6GBW > ucStaBW)
+				ucSta6GBW = ucStaBW;
+			u2Score = (prBssDesc->eSco == 0 ||
+				ucSta6GBW == MAX_BW_20MHZ) ? 40:60;
+		}
+#endif
 	} else if (prBssDesc->u2BSSBasicRateSet & RATE_SET_OFDM)
 		u2Score = 20;
 	else
@@ -373,14 +422,17 @@ static uint16_t scanCalculateScoreByClientCnt(struct BSS_DESC *prBssDesc,
 	return u2Score * gasMtkWeightConfig[eRoamType].ucClientCntWeight;
 }
 
-#if CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT
-struct NEIGHBOR_AP_T *scanGetNeighborAPEntry(struct LINK *prNeighborApLink,
-					     uint8_t *pucBssid)
+#if CFG_SUPPORT_802_11K
+struct NEIGHBOR_AP *scanGetNeighborAPEntry(
+	struct ADAPTER *prAdapter, uint8_t *pucBssid, uint8_t ucBssIndex)
 {
-	struct NEIGHBOR_AP_T *prNeighborAP = NULL;
+	struct LINK *prNeighborAPLink =
+		&aisGetAisSpecBssInfo(prAdapter, ucBssIndex)
+		->rNeighborApList.rUsingLink;
+	struct NEIGHBOR_AP *prNeighborAP = NULL;
 
-	LINK_FOR_EACH_ENTRY(prNeighborAP, prNeighborApLink, rLinkEntry,
-			    struct NEIGHBOR_AP_T)
+	LINK_FOR_EACH_ENTRY(prNeighborAP, prNeighborAPLink, rLinkEntry,
+			    struct NEIGHBOR_AP)
 	{
 		if (EQUAL_MAC_ADDR(prNeighborAP->aucBssid, pucBssid))
 			return prNeighborAP;
@@ -388,34 +440,76 @@ struct NEIGHBOR_AP_T *scanGetNeighborAPEntry(struct LINK *prNeighborApLink,
 	return NULL;
 }
 
-u_int8_t scanPreferenceIsZero(struct ADAPTER *prAdapter, uint8_t *pucBssid,
-	uint8_t ucBssIndex)
+#endif
+
+uint8_t scanNetworkReplaceHandler2G4(enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi, int8_t cCurrentRssi)
 {
-	struct LINK *prNeighborAPLink =
-		&aisGetAisSpecBssInfo(prAdapter, ucBssIndex)
-		->rNeighborApList.rUsingLink;
-	struct NEIGHBOR_AP_T *prNeighborAP = NULL;
+	/* Current AP is 2.4G, replace candidate AP if target AP is good */
+	if (eCurrentBand == BAND_5G
+#if (CFG_SUPPORT_WIFI_6G == 1)
+		|| eCurrentBand == BAND_6G
+#endif
+		) {
+		if (cCurrentRssi >= GOOD_RSSI_FOR_HT_VHT)
+			return TRUE;
 
-	if (prNeighborAPLink->u4NumElem == 0)
+		if (cCurrentRssi < LOW_RSSI_FOR_5G_BAND &&
+			(cCandidateRssi > cCurrentRssi + 5))
+			return FALSE;
+	}
+	return FALSE;
+}
+
+uint8_t scanNetworkReplaceHandler5G(enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi, int8_t cCurrentRssi)
+{
+	/* Candidate AP is 5G, don't replace it if it's good enough. */
+	if (eCurrentBand == BAND_2G4) {
+		if (cCandidateRssi >= GOOD_RSSI_FOR_HT_VHT)
+			return FALSE;
+
+		if (cCandidateRssi < LOW_RSSI_FOR_5G_BAND &&
+			(cCurrentRssi > cCandidateRssi + 5))
+			return TRUE;
+	}
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	else if (eCurrentBand == BAND_6G) {
+		/* Target AP is 6G, replace candidate AP if target AP is good */
+		if (cCurrentRssi >= GOOD_RSSI_FOR_HT_VHT)
+			return TRUE;
+
+		if (cCurrentRssi < LOW_RSSI_FOR_5G_BAND &&
+			(cCandidateRssi > cCurrentRssi + 5))
+			return FALSE;
+	}
+#endif
+	return FALSE;
+}
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+uint8_t scanNetworkReplaceHandler6G(enum ENUM_BAND eCurrentBand,
+	int8_t cCandidateRssi, int8_t cCurrentRssi)
+{
+	if (eCurrentBand < BAND_2G4 || eCurrentBand > BAND_6G)
 		return FALSE;
 
-	prNeighborAP = scanGetNeighborAPEntry(prNeighborAPLink, pucBssid);
-
-	if (prNeighborAP == NULL)
-		return FALSE;
-	if (!prNeighborAP->fgPrefPresence)
-		return FALSE;
-	if (prNeighborAP->ucPreference > 0)
+	/* Candidate AP is 6G, don't replace it if it's good enough. */
+	if (cCandidateRssi >= GOOD_RSSI_FOR_HT_VHT)
 		return FALSE;
 
-	return TRUE;
+	if (cCandidateRssi < LOW_RSSI_FOR_5G_BAND &&
+		(cCurrentRssi > cCandidateRssi + 7))
+		return TRUE;
+
+	return FALSE;
 }
 #endif
 
 static u_int8_t scanNeedReplaceCandidate(struct ADAPTER *prAdapter,
 	struct BSS_DESC *prCandBss, struct BSS_DESC *prCurrBss,
 	uint16_t u2CandScore, uint16_t u2CurrScore,
-	enum ROAM_TYPE eRoamType, uint8_t ucBssIndex)
+	enum ENUM_ROAMING_REASON eRoamReason, uint8_t ucBssIndex)
 {
 	int8_t cCandRssi = RCPI_TO_dBm(prCandBss->ucRCPI);
 	int8_t cCurrRssi = RCPI_TO_dBm(prCurrBss->ucRCPI);
@@ -424,6 +518,7 @@ static u_int8_t scanNeedReplaceCandidate(struct ADAPTER *prAdapter,
 	uint16_t u2CurrMiss = u4UpdateIdx - prCurrBss->u4UpdateIdx;
 	struct BSS_DESC *prBssDesc = NULL;
 	int8_t ucOpChannelNum = 0;
+	enum ROAM_TYPE eRoamType = roamReasonToType[eRoamReason];
 
 	prBssDesc = aisGetTargetBssDesc(prAdapter, ucBssIndex);
 	if (prBssDesc)
@@ -451,35 +546,31 @@ static u_int8_t scanNeedReplaceCandidate(struct ADAPTER *prAdapter,
 	}
 	/* 1.3 Hard connecting RSSI check */
 	if ((prCurrBss->eBand == BAND_5G && cCurrRssi < MINIMUM_RSSI_5G) ||
+#if (CFG_SUPPORT_WIFI_6G == 1)
+		(prCurrBss->eBand == BAND_6G && cCurrRssi < MINIMUM_RSSI_6G) ||
+#endif
 		(prCurrBss->eBand == BAND_2G4 && cCurrRssi < MINIMUM_RSSI_2G4))
 		return FALSE;
 	else if ((prCandBss->eBand == BAND_5G && cCandRssi < MINIMUM_RSSI_5G) ||
+#if (CFG_SUPPORT_WIFI_6G == 1)
+		(prCandBss->eBand == BAND_6G && cCandRssi < MINIMUM_RSSI_6G) ||
+#endif
 		(prCandBss->eBand == BAND_2G4 && cCandRssi < MINIMUM_RSSI_2G4))
 		return TRUE;
 
 	/* 1.4 prefer to select 5G Bss if Rssi of a 5G band BSS is good */
-	if (eRoamType != ROAM_TYPE_PER) {
-		if (prCandBss->eBand != prCurrBss->eBand) {
-			if (prCandBss->eBand == BAND_5G) {
-				/* Candidate AP is 5G, don't replace it
-				 * if it's good enough.
-				 */
-				if (cCandRssi >= GOOD_RSSI_FOR_HT_VHT)
-					return FALSE;
-				if (cCandRssi < LOW_RSSI_FOR_5G_BAND &&
-					(cCurrRssi > cCandRssi + 5))
-					return TRUE;
-			} else {
-				/* Current AP is 5G, replace candidate
-				 * AP if current AP is good.
-				 */
-				if (cCurrRssi >= GOOD_RSSI_FOR_HT_VHT)
-					return TRUE;
-				if (cCurrRssi < LOW_RSSI_FOR_5G_BAND &&
-					(cCandRssi > cCurrRssi + 5))
-					return FALSE;
-			}
-		}
+	if (eRoamType != ROAM_TYPE_PER &&
+		prCandBss->eBand != prCurrBss->eBand) {
+		if (prCandBss->eBand >= BAND_2G4 &&
+#if (CFG_SUPPORT_WIFI_6G == 1)
+			prCandBss->eBand <= BAND_6G &&
+#else
+			prCandBss->eBand <= BAND_5G &&
+#endif
+			networkReplaceHandler[prCandBss->eBand].
+			pfnNetworkSelection(
+			prCurrBss->eBand, cCandRssi, cCurrRssi))
+			return TRUE;
 	}
 
 	/* 1.5 RSSI of Current Bss is lower than Candidate, don't replace
@@ -498,15 +589,6 @@ static u_int8_t scanNeedReplaceCandidate(struct ADAPTER *prAdapter,
 			return TRUE;
 	} while (FALSE);
 
-#if CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT
-	if (scanPreferenceIsZero(prAdapter, prCurrBss->aucBSSID,
-		ucBssIndex)) {
-		log_dbg(SCN, INFO,
-			"BTM: %s[" MACSTR "] preference value is 0, skip it\n",
-			prCurrBss->aucSSID, MAC2STR(prCurrBss->aucBSSID));
-		return FALSE;
-	}
-#endif
 	if (eRoamType == ROAM_TYPE_PER) {
 		if (prCandBss->ucChannelNum == ucOpChannelNum) {
 			log_dbg(SCN, INFO, "CandBss in opchnl,add CurBss Score\n");
@@ -563,8 +645,24 @@ static u_int8_t scanSanityCheckBssDesc(struct ADAPTER *prAdapter,
 			MAC2STR(prBssDesc->aucBSSID));
 		return FALSE;
 	}
-#endif
 
+	if (prBssDesc->prBlack && prBssDesc->prBlack->fgDisallowed &&
+	    !(prBssDesc->prBlack->i4RssiThreshold > 0 &&
+	      RCPI_TO_dBm(prBssDesc->ucRCPI) >
+			prBssDesc->prBlack->i4RssiThreshold)) {
+		log_dbg(SCN, WARN, MACSTR" disallowed delay, rssi %d(%d)\n",
+			MAC2STR(prBssDesc->aucBSSID),
+			RCPI_TO_dBm(prBssDesc->ucRCPI),
+			prBssDesc->prBlack->i4RssiThreshold);
+		return FALSE;
+	}
+
+	if (prBssDesc->prBlack && prBssDesc->prBlack->fgDisallowed) {
+		log_dbg(SCN, WARN, MACSTR" disallowed delay\n",
+			MAC2STR(prBssDesc->aucBSSID));
+		return FALSE;
+	}
+#endif
 
 	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
 	target = aisGetTargetBssDesc(prAdapter, ucBssIndex);
@@ -580,6 +678,7 @@ static u_int8_t scanSanityCheckBssDesc(struct ADAPTER *prAdapter,
 				MAC2STR(prBssDesc->aucBSSID));
 			return FALSE;
 		}
+
 	}
 
 	/* roaming case */
@@ -609,9 +708,11 @@ static u_int8_t scanSanityCheckBssDesc(struct ADAPTER *prAdapter,
 			aisGetTargetBssDesc(prAdapter, AIS_DEFAULT_INDEX);
 
 		if (target && prBssDesc->eBand == target->eBand) {
-			log_dbg(SCN, WARN, MACSTR" band %d used by main\n",
+			log_dbg(SCN, WARN,
+				MACSTR" used the same band with main\n",
 				MAC2STR(prBssDesc->aucBSSID));
-			return FALSE;
+			if (!prAdapter->rWifiVar.fgAllowSameBandDualSta)
+				return FALSE;
 		}
 	}
 
@@ -646,10 +747,9 @@ static u_int8_t scanSanityCheckBssDesc(struct ADAPTER *prAdapter,
 			prBssDesc->ucChannelNum);
 		return FALSE;
 	}
-
 	if (CHECK_FOR_TIMEOUT(kalGetTimeTick(), prBssDesc->rUpdateTime,
 		SEC_TO_SYSTIME(wlanWfdEnabled(prAdapter) ?
-			SCN_BSS_DESC_STALE_SEC_WFD : SCN_BSS_DESC_STALE_SEC))) {
+		SCN_BSS_DESC_STALE_SEC_WFD : SCN_BSS_DESC_STALE_SEC))) {
 		log_dbg(SCN, WARN, MACSTR " description is too old.\n",
 			MAC2STR(prBssDesc->aucBSSID));
 		return FALSE;
@@ -678,8 +778,111 @@ static u_int8_t scanSanityCheckBssDesc(struct ADAPTER *prAdapter,
 		return FALSE;
 	}
 
+
+#if CFG_SUPPORT_802_11K
+	if (eRoamReason == ROAMING_REASON_BTM ||
+	    eRoamReason == ROAMING_REASON_BTM_DISASSOC) {
+		struct BSS_TRANSITION_MGT_PARAM *prBtmParam;
+		uint8_t ucRequestMode = 0;
+
+		prBtmParam = aisGetBTMParam(prAdapter, ucBssIndex);
+		ucRequestMode = prBtmParam->ucRequestMode;
+		if (ucRequestMode & WNM_BSS_TM_REQ_ABRIDGED) {
+			if (!prBssDesc->prNeighbor) {
+				log_dbg(SCN, INFO,
+				     MACSTR " not in candidate list, skip it\n",
+				     MAC2STR(prBssDesc->aucBSSID));
+				return FALSE;
+			}
+		}
+	}
+#endif
 	return TRUE;
 }
+
+#if (CFG_TC10_FEATURE == 1)
+static int32_t scanCalculateScoreByCu(IN struct ADAPTER *prAdapter,
+	IN struct BSS_DESC *prBssDesc, IN uint8_t ucBssIndex)
+{
+	struct SCAN_INFO *info;
+	struct SCAN_PARAM *param;
+	struct BSS_INFO *bss;
+	int32_t score, rssi, cu = 0, cuRatio, dwell;
+	uint32_t rssiFactor, cuFactor, rssiWeight, cuWeight;
+	uint32_t slot = 0, idle;
+	uint8_t i;
+
+	if (!prBssDesc ||
+	    (prBssDesc->prBlack && prBssDesc->prBlack->fgDeauthLastTime))
+		return -1;
+#if CFG_SUPPORT_NCHO
+	if (prAdapter->rNchoInfo.fgNCHOEnabled)
+		return -1;
+#endif
+	rssi = RCPI_TO_dBm(prBssDesc->ucRCPI);
+	rssiWeight = 65;
+	cuWeight = 35;
+	if (rssi >= -55)
+		rssiFactor = 100;
+	else if (rssi < -55 && rssi >= -60)
+		rssiFactor = 90 + 2 * (60 + rssi);
+	else if (rssi < -60 && rssi >= -70)
+		rssiFactor = 60 + 3 * (70 + rssi);
+	else if (rssi < -70 && rssi >= -80)
+		rssiFactor = 20 + 4 * (80 + rssi);
+	else if (rssi < -80 && rssi >= -90)
+		rssiFactor = 2 * (90 + rssi);
+	else
+		rssiFactor = 0;
+	if (prBssDesc->fgExsitBssLoadIE) {
+		cu = prBssDesc->ucChnlUtilization;
+	} else {
+		bss = aisGetAisBssInfo(prAdapter, ucBssIndex);
+		info = &(prAdapter->rWifiVar.rScanInfo);
+		param = &(info->rScanParam);
+		if (param->u2ChannelDwellTime > 0)
+			dwell = param->u2ChannelDwellTime;
+		else if (bss->eConnectionState == MEDIA_STATE_CONNECTED)
+			dwell = CHNL_DWELL_TIME_ONLINE;
+		else
+			dwell = CHNL_DWELL_TIME_DEFAULT;
+		for (i = 0; i < info->ucSparseChannelArrayValidNum; i++) {
+			if (prBssDesc->ucChannelNum == info->aucChannelNum[i]) {
+				slot = info->au2ChannelIdleTime[i];
+				idle = (slot * 9 * 100) / (dwell * 1000);
+				cu = 255 - idle * 255 / 100;
+				break;
+			}
+		}
+	}
+	cuRatio = cu * 100 / 255;
+	if (prBssDesc->eBand == BAND_2G4) {
+		if (cuRatio < 10)
+			cuFactor = 100;
+		else if (cuRatio < 70 && cuRatio >= 10)
+			cuFactor = 111 - (13 * cuRatio / 10);
+		else
+			cuFactor = 20;
+	} else {
+		if (cuRatio < 30)
+			cuFactor = 100;
+		else if (cuRatio < 80 && cuRatio >= 30)
+			cuFactor = 148 - (16 * cuRatio / 10);
+		else
+			cuFactor = 20;
+	}
+	score = rssiFactor * rssiWeight + cuFactor * cuWeight;
+	log_dbg(SCN, INFO,
+		MACSTR
+		" 5G[%d],chl[%d],slt[%d],ld[%d] Basic Score %d,rssi[%d],cu[%d],cuR[%d],rf[%d],rw[%d],cf[%d],cw[%d]\n",
+		MAC2STR(prBssDesc->aucBSSID),
+		(prBssDesc->eBand == BAND_5G ? 1 : 0),
+		prBssDesc->ucChannelNum, slot,
+		prBssDesc->fgExsitBssLoadIE, score, rssi, cu, cuRatio,
+		rssiFactor, rssiWeight,	cuFactor, cuWeight);
+	return score;
+}
+#endif
 
 static uint16_t scanCalculateScoreByRssi(struct BSS_DESC *prBssDesc,
 	enum ROAM_TYPE eRoamType)
@@ -717,46 +920,93 @@ static uint16_t scanCalculateScoreBySaa(struct ADAPTER *prAdapter,
 }
 
 static uint16_t scanCalculateScoreByIdleTime(struct ADAPTER *prAdapter,
-	uint8_t ucChannel, enum ROAM_TYPE eRoamType, uint8_t ucBssIndex)
+	uint8_t ucChannel, enum ROAM_TYPE eRoamType,
+	IN struct BSS_DESC *prBssDesc, uint8_t ucBssIndex,
+	enum ENUM_BAND eBand)
 {
-	uint8_t u4ChCnt = 0;
-	uint16_t u2Score = 0;
-	uint16_t u2ChIdleSlot;
-	uint16_t u2ChIdleTime;
-	uint16_t u2ChIdleUtil;
-	uint16_t u2ChDwellTime;
-	struct SCAN_INFO *prScanInfo;
-	struct SCAN_PARAM *prScanParam;
-	struct BSS_INFO *prAisBssInfo;
+	struct SCAN_INFO *info;
+	struct SCAN_PARAM *param;
+	struct BSS_INFO *bss;
+	int32_t score, rssi, cu = 0, cuRatio, dwell;
+	uint32_t rssiFactor, cuFactor, rssiWeight, cuWeight;
+	uint32_t slot = 0, idle;
+	uint8_t i;
 
-	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
-	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
-	prScanParam = &(prScanInfo->rScanParam);
-
-	if (prScanParam->u2ChannelDwellTime > 0)
-		u2ChDwellTime = prScanParam->u2ChannelDwellTime;
-	else if (prAisBssInfo->eConnectionState == MEDIA_STATE_CONNECTED)
-		u2ChDwellTime = CHNL_DWELL_TIME_ONLINE;
+	rssi = RCPI_TO_dBm(prBssDesc->ucRCPI);
+	rssiWeight = 65;
+	cuWeight = 35;
+	if (rssi >= -55)
+		rssiFactor = 100;
+	else if (rssi < -55 && rssi >= -60)
+		rssiFactor = 90 + 2 * (60 + rssi);
+	else if (rssi < -60 && rssi >= -70)
+		rssiFactor = 60 + 3 * (70 + rssi);
+	else if (rssi < -70 && rssi >= -80)
+		rssiFactor = 20 + 4 * (80 + rssi);
+	else if (rssi < -80 && rssi >= -90)
+		rssiFactor = 2 * (90 + rssi);
 	else
-		u2ChDwellTime = CHNL_DWELL_TIME_DEFAULT;
+		rssiFactor = 0;
 
-	for (u4ChCnt = 0; u4ChCnt < prScanInfo
-		->ucSparseChannelArrayValidNum; u4ChCnt++) {
-		if (ucChannel == prScanInfo->aucChannelNum[u4ChCnt]) {
-			u2ChIdleSlot =
-				prScanInfo->au2ChannelIdleTime[u4ChCnt];
-			u2ChIdleTime = u2ChIdleSlot * 9;
-			u2ChIdleUtil =
-				(u2ChIdleTime * 100) / (u2ChDwellTime * 1000);
-			if (u2ChIdleUtil > BSS_FULL_SCORE)
-				u2ChIdleUtil = BSS_FULL_SCORE;
-			u2Score = u2ChIdleUtil *
-				gasMtkWeightConfig[eRoamType].ucChnlIdleWeight;
-			break;
+	if (prBssDesc->fgExsitBssLoadIE) {
+		cu = prBssDesc->ucChnlUtilization;
+	} else {
+		bss = aisGetAisBssInfo(prAdapter, ucBssIndex);
+		info = &(prAdapter->rWifiVar.rScanInfo);
+		param = &(info->rScanParam);
+
+		if (param->u2ChannelDwellTime > 0)
+			dwell = param->u2ChannelDwellTime;
+		else if (bss->eConnectionState == MEDIA_STATE_CONNECTED)
+			dwell = CHNL_DWELL_TIME_ONLINE;
+		else
+			dwell = CHNL_DWELL_TIME_DEFAULT;
+
+		for (i = 0; i < info->ucSparseChannelArrayValidNum; i++) {
+			if (prBssDesc->ucChannelNum == info->aucChannelNum[i] &&
+					eBand == info->aeChannelBand[i]) {
+				slot = info->au2ChannelIdleTime[i];
+				idle = (slot * 9 * 100) / (dwell * 1000);
+				if (eRoamType == ROAM_TYPE_PER) {
+					score = idle > BSS_FULL_SCORE ?
+						BSS_FULL_SCORE : idle;
+					goto done;
+				}
+				cu = 255 - idle * 255 / 100;
+				break;
+			}
 		}
 	}
 
-	return u2Score;
+	cuRatio = cu * 100 / 255;
+	if (prBssDesc->eBand == BAND_2G4) {
+		if (cuRatio < 10)
+			cuFactor = 100;
+		else if (cuRatio < 70 && cuRatio >= 10)
+			cuFactor = 111 - (13 * cuRatio / 10);
+		else
+			cuFactor = 20;
+	} else {
+		if (cuRatio < 30)
+			cuFactor = 100;
+		else if (cuRatio < 80 && cuRatio >= 30)
+			cuFactor = 148 - (16 * cuRatio / 10);
+		else
+			cuFactor = 20;
+	}
+
+	score = (rssiFactor * rssiWeight + cuFactor * cuWeight) >> 6;
+
+	log_dbg(SCN, TRACE,
+		MACSTR
+		" Band[%s],chl[%d],slt[%d],ld[%d] idle Score %d,rssi[%d],cu[%d],cuR[%d],rf[%d],rw[%d],cf[%d],cw[%d]\n",
+		MAC2STR(prBssDesc->aucBSSID),
+		apucBandStr[prBssDesc->eBand],
+		prBssDesc->ucChannelNum, slot,
+		prBssDesc->fgExsitBssLoadIE, score, rssi, cu, cuRatio,
+		rssiFactor, rssiWeight, cuFactor, cuWeight);
+done:
+	return score * gasMtkWeightConfig[eRoamType].ucChnlIdleWeight;
 }
 
 u_int8_t scanApOverload(uint16_t status, uint16_t reason)
@@ -794,8 +1044,38 @@ uint16_t scanCalculateScoreByBlackList(struct ADAPTER *prAdapter,
 	return u2Score * gasMtkWeightConfig[eRoamType].ucBlackListWeight;
 }
 
+uint16_t scanCalculateScoreByTput(struct ADAPTER *prAdapter,
+	    struct BSS_DESC *prBssDesc, enum ROAM_TYPE eRoamType)
+{
+	uint16_t u2Score = 0;
+
+#if CFG_SUPPORT_MBO
+	if (prBssDesc->fgExistEspIE)
+		u2Score = (prBssDesc->u4EspInfo[WIFI_AC_BE] >> 8) & 0xff;
+#endif
+	return u2Score * gasMtkWeightConfig[eRoamType].ucTputWeight;
+}
+
+uint16_t scanCalculateScoreByPreference(struct ADAPTER *prAdapter,
+	    struct BSS_DESC *prBssDesc, enum ENUM_ROAMING_REASON eRoamReason)
+{
+#if CFG_SUPPORT_802_11K
+	if (eRoamReason == ROAMING_REASON_BTM ||
+	    eRoamReason == ROAMING_REASON_BTM_DISASSOC) {
+		if (prBssDesc->prNeighbor) {
+			enum ROAM_TYPE eRoamType =
+				roamReasonToType[eRoamReason];
+
+			return prBssDesc->prNeighbor->ucPreference *
+			       gasMtkWeightConfig[eRoamType].ucPreferenceWeight;
+		}
+	}
+#endif
+	return 0;
+}
+
 uint16_t scanCalculateTotalScore(struct ADAPTER *prAdapter,
-	struct BSS_DESC *prBssDesc, enum ROAM_TYPE eRoamType,
+	struct BSS_DESC *prBssDesc, enum ENUM_ROAMING_REASON eRoamReason,
 	uint8_t ucBssIndex)
 {
 	struct AIS_SPECIFIC_BSS_INFO *prAisSpecificBssInfo = NULL;
@@ -812,22 +1092,30 @@ uint16_t scanCalculateTotalScore(struct ADAPTER *prAdapter,
 	uint16_t u2ScoreIdleTime = 0;
 	uint16_t u2ScoreTotal = 0;
 	uint16_t u2BlackListScore = 0;
-#if (CFG_SUPPORT_802_11AX == 1)
+	uint16_t u2PreferenceScore = 0;
 	uint16_t u2AxApScore = 0;
+	uint16_t u2TputScore = 0;
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+	uint8_t fgBssInDenseRange =
+		IS_CHANNEL_IN_DESENSE_RANGE(prAdapter,
+		prBssDesc->ucChannelNum,
+		prBssDesc->eBand);
+	char extra[16] = {0};
+#else
+	char *extra = "";
 #endif
 	int8_t cRssi = -128;
+	enum ROAM_TYPE eRoamType = roamReasonToType[eRoamReason];
 
-	prAisSpecificBssInfo =
-		aisGetAisSpecBssInfo(prAdapter, ucBssIndex);
+	prAisSpecificBssInfo = aisGetAisSpecBssInfo(prAdapter, ucBssIndex);
 	cRssi = RCPI_TO_dBm(prBssDesc->ucRCPI);
 
 	u2ScoreBandwidth =
 		scanCalculateScoreByBandwidth(prAdapter, prBssDesc, eRoamType);
 	u2ScoreStaCnt = scanCalculateScoreByClientCnt(prBssDesc, eRoamType);
 	u2ScoreSTBC = CALCULATE_SCORE_BY_STBC(prAdapter, prBssDesc, eRoamType);
-	u2ScoreChnlInfo =
-		scanCalculateScoreByChnlInfo(prAisSpecificBssInfo,
-		prBssDesc->ucChannelNum, eRoamType);
+	u2ScoreChnlInfo = scanCalculateScoreByChnlInfo(prAisSpecificBssInfo,
+				prBssDesc->ucChannelNum, eRoamType);
 	u2ScoreSnrRssi = scanCalculateScoreByRssi(prBssDesc, eRoamType);
 	u2ScoreDeauth = CALCULATE_SCORE_BY_DEAUTH(prBssDesc, eRoamType);
 	u2ScoreProbeRsp = CALCULATE_SCORE_BY_PROBE_RSP(prBssDesc, eRoamType);
@@ -837,52 +1125,56 @@ uint16_t scanCalculateTotalScore(struct ADAPTER *prAdapter,
 		cRssi, eRoamType);
 	u2ScoreSaa = scanCalculateScoreBySaa(prAdapter, prBssDesc, eRoamType);
 	u2ScoreIdleTime = scanCalculateScoreByIdleTime(prAdapter,
-		prBssDesc->ucChannelNum, eRoamType, ucBssIndex);
+		prBssDesc->ucChannelNum, eRoamType, prBssDesc, ucBssIndex,
+		prBssDesc->eBand);
 	u2BlackListScore =
 	       scanCalculateScoreByBlackList(prAdapter, prBssDesc, eRoamType);
+	u2PreferenceScore =
+	      scanCalculateScoreByPreference(prAdapter, prBssDesc, eRoamReason);
 
 #if (CFG_SUPPORT_802_11AX == 1)
 	u2AxApScore = CALCULATE_SCORE_BY_AX_AP(prAdapter, prBssDesc, eRoamType);
 #endif
+#if (CFG_SUPPORT_802_11BE == 1)
+	/* TODO */
+#endif
+	u2TputScore = scanCalculateScoreByTput(prAdapter, prBssDesc, eRoamType);
+
 	u2ScoreTotal = u2ScoreBandwidth + u2ScoreChnlInfo +
 		u2ScoreDeauth + u2ScoreProbeRsp + u2ScoreScanMiss +
 		u2ScoreSnrRssi + u2ScoreStaCnt + u2ScoreSTBC +
 		u2ScoreBand + u2BlackListScore + u2ScoreSaa +
-		u2ScoreIdleTime;
-#if (CFG_SUPPORT_802_11AX == 1)
-	u2ScoreTotal += u2AxApScore;
+		u2ScoreIdleTime + u2AxApScore + u2TputScore;
+
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+	if (fgBssInDenseRange)
+		u2ScoreTotal /= 4;
+	kalSnprintf(extra, sizeof(extra), ", DESENSE[%d]", fgBssInDenseRange);
 #endif
 
-#if (CFG_SUPPORT_802_11AX == 1)
 #define TEMP_LOG_TEMPLATE\
-		MACSTR" cRSSI[%d] 5G[%d] Score,Total %d,DE[%d]"\
+		MACSTR" cRSSI[%d] Band[%s] Score,Total %d,DE[%d]"\
 		", PR[%d], SM[%d], RSSI[%d],BD[%d],BL[%d],SAA[%d]"\
-		", BW[%d], SC[%d],ST[%d],CI[%d],IT[%d],CU[%d,%d]"\
-		", HE[%d], AxWeight[%d], AxScoreDiv[%d], AxScore[%d]\n"
-#else
-#define TEMP_LOG_TEMPLATE\
-		MACSTR" cRSSI[%d] 5G[%d] Score,Total %d,DE[%d]"\
-		", PR[%d], SM[%d], RSSI[%d],BD[%d],BL[%d],SAA[%d]"\
-		", BW[%d], SC[%d],ST[%d],CI[%d],IT[%d],CU[%d,%d]\n"
-#endif
+		", BW[%d], SC[%d],ST[%d],CI[%d],IT[%d],CU[%d,%d],PF[%d]"\
+		", AX[%d], TPUT[%d]%s\n"
 
 	log_dbg(SCN, INFO,
 		TEMP_LOG_TEMPLATE,
 		MAC2STR(prBssDesc->aucBSSID), cRssi,
-		(prBssDesc->eBand == BAND_5G ? 1 : 0), u2ScoreTotal,
+		apucBandStr[prBssDesc->eBand], u2ScoreTotal,
 		u2ScoreDeauth, u2ScoreProbeRsp, u2ScoreScanMiss,
 		u2ScoreSnrRssi, u2ScoreBand, u2BlackListScore,
 		u2ScoreSaa, u2ScoreBandwidth, u2ScoreStaCnt,
 		u2ScoreSTBC, u2ScoreChnlInfo, u2ScoreIdleTime,
 		prBssDesc->fgExsitBssLoadIE,
-		prBssDesc->ucChnlUtilization
-#if (CFG_SUPPORT_802_11AX == 1)
-		, prBssDesc->fgIsHEPresent
-		, (prAdapter->rWifiVar).ucApSelAxWeight
-		, (prAdapter->rWifiVar).ucApSelAxScoreDiv
-		, u2AxApScore
+		prBssDesc->ucChnlUtilization,
+		u2PreferenceScore,
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+		u2AxApScore, u2TputScore, extra, fgBssInDenseRange);
+#else
+		u2AxApScore, u2TputScore, extra);
 #endif
-		);
+
 #undef TEMP_LOG_TEMPLATE
 
 	return u2ScoreTotal;
@@ -929,6 +1221,9 @@ struct BSS_DESC *scanSearchBssDescByScoreForAis(struct ADAPTER *prAdapter,
 	enum ENUM_PARAM_CONNECTION_POLICY policy;
 	struct ROAMING_INFO *roam;
 	enum ROAM_TYPE eRoamType;
+#if (CFG_TC10_FEATURE == 1)
+	int32_t base, delta, goal;
+#endif
 
 	if (!prAdapter ||
 	    eRoamReason >= ROAMING_REASON_NUM || eRoamReason < 0) {
@@ -942,23 +1237,38 @@ struct BSS_DESC *scanSearchBssDescByScoreForAis(struct ADAPTER *prAdapter,
 	prRoamingFsmInfo = aisGetRoamingInfo(prAdapter, ucBssIndex);
 	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
 	roam = aisGetRoamingInfo(prAdapter, ucBssIndex);
-	eRoamType = mtk_reason_to_type[eRoamReason];
+	eRoamType = roamReasonToType[eRoamReason];
 #if CFG_SUPPORT_CHNL_CONFLICT_REVISE
 	fgIsFixedChnl =	cnmAisDetectP2PChannel(prAdapter, &eBand, &ucChannel);
 #else
 	fgIsFixedChnl =	cnmAisInfraChannelFixed(prAdapter, &eBand, &ucChannel);
 #endif
 	aisRemoveTimeoutBlacklist(prAdapter);
+#if CFG_SUPPORT_802_11K
+	/* check before using neighbor report */
+	aisCheckNeighborApValidity(prAdapter, prAisBssInfo->ucBssIndex);
+#endif
 	log_dbg(SCN, INFO, "ConnectionPolicy = %d, reason = %d\n",
 		prConnSettings->eConnectionPolicy, eRoamReason);
 	policy = prConnSettings->eConnectionPolicy;
+#if (CFG_TC10_FEATURE == 1)
+	base = (eRoamReason == ROAMING_REASON_BTM_DISASSOC) ? 6000 :
+		scanCalculateScoreByCu(prAdapter,
+			aisGetTargetBssDesc(prAdapter, ucBssIndex), ucBssIndex);
+#endif
 try_again:
 	LINK_FOR_EACH_ENTRY(prBssDesc, prEssLink, rLinkEntryEss[ucBssIndex],
 		struct BSS_DESC) {
-		/* update blacklist info */
-		if (!fgSearchBlackList)
+		if (!fgSearchBlackList) {
+			/* update blacklist info */
 			prBssDesc->prBlack =
 				aisQueryBlackList(prAdapter, prBssDesc);
+#if CFG_SUPPORT_802_11K
+			/* update neighbor report entry */
+			prBssDesc->prNeighbor = scanGetNeighborAPEntry(
+				prAdapter, prBssDesc->aucBSSID, ucBssIndex);
+#endif
+		}
 		/*
 		 * Skip if
 		 * 1. sanity check fail or
@@ -983,28 +1293,82 @@ try_again:
 				MAC2STR(prBssDesc->aucBSSID));
 			continue;
 		} else if (policy == CONNECT_BY_BSSID_HINT) {
-			if (EQUAL_MAC_ADDR(prBssDesc->aucBSSID,
+			uint8_t oce = FALSE;
+
+#if CFG_SUPPORT_MBO
+			oce = prAdapter->rWifiVar.u4SwTestMode ==
+				ENUM_SW_TEST_MODE_SIGMA_OCE;
+#endif
+			if (!oce && EQUAL_MAC_ADDR(prBssDesc->aucBSSID,
 					prConnSettings->aucBSSIDHint)) {
-				log_dbg(SCN, INFO, MACSTR" match bssid_hint\n",
-					MAC2STR(prBssDesc->aucBSSID));
-				prCandBssDesc = prBssDesc;
-				break;
+#if (CFG_SUPPORT_AVOID_DESENSE == 1)
+				if (IS_CHANNEL_IN_DESENSE_RANGE(prAdapter,
+					prBssDesc->ucChannelNum,
+					prBssDesc->eBand)) {
+					log_dbg(SCN, INFO,
+						"Do network selection even match bssid_hint\n");
+				} else
+#endif
+				{
+					log_dbg(SCN, INFO,
+						MACSTR" match bssid_hint\n",
+						MAC2STR(prBssDesc->aucBSSID));
+					prCandBssDesc = prBssDesc;
+					break;
+				}
 			}
 		}
 
+#if (CFG_TC10_FEATURE == 1)
+		if (base > 0) {
+			if (UNEQUAL_MAC_ADDR(prBssDesc->aucBSSID,
+						prAisBssInfo->aucBSSID)) {
+				u2ScoreTotal = scanCalculateScoreByCu(
+					prAdapter, prBssDesc, ucBssIndex);
+				switch (eRoamReason) {
+				case ROAMING_REASON_POOR_RCPI:
+				case ROAMING_REASON_RETRY:
+					delta = 20;
+					break;
+				case ROAMING_REASON_IDLE:
+					delta = 1;
+					break;
+				default:
+					delta = 0;
+				}
+				goal = base + base * delta / 100;
+				if (u2ScoreTotal < goal) {
+					log_dbg(SCN, WARN,
+					   MACSTR " reason %d, score %d < %d\n",
+					   MAC2STR(prBssDesc->aucBSSID),
+					   eRoamReason, u2ScoreTotal, goal);
+					continue;
+				}
+			} else if (eRoamReason == ROAMING_REASON_BTM_DISASSOC) {
+				log_dbg(SCN, WARN,
+					MACSTR " reason %d, given zero\n",
+					MAC2STR(prBssDesc->aucBSSID),
+					eRoamReason);
+				continue;
+			}
+		}
+#endif
+
 		u2ScoreTotal = scanCalculateTotalScore(prAdapter, prBssDesc,
-			eRoamType, ucBssIndex);
+			prRoamingFsmInfo->eReason, ucBssIndex);
 		if (!prCandBssDesc ||
 			scanNeedReplaceCandidate(prAdapter, prCandBssDesc,
-			prBssDesc, u2CandBssScore, u2ScoreTotal, eRoamType,
-			ucBssIndex)) {
+			prBssDesc, u2CandBssScore, u2ScoreTotal,
+			prRoamingFsmInfo->eReason, ucBssIndex)) {
 			prCandBssDesc = prBssDesc;
 			u2CandBssScore = u2ScoreTotal;
 		}
 	}
 
 	if (prCandBssDesc) {
-		if (prCandBssDesc->fgIsConnected && !fgSearchBlackList &&
+        if (prCandBssDesc == aisGetTargetBssDesc(prAdapter, ucBssIndex)) {
+            log_dbg(SCN, INFO, "Current connected AP\n");
+        } else if (prCandBssDesc->fgIsConnected && !fgSearchBlackList &&
 			prEssLink->u4NumElem > 0) {
 			fgSearchBlackList = TRUE;
 			log_dbg(SCN, INFO, "Can't roam out, try blacklist\n");
@@ -1026,12 +1390,12 @@ try_again:
 			log_dbg(SCN, INFO,
 				"Selected "
 				MACSTR
-				", cRSSI[%d] 5G[%d] Score %d when find %s, "
+				", cRSSI[%d] Band[%s] Score %d when find %s, "
 				MACSTR
 				" in %d BSSes, fix channel %d.\n",
 				MAC2STR(prCandBssDesc->aucBSSID),
 				RCPI_TO_dBm(prCandBssDesc->ucRCPI),
-				(prCandBssDesc->eBand == BAND_5G ? 1 : 0),
+				apucBandStr[prCandBssDesc->eBand],
 				u2CandBssScore, prConnSettings->aucSSID,
 				MAC2STR(prConnSettings->aucBSSID),
 				prEssLink->u4NumElem, ucChannel);
@@ -1061,7 +1425,7 @@ try_again:
 	return NULL;
 }
 
-uint8_t scanUpdateChannelList(uint8_t channel,
+uint8_t scanUpdateChannelList(uint8_t channel, enum ENUM_BAND eBand,
 	uint8_t *bitmap, uint8_t *count, struct ESS_CHNL_INFO *info)
 {
 	uint8_t byteNum = 0;
@@ -1073,6 +1437,7 @@ uint8_t scanUpdateChannelList(uint8_t channel,
 		return 1;
 	bitmap[byteNum] |= BIT(bitNum);
 	info[*count].ucChannel = channel;
+	info[*count].eBand = eBand;
 	*count += 1;
 	if (*count >= CFG_MAX_NUM_OF_CHNL_INFO)
 		return 0;
@@ -1092,8 +1457,8 @@ void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter,
 	struct LINK *prCurEssLink;
 	struct AIS_SPECIFIC_BSS_INFO *prAisSpecBssInfo;
 	uint8_t aucChnlBitMap[30] = {0,};
-	uint8_t aucChnlApNum[215] = {0,};
-	uint8_t aucChnlUtil[215] = {0,};
+	uint8_t aucChnlApNum[234] = {0,};
+	uint8_t aucChnlUtil[234] = {0,};
 	uint8_t ucChnlCount = 0;
 	uint32_t i;
 	uint8_t j = 0;
@@ -1140,9 +1505,10 @@ void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter,
 		LINK_REMOVE_KNOWN_ENTRY(prCurEssLink,
 			&prBssDesc->rLinkEntryEss[ucBssIndex]);
 	}
+
 	LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList, rLinkEntry,
 		struct BSS_DESC) {
-		if (prBssDesc->ucChannelNum > 214)
+		if (prBssDesc->ucChannelNum > 233)
 			continue;
 		/* Statistic AP num for each channel */
 		if (aucChnlApNum[prBssDesc->ucChannelNum] < 255)
@@ -1165,7 +1531,8 @@ void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter,
 			continue;
 #endif
 		if (!scanUpdateChannelList(prBssDesc->ucChannelNum,
-			aucChnlBitMap, &ucChnlCount, prEssChnlInfo))
+			prBssDesc->eBand, aucChnlBitMap, &ucChnlCount,
+			prEssChnlInfo))
 			goto updated;
 	}
 
@@ -1182,9 +1549,11 @@ void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter,
 		for (i = 0; ucChnlCount < CFG_MAX_NUM_OF_CHNL_INFO &&
 			i < ncho->ucChannelListNum; i++) {
 			uint8_t chnl;
+			enum ENUM_BAND eBand;
 
 			chnl = ncho->arChnlInfoList[i].ucChannelNum;
-			if (!scanUpdateChannelList(chnl,
+			eBand = ncho->arChnlInfoList[i].eBand;
+			if (!scanUpdateChannelList(chnl, eBand,
 			    aucChnlBitMap, &ucChnlCount, prEssChnlInfo))
 				goto updated;
 		}
@@ -1200,18 +1569,18 @@ void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter,
 		/* Add channels provided by Neighbor Report to
 		 ** channel list for roaming scanning.
 		 */
-		struct NEIGHBOR_AP_T *prNeiAP = NULL;
+		struct NEIGHBOR_AP *prNeiAP = NULL;
 		enum ENUM_BAND eBand;
 		uint8_t ucChannel;
 
 		LINK_FOR_EACH_ENTRY(prNeiAP, prNeighborAPLink,
-		    rLinkEntry, struct NEIGHBOR_AP_T) {
+		    rLinkEntry, struct NEIGHBOR_AP) {
 			ucChannel = prNeiAP->ucChannel;
-			eBand = ucChannel <= 14 ? BAND_2G4 : BAND_5G;
+			eBand = prNeiAP->eBand;
 			if (!rlmDomainIsLegalChannel(
 				prAdapter, eBand, ucChannel))
 				continue;
-			if (!scanUpdateChannelList(ucChannel,
+			if (!scanUpdateChannelList(ucChannel, eBand,
 				aucChnlBitMap, &ucChnlCount, prEssChnlInfo))
 				goto updated;
 		}
@@ -1222,9 +1591,11 @@ void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter,
 	for (i = 0; ucChnlCount < CFG_MAX_NUM_OF_CHNL_INFO &&
 		i < prRoamScnChnl->ucChannelListNum; i++) {
 		uint8_t chnl;
+		enum ENUM_BAND eBand;
 
 		chnl = prRoamScnChnl->arChnlInfoList[i].ucChannelNum;
-		if (!scanUpdateChannelList(chnl,
+		eBand = prRoamScnChnl->arChnlInfoList[i].eBand;
+		if (!scanUpdateChannelList(chnl, eBand,
 		    aucChnlBitMap, &ucChnlCount, prEssChnlInfo))
 			goto updated;
 	}
@@ -1256,23 +1627,6 @@ updated:
 		prCurEssLink->u4NumElem);
 }
 
-uint8_t scanInDecidingRoaming(struct ADAPTER *prAdapter, uint8_t ucBssIndex)
-{
-	struct ROAMING_INFO *roam;
-	enum ENUM_PARAM_CONNECTION_POLICY policy;
-	struct CONNECTION_SETTINGS *setting;
-
-	roam = aisGetRoamingInfo(prAdapter, ucBssIndex);
-	setting = aisGetConnSettings(prAdapter, ucBssIndex);
-	policy = setting->eConnectionPolicy;
-
-	return IS_BSS_INDEX_AIS(prAdapter, ucBssIndex) &&
-	       roam->fgIsEnableRoaming &&
-	       roam->eCurrentState == ROAMING_STATE_DECISION &&
-	       policy != CONNECT_BY_BSSID ? TRUE : FALSE;
-
-}
-
 uint8_t scanCheckNeedDriverRoaming(
 	struct ADAPTER *prAdapter, uint8_t ucBssIndex)
 {
@@ -1292,8 +1646,9 @@ uint8_t scanCheckNeedDriverRoaming(
 	/*
 	 * try to select AP only when roaming is enabled and rssi is bad
 	 */
-	if (scanInDecidingRoaming(prAdapter, ucBssIndex) &&
+	if (roamingFsmInDecision(prAdapter, ucBssIndex) &&
 	    ais->eCurrentState == AIS_STATE_ONLINE_SCAN &&
+	    rssi < RSSI_BAD_NEED_ROAM &&
 	    CHECK_FOR_TIMEOUT(roam->rRoamingDiscoveryUpdateTime,
 		      roam->rRoamingLastDecisionTime,
 		      SEC_TO_SYSTIME(prAdapter->rWifiVar.u4InactiveTimeout))) {
@@ -1301,32 +1656,11 @@ uint8_t scanCheckNeedDriverRoaming(
 		struct BSS_DESC *bss;
 
 		target = aisGetTargetBssDesc(prAdapter, ucBssIndex);
-
 		bss = scanSearchBssDescByScoreForAis(prAdapter,
 			ROAMING_REASON_INACTIVE, ucBssIndex);
+		if (bss && bss->ucRCPI - target->ucRCPI > RCPI_DIFF_DRIVER_ROAM)
+			return TRUE;
 
-		if (bss == NULL)
-			return FALSE;
-		/* 2.4 -> 5 */
-		if (bss->eBand == BAND_5G && target->eBand == BAND_2G4) {
-			if (rssi > RSSI_BAD_NEED_ROAM_24G_TO_5G)
-				return FALSE;
-			if (bss->ucRCPI >= RCPI_THRESHOLD_ROAM_TO_5G ||
-			bss->ucRCPI - target->ucRCPI > RCPI_DIFF_DRIVER_ROAM) {
-				log_dbg(SCN, INFO,
-					"Driver trigger roaming to 5G band.\n");
-				return TRUE;
-			}
-		} else {
-			if (rssi > RSSI_BAD_NEED_ROAM)
-				return FALSE;
-			if (bss->ucRCPI - target->ucRCPI >
-				RCPI_DIFF_DRIVER_ROAM) {
-				log_dbg(SCN, INFO,
-				"Driver trigger roaming for other cases.\n");
-				return TRUE;
-			}
-		}
 	}
 #endif
 
@@ -1349,7 +1683,7 @@ uint8_t scanBeaconTimeoutFilterPolicyForAis(struct ADAPTER *prAdapter,
 	int8_t rssi;
 
 	rssi = prAdapter->rLinkQuality.rLq[ucBssIndex].cRssi;
-	if (scanInDecidingRoaming(prAdapter, ucBssIndex) &&
+	if (roamingFsmInDecision(prAdapter, ucBssIndex) &&
 	    rssi > GOOD_RSSI_FOR_HT_VHT - 5) {
 		struct BSS_DESC *target;
 		struct BSS_DESC *bss;

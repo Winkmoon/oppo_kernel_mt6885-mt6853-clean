@@ -16,6 +16,26 @@
 #define CONSYS_PWR_ON_OFF_API_AVAILABLE	1
 #define CONSYS_RC_MODE_ENABLE		1
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+#define COMMON_KERNEL_EMI_MPU_SUPPORT	1
+#define COMMON_KERNEL_PMIC_SUPPORT	1
+#else
+#define COMMON_KERNEL_EMI_MPU_SUPPORT	0
+#define COMMON_KERNEL_PMIC_SUPPORT	0
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#define COMMON_KERNEL_CLK_SUPPORT	1
+#else
+#define COMMON_KERNEL_CLK_SUPPORT	0
+#endif
+
+#if CONSYS_PMIC_CTRL_ENABLE
+#if COMMON_KERNEL_PMIC_SUPPORT
+#include <linux/mfd/mt6359p/registers.h>
+#endif
+#endif
+
 /*******************************************************************************
 *                                 M A C R O S
 ********************************************************************************
@@ -277,6 +297,85 @@
 /**********************************************************************/
 /* Base: conn_mcu_cfg_on_base (0x180a_3000) */
 /**********************************************************************/
+/**********************************************************************/
+/* PMIC mt6359P define for Quark project only*/
+/**********************************************************************/
+#ifndef MT6359_PMIC_REG_BASE
+
+#define MT6359_PMIC_REG_BASE                 ((unsigned int)(0x0))
+
+#define MT6359_BUCK_VS2_CON1                 (MT6359_PMIC_REG_BASE+0x188e)
+#define MT6359_BUCK_VS2_VOTER_SET            (MT6359_PMIC_REG_BASE+0x18ac)
+#define MT6359_BUCK_VS2_VOTER_CLR            (MT6359_PMIC_REG_BASE+0x18ae)
+#define MT6359_BUCK_VS2_ELR0                 (MT6359_PMIC_REG_BASE+0x18b4)
+#define MT6359_LDO_VCN33_1_CON0              (MT6359_PMIC_REG_BASE+0x1be2)
+#define MT6359_LDO_VCN33_1_OP_EN_SET         (MT6359_PMIC_REG_BASE+0x1bea)
+#define MT6359_LDO_VCN33_1_OP_CFG_SET        (MT6359_PMIC_REG_BASE+0x1bf0)
+#define MT6359_LDO_VCN33_2_CON0              (MT6359_PMIC_REG_BASE+0x1c08)
+#define MT6359_LDO_VCN33_2_OP_EN_SET         (MT6359_PMIC_REG_BASE+0x1c10)
+#define MT6359_LDO_VCN33_2_OP_CFG_SET        (MT6359_PMIC_REG_BASE+0x1c16)
+#define MT6359_LDO_VCN13_CON0                (MT6359_PMIC_REG_BASE+0x1c1c)
+#define MT6359_LDO_VCN13_OP_EN_SET           (MT6359_PMIC_REG_BASE+0x1c24)
+#define MT6359_LDO_VCN13_OP_CFG_SET          (MT6359_PMIC_REG_BASE+0x1c2a)
+#define MT6359_LDO_VCN18_CON0                (MT6359_PMIC_REG_BASE+0x1c2e)
+#define MT6359_LDO_VCN18_OP_EN_SET           (MT6359_PMIC_REG_BASE+0x1c36)
+#define MT6359_LDO_VCN18_OP_CFG_SET          (MT6359_PMIC_REG_BASE+0x1c3c)
+#define MT6359_VCN13_ANA_CON0                (MT6359_PMIC_REG_BASE+0x202e)
+
+#define PMIC_RG_BUCK_VS2_VOTER_EN_SET_ADDR                  \
+	MT6359_BUCK_VS2_VOTER_SET
+#define PMIC_RG_BUCK_VS2_VOTER_EN_SET_MASK                  0xFFF
+#define PMIC_RG_BUCK_VS2_VOTER_EN_SET_SHIFT                 0
+#define PMIC_RG_BUCK_VS2_VOTER_EN_CLR_ADDR                  \
+	MT6359_BUCK_VS2_VOTER_CLR
+#define PMIC_RG_BUCK_VS2_VOTER_EN_CLR_MASK                  0xFFF
+#define PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT                 0
+#define PMIC_RG_BUCK_VS2_VOSEL_ADDR                         \
+	MT6359_BUCK_VS2_ELR0
+#define PMIC_RG_BUCK_VS2_VOSEL_MASK                         0x7F
+#define PMIC_RG_BUCK_VS2_VOSEL_SHIFT                        0
+#define PMIC_RG_BUCK_VS2_VOSEL_SLEEP_ADDR                   \
+	MT6359_BUCK_VS2_CON1
+#define PMIC_RG_BUCK_VS2_VOSEL_SLEEP_MASK                   0x7F
+#define PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT                  0
+#define PMIC_RG_LDO_VCN33_1_LP_ADDR                         \
+	MT6359_LDO_VCN33_1_CON0
+#define PMIC_RG_LDO_VCN33_1_LP_MASK                         0x1
+#define PMIC_RG_LDO_VCN33_1_LP_SHIFT                        1
+#define PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR                  \
+	MT6359_LDO_VCN33_1_OP_EN_SET
+#define PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR                 \
+	MT6359_LDO_VCN33_1_OP_CFG_SET
+#define PMIC_RG_LDO_VCN33_2_LP_ADDR                         \
+	MT6359_LDO_VCN33_2_CON0
+#define PMIC_RG_LDO_VCN33_2_LP_MASK                         0x1
+#define PMIC_RG_LDO_VCN33_2_LP_SHIFT                        1
+#define PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR                  \
+	MT6359_LDO_VCN33_2_OP_EN_SET
+#define PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR                 \
+	MT6359_LDO_VCN33_2_OP_CFG_SET
+#define PMIC_RG_LDO_VCN13_LP_ADDR                           \
+	MT6359_LDO_VCN13_CON0
+#define PMIC_RG_LDO_VCN13_LP_MASK                           0x1
+#define PMIC_RG_LDO_VCN13_LP_SHIFT                          1
+#define PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR                    \
+	MT6359_LDO_VCN13_OP_EN_SET
+#define PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR                   \
+	MT6359_LDO_VCN13_OP_CFG_SET
+#define PMIC_RG_LDO_VCN18_LP_ADDR                           \
+	MT6359_LDO_VCN18_CON0
+#define PMIC_RG_LDO_VCN18_LP_MASK                           0x1
+#define PMIC_RG_LDO_VCN18_LP_SHIFT                          1
+#define PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR                    \
+	MT6359_LDO_VCN18_OP_EN_SET
+#define PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR                   \
+	MT6359_LDO_VCN18_OP_CFG_SET
+#define PMIC_RG_VCN13_VOCAL_ADDR                            \
+	MT6359_VCN13_ANA_CON0
+#define PMIC_RG_VCN13_VOCAL_MASK                            0xF
+#define PMIC_RG_VCN13_VOCAL_SHIFT                           0
+
+#endif
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -317,6 +416,44 @@ extern struct bt_wifi_v33_status gBtWifiV33;
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
+extern INT32 dump_conn_mcu_pc_log_mt6853(const char *trg_str);
+extern INT32 dump_conn_debug_dump_mt6853(const char *);
+extern INT32 dump_conn_mcu_debug_flag_mt6853(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer1_mt6853(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer2_mt6853(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer3_mt6853(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer4_mt6853(const char *);
+extern INT32 dump_conn_mcu_ahb_timeout_info_mt6853(const char *);
+extern INT32 dump_conn_bus_hang_debug_mt6853(const char *);
+extern INT32 dump_conn_mcu_apb_timeout_info_mt6853(const char *);
+extern INT32 dump_conn_apb_bus0_hang_mt6853(const char *);
+extern INT32 dump_conn_apb_bus1_hang_mt6853(const char *);
+extern INT32 dump_conn_apb_bus2_hang_mt6853(const char *);
+extern INT32 dump_conn_emi_ctrl_host_csr_mt6853(const char *);
+extern INT32 dump_conn_mcu_confg_emi_ctrl_mt6853(const char *);
+extern INT32 dump_conn_mcu_cpu_probe_mt6853(const char *);
+extern INT32 dump_conn_mcu_ahb_probe_mt6853(const char *);
+extern INT32 dump_conn_mcu_idlm_prot_prob_mt6853(const char *);
+extern INT32 dump_conn_mcu_wf_cmdbt_ram_prob_mt6853(const char *);
+extern INT32 dump_conn_mcu_pda_dbg_flag_mt6853(const char *);
+extern INT32 dump_conn_mcu_sysram_prb_mt6853(const char *);
+extern INT32 dump_conn_mcu_confg_mt6853(const char *);
+extern INT32 dump_conn_mcu_i_eidlm_mt6853(const char *);
+extern INT32 dump_conn_mcu_dma_mt6853(const char *);
+extern INT32 dump_conn_mcu_tcm_prob_mt6853(const char *);
+extern INT32 dump_conn_mcu_met_prob_mt6853(const char *);
+extern INT32 dump_conn_mcusys_n9_mt6853(const char *);
+extern INT32 dump_conn_mcu_uart_dbg_loop_mt6853(const char *);
+extern INT32 dump_conn_cfg_on_Debug_Signal_mt6853(const char *);
+extern INT32 dump_conn_cfg_on_register_mt6853(const char *);
+extern INT32 dump_conn_cmdbt_debug_signal_mt6853(const char *);
+extern INT32 dump_conn_cmdbt_register_mt6853(const char *);
+extern INT32 dump_conn_emi_detect_mt6853(const char *);
+extern INT32 dump_conn_cmdbt_debug_mt6853(const char *);
+extern INT32 dump_conn_hif_reg_debug_mt6853(const char *);
+extern INT32 dump_conn_mcu_confg_bus_hang_reg_mt6853(const char *);
+extern INT32 dump_wf_pdma_reg_debug_mt6853(const char *);
+extern INT32 dump_conn_to_EMI_bus_path_mt6853(const char *trg_str);
 
 /*******************************************************************************
 *                              F U N C T I O N S

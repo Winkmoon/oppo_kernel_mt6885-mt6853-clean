@@ -126,10 +126,8 @@ static u_int8_t p2pFsmUseRoleIf(IN struct ADAPTER *prAdapter,
 			fgUseRoleInterface = TRUE;
 			if (prBssInfo->eIftype != IFTYPE_P2P_CLIENT &&
 				prBssInfo->eIftype != IFTYPE_P2P_GO &&
-				!p2pFuncIsAPMode(
-				prAdapter->rWifiVar
-				.prP2PConnSettings
-				[prBssInfo->u4PrivateData])) {
+				!prAdapter->rWifiVar.prP2PConnSettings
+				[prBssInfo->u4PrivateData]->fgIsApMode) {
 				DBGLOG(P2P, TRACE,
 					"force use dev interface.\n");
 				fgUseRoleInterface = FALSE;
@@ -358,6 +356,16 @@ void p2pFsmRunEventWfdSettingUpdate(IN struct ADAPTER *prAdapter,
 					->rP2pRoleFsmGetStatisticsTimer);
 				/* Reset linkscore */
 				prWfdCfgSettings->u4LinkScore = 0;
+			}
+
+			/* Force RTS to protect WFD packet */
+			wlanSetForceRTS(prAdapter,
+				prWfdCfgSettings->ucWfdEnable);
+
+			/* Update WMM to add BA immediately */
+			if (prWfdCfgSettings->ucWfdEnable == 1) {
+				nicQmUpdateWmmParms(prAdapter,
+					prP2pRoleFsmInfo->ucBssIndex);
 			}
 		}
 #endif

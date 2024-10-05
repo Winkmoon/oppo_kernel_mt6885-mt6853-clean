@@ -124,17 +124,28 @@
 
 /* Full2Partial */
 /* Define a full scan as scan channel number larger than this number */
-#define SCAN_FULL2PARTIAL_CHANNEL_NUM           (20)
+#define SCAN_FULL2PARTIAL_CHANNEL_NUM           (25)
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#define SCAN_CHANNEL_BITMAP_ARRAY_LEN           (8 + 8)
+#else
 #define SCAN_CHANNEL_BITMAP_ARRAY_LEN           (8)
+#endif
 #define BITS_OF_UINT                            (32)
 #define BITS_OF_BYTE                            (8)
 
 /* dwell time setting, should align FW setting */
-#define SCAN_CHANNEL_DWELL_TIME_MIN_MSEC         (42)
+#define SCAN_CHANNEL_DWELL_TIME_MIN_MSEC        (42)
+#define SCAN_SPLIT_PACKETS_THRESHOLD		(30)
 
 /* dwell time setting, reduce APP trigger scan dwell time to 20 */
 #define SCAN_CHANNEL_MIN_DWELL_TIME_MSEC_APP	(20)
 #define SCAN_CHANNEL_DWELL_TIME_MSEC_APP	(40)
+
+/* dwell time setting for OCE certification */
+#define SCAN_CHANNEL_DWELL_TIME_OCE         (42 + 28)
+
+/* dwell time setting for VOE certification */
+#define SCAN_CHANNEL_DWELL_TIME_VOE         (42 + 8)
 
 /*----------------------------------------------------------------------------*/
 /* MSG_SCN_SCAN_REQ                                                           */
@@ -177,7 +188,7 @@
 
 #define SCN_CTRL_DEFAULT_SCAN_CTRL		SCN_CTRL_IGNORE_AIS_FIX_CHANNEL
 
-#define SCN_SCAN_DONE_PRINT_BUFFER_LENGTH	300
+#define SCN_SCAN_DONE_PRINT_BUFFER_LENGTH	350
 /*******************************************************************************
  *                             D A T A   T Y P E S
  *******************************************************************************
@@ -214,10 +225,14 @@ enum ENUM_FW_SCAN_STATE {
 
 enum ENUM_SCAN_CHANNEL {
 	SCAN_CHANNEL_FULL = 0,
-	SCAN_CHANNEL_2G4,
-	SCAN_CHANNEL_5G,
-	SCAN_CHANNEL_P2P_SOCIAL,
-	SCAN_CHANNEL_SPECIFIED,
+	SCAN_CHANNEL_2G4 = 1,
+	SCAN_CHANNEL_5G = 2,
+	SCAN_CHANNEL_P2P_SOCIAL = 3,
+	SCAN_CHANNEL_SPECIFIED = 4,
+	SCAN_CHANNEL_5G_NO_DFS = 5,
+	SCAN_CHANNEL_5G_DFS_ONLY = 6,
+	SCAN_CHANNEL_FULL_NO_DFS = 7,
+	SCAN_CHANNEL_6G = 8,
 	SCAN_CHANNEL_NUM
 };
 
@@ -280,11 +295,13 @@ struct BSS_DESC {
 
 	/* If we are going to connect to this BSS (JOIN or ROAMING to another
 	 * BSS), don't remove this record from BSS List.
+	 * Is a Bitmap, Bit0: BSS0, Bit1: Bss1
 	 */
 	u_int8_t fgIsConnecting;
 
 	/* If we have connected to this BSS (NORMAL_TR), don't removed
 	 * this record from BSS list.
+	 * Is a Bitmap, Bit0: BSS0, Bit1: Bss1
 	 */
 	u_int8_t fgIsConnected;
 
@@ -314,6 +331,14 @@ struct BSS_DESC {
 	u_int8_t fgIsVHTPresent;
 #if (CFG_SUPPORT_802_11AX == 1)
 	u_int8_t fgIsHEPresent;
+	uint8_t ucHePhyCapInfo[HE_PHY_CAP_BYTE_NUM];
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	u_int8_t fgIsHE6GPresent;
+	u_int8_t fgIsCoHostedBssPresent;
+#endif
+#endif
+#if (CFG_SUPPORT_802_11BE == 1)
+	u_int8_t fgIsEHTPresent;
 #endif
 
 #if (CFG_SUPPORT_802_11V_MBSSID == 1)
@@ -339,9 +364,10 @@ struct BSS_DESC {
 	 */
 	enum ENUM_CHNL_EXT eSco;
 
-	enum ENUM_CHANNEL_WIDTH eChannelWidth;	/* VHT operation ie */
+	enum ENUM_CHANNEL_WIDTH eChannelWidth;	/* VHT, HE operation ie */
 	uint8_t ucCenterFreqS1;
 	uint8_t ucCenterFreqS2;
+	uint8_t ucCenterFreqS3;
 	enum ENUM_BAND eBand;
 
 	uint8_t ucDTIMPeriod;
@@ -365,9 +391,11 @@ struct BSS_DESC {
 	uint32_t u4RsnSelectedAKMSuite;
 
 	uint16_t u2RsnCap;
+	uint16_t u2RsnxCap;
 
 	struct RSN_INFO rRSNInfo;
 	struct RSN_INFO rWPAInfo;
+	struct RSNX_INFO rRSNXInfo;
 #if 1	/* CFG_SUPPORT_WAPI */
 	struct WAPI_INFO rIEWAPI;
 	u_int8_t fgIEWAPI;
@@ -375,6 +403,7 @@ struct BSS_DESC {
 	u_int8_t fgIERSN;
 	u_int8_t fgIEWPA;
 	u_int8_t fgIEOsen;
+	u_int8_t fgIERSNX;
 
 	/*! \brief RSN parameters selected for connection */
 	/*! \brief The Select score for final AP selection,
@@ -433,8 +462,15 @@ struct BSS_DESC {
 
 	/* Support AP Selection */
 	struct AIS_BLACKLIST_ITEM *prBlack;
+
+#if CFG_SUPPORT_802_11K
+	struct NEIGHBOR_AP *prNeighbor;
+	uint8_t fgQueriedCandidates;
+#endif
 #if CFG_SUPPORT_MBO
 	uint8_t fgIsDisallowed;
+	uint8_t fgExistEspIE;
+	uint32_t u4EspInfo[WIFI_AC_MAX];
 #endif
 	uint16_t u2StaCnt;
 	uint16_t u2AvaliableAC; /* Available Admission Capacity */
@@ -469,6 +505,7 @@ struct SCAN_PARAM {	/* Used by SCAN FSM */
 	/* Specified SSID Type */
 	uint8_t ucSSIDType;
 	uint8_t ucSSIDNum;
+	uint8_t ucShortSSIDNum;
 
 	/* Length of Specified SSID */
 	uint8_t ucSpecifiedSSIDLen[SCN_SSID_MAX_NUM];
@@ -489,7 +526,7 @@ struct SCAN_PARAM {	/* Used by SCAN FSM */
 	uint16_t u2ChannelMinDwellTime;
 	uint16_t u2TimeoutValue;
 
-	uint8_t aucBSSID[MAC_ADDR_LEN];
+	uint8_t aucBSSID[CFG_SCAN_OOB_MAX_NUM][MAC_ADDR_LEN];
 
 	enum ENUM_MSG_ID eMsgId;
 	u_int8_t fgIsScanV2;
@@ -509,10 +546,14 @@ struct SCAN_PARAM {	/* Used by SCAN FSM */
 	/* Feedback information */
 	uint8_t ucSeqNum;
 
+	/* For 6G OOB discovery*/
+	uint8_t ucBssidMatchCh[CFG_SCAN_OOB_MAX_NUM];
+	uint8_t ucBssidMatchSsidInd[CFG_SCAN_OOB_MAX_NUM];
+	u_int8_t fg6gOobRnrParseEn;
+
 	/* Information Element */
 	uint16_t u2IELen;
 	uint8_t aucIE[MAX_IE_LENGTH];
-
 };
 
 struct SCHED_SCAN_PARAM {	/* Used by SCAN FSM */
@@ -580,11 +621,25 @@ struct SCAN_INFO {
 	/* Beacon and Probe Response Count in each Channel */
 	uint8_t		aucChannelBAndPCnt[64];
 	uint16_t	au2ChannelScanTime[64];
+	/* eBand infor for differing the 2g4/6g */
+	enum ENUM_BAND aeChannelBand[64];
+
 	/* Support AP Selection */
 	uint32_t u4ScanUpdateIdx;
-
 	/* Scan log cache */
 	struct SCAN_LOG_CACHE rScanLogCache;
+
+#if CFG_SUPPORT_SCAN_NO_AP_RECOVERY
+	uint8_t		ucScnZeroMdrdyTimes;
+	uint8_t		ucScnZeroMdrdySerCnt;
+	uint8_t		ucScnZeroMdrdySubsysResetCnt;
+	uint8_t		ucScnTimeoutTimes;
+	uint8_t		ucScnTimeoutSubsysResetCnt;
+#endif
+	/*Skip DFS channel scan or not */
+	u_int8_t	fgSkipDFS;
+	uint8_t		fgIsScanTimeout;
+	OS_SYSTIME rLastScanStartTime;
 };
 
 /* Incoming Mailbox Messages */
@@ -630,6 +685,15 @@ struct MSG_SCN_SCAN_REQ_V2 {
 	struct RF_CHANNEL_INFO arChnlInfoList[MAXIMUM_OPERATION_CHANNEL_LIST];
 	uint8_t ucScnFuncMask;
 	uint8_t aucRandomMac[MAC_ADDR_LEN];	/* random mac */
+
+	/* pass from PARAM_SCAN_REQUEST_ADV.aucBssid */
+	uint8_t aucExtBssid[CFG_SCAN_OOB_MAX_NUM][MAC_ADDR_LEN];
+	uint8_t ucShortSSIDNum;
+	/* For 6G OOB discovery*/
+	uint8_t ucBssidMatchCh[CFG_SCAN_OOB_MAX_NUM];
+	uint8_t ucBssidMatchSsidInd[CFG_SCAN_OOB_MAX_NUM];
+	u_int8_t fg6gOobRnrParseEn;
+
 	uint16_t u2IELen;
 	uint8_t aucIE[MAX_IE_LENGTH];
 };
@@ -677,6 +741,15 @@ struct AGPS_AP_LIST {
 	struct AGPS_AP_INFO arApInfo[SCN_AGPS_AP_LIST_MAX_NUM];
 };
 #endif
+
+#if (CFG_SUPPORT_WIFI_RNR == 1)
+struct NEIGHBOR_AP_INFO {
+	struct LINK_ENTRY rLinkEntry;
+	struct PARAM_SCAN_REQUEST_ADV rScanRequest;
+	uint8_t aucScanIEBuf[MAX_IE_LENGTH];
+};
+#endif
+
 /*******************************************************************************
  *                            P U B L I C   D A T A
  *******************************************************************************
@@ -706,6 +779,8 @@ extern const char aucScanLogPrefix[][SCAN_LOG_PREFIX_MAX_LEN];
 	} while (0)
 #endif /* DBG_DISABLE_ALL_LOG */
 
+#define IS_6G_OP_CLASS(_opClass) \
+	((_opClass >= 131) && (_opClass <= 135))
 
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S
@@ -779,7 +854,8 @@ void scanRemoveBssDescByBandAndNetwork(
 
 /* BSS-DESC State Change */
 void scanRemoveConnFlagOfBssDescByBssid(IN struct ADAPTER *prAdapter,
-					IN uint8_t aucBSSID[]);
+					IN uint8_t aucBSSID[],
+					IN uint8_t ucBssIndex);
 
 /* BSS-DESC Insertion - ALTERNATIVE */
 struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
@@ -810,6 +886,9 @@ uint32_t scanAddScanResult(IN struct ADAPTER *prAdapter,
 void scanReportBss2Cfg80211(IN struct ADAPTER *prAdapter,
 			    IN enum ENUM_BSS_TYPE eBSSType,
 			    IN struct BSS_DESC *SpecificprBssDesc);
+
+bool scnEnableSplitScan(struct ADAPTER *prAdapter,
+				uint8_t ucBssIndex);
 
 /*----------------------------------------------------------------------------*/
 /* Routines in scan_fsm.c                                                     */
@@ -900,6 +979,18 @@ void scnSetSchedScanPlan(IN struct ADAPTER *prAdapter,
 
 #endif /* CFG_SUPPORT_SCHED_SCAN */
 
+#if CFG_SUPPORT_SCAN_NO_AP_RECOVERY
+void scnDoZeroMdrdyRecoveryCheck(IN struct ADAPTER *prAdapter,
+			IN struct EVENT_SCAN_DONE *prScanDone,
+			IN struct SCAN_INFO *prScanInfo, IN uint8_t ucBssIndex);
+void scnDoScanTimeoutRecoveryCheck(IN struct ADAPTER *prAdapter,
+			IN uint8_t ucBssIndex);
+
+#endif
+
+void scnFsmNotifyEvent(IN struct ADAPTER *prAdapter,
+			IN enum ENUM_SCAN_STATUS eStatus,
+			IN uint8_t ucBssIndex);
 void scanLogEssResult(struct ADAPTER *prAdapter);
 void scanInitEssResult(struct ADAPTER *prAdapter);
 #if CFG_SUPPORT_SCAN_CACHE_RESULT
@@ -915,10 +1006,11 @@ void scanLogCacheAddBSS(struct LINK *prList,
 	struct SCAN_LOG_ELEM_BSS *prListBuf,
 	enum ENUM_SCAN_LOG_PREFIX prefix,
 	uint8_t bssId[], uint16_t seq);
-void scanLogCacheFlushBSS(struct LINK *prList, enum ENUM_SCAN_LOG_PREFIX prefix,
-	const uint16_t logBufLen);
-void scanLogCacheFlushAll(struct SCAN_LOG_CACHE *prScanLogCache,
-	enum ENUM_SCAN_LOG_PREFIX prefix, const uint16_t logBufLen);
+void scanLogCacheFlushBSS(struct LINK *prList,
+			enum ENUM_SCAN_LOG_PREFIX prefix);
+void scanLogCacheFlushAll(struct ADAPTER *prAdapter,
+	struct SCAN_LOG_CACHE *prScanLogCache,
+	enum ENUM_SCAN_LOG_PREFIX prefix);
 
 void scanRemoveBssDescFromList(IN struct LINK *prBSSDescList,
 			       IN struct BSS_DESC *prBssDesc,
@@ -936,4 +1028,17 @@ void scanParseVHTOpIE(IN uint8_t *pucIE, IN struct BSS_DESC *prBssDesc);
 
 void scanCheckAdaptive11rIE(IN uint8_t *pucBuf, IN struct BSS_DESC *prBssDesc);
 
+void scanHandleOceIE(IN struct SCAN_PARAM *prScanParam,
+	IN struct CMD_SCAN_REQ_V2 *prCmdScanReq);
+
+void scnFsmDumpScanDoneInfo(IN struct ADAPTER *prAdapter,
+	IN struct EVENT_SCAN_DONE *prScanDone);
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+void scanParseHEOpIE(IN uint8_t *pucIE, IN struct BSS_DESC *prBssDesc,
+	IN enum ENUM_BAND eHwBand);
+#endif
+
+void updateLinkStatsApRec(struct ADAPTER *prAdapter,
+		struct BSS_DESC *prBssDesc);
 #endif /* _SCAN_H */

@@ -153,7 +153,61 @@ void p2pSetSuspendMode(struct GLUE_INFO *prGlueInfo, u_int8_t fgEnable)
 
 	kalSetNetAddressFromInterface(prGlueInfo, prDev, fgEnable);
 	wlanNotifyFwSuspend(prGlueInfo, prDev, fgEnable);
+
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	/*
+	 * For case P2pRoleFsmGetStatisticsTimer is stopped by system suspend.
+	 * We need to recall P2pRoleFsmGetStatisticsTimer when system resumes.
+	 */
+	p2pResumeStatisticsTimer(prGlueInfo, prDev);
+#endif
 }
+
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+void p2pResumeStatisticsTimer(struct GLUE_INFO *prGlueInfo,
+	struct net_device *prNetDev)
+{
+	struct BSS_INFO *prP2pBssInfo = (struct BSS_INFO *) NULL;
+	struct P2P_ROLE_FSM_INFO *prP2pRoleFsmInfo =
+		(struct P2P_ROLE_FSM_INFO *) NULL;
+	uint8_t ucBssIndex = 0;
+
+	if (!prGlueInfo)
+		return;
+
+	ucBssIndex = wlanGetBssIdx(prNetDev);
+
+	if (!IS_BSS_INDEX_VALID(ucBssIndex)) {
+		DBGLOG(P2P, ERROR,
+			"StatisticsTimer resume failed. ucBssIndex is invalid\n");
+		return;
+	}
+
+	prP2pBssInfo = GET_BSS_INFO_BY_INDEX(prGlueInfo->prAdapter, ucBssIndex);
+	if (!prP2pBssInfo) {
+		DBGLOG(P2P, ERROR,
+			"StatisticsTimer resume failed. prP2pBssInfo is NULL\n");
+		return;
+	}
+
+	prP2pRoleFsmInfo =
+		P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prGlueInfo->prAdapter,
+			(uint8_t) prP2pBssInfo->u4PrivateData);
+
+	if (!prP2pRoleFsmInfo) {
+		DBGLOG(P2P, ERROR,
+			"StatisticsTimer resume failed. prP2pRoleFsmInfo is NULL\n");
+		return;
+	}
+
+	if (prGlueInfo->prAdapter->rWifiVar.rWfdConfigureSettings.ucWfdEnable &&
+		!prGlueInfo->fgIsInSuspendMode) {
+		cnmTimerStartTimer(prGlueInfo->prAdapter,
+			&(prP2pRoleFsmInfo->rP2pRoleFsmGetStatisticsTimer),
+			P2P_ROLE_GET_STATISTICS_TIME);
+	}
+}
+#endif
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -221,6 +275,10 @@ void p2pSetMode(IN uint8_t ucAPMode)
 		ifname = prP2PInfName;
 		ifname2 = prAPInfName;
 		break;
+	case 4:
+		mode = RUNNING_DUAL_P2P_MODE;
+		ifname = prP2PInfName;
+		break;
 	}
 }				/* p2pSetMode */
 
@@ -236,13 +294,20 @@ u_int8_t p2pRemove(struct GLUE_INFO *prGlueInfo)
 {
 	u_int8_t idx = 0;
 
+	GLUE_SPIN_LOCK_DECLARATION();
+	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+
+	g_P2pPrDev = NULL;
+
 	if (prGlueInfo->prAdapter->fgIsP2PRegistered == FALSE) {
 		DBGLOG(P2P, INFO, "p2p is not registered\n");
+		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		return FALSE;
 	}
 
 	prGlueInfo->prAdapter->fgIsP2PRegistered = FALSE;
 	prGlueInfo->prAdapter->p2p_scan_report_all_bss = FALSE;
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
 	glUnregisterP2P(prGlueInfo, 0xff);
 
@@ -261,7 +326,7 @@ u_int8_t p2pRemove(struct GLUE_INFO *prGlueInfo)
 		}
 #endif
 		/* free gprP2pWdev in wlanDestroyAllWdev */
-		if (gprP2pRoleWdev[idx] == gprP2pWdev)
+		if (gprP2pRoleWdev[idx] == gprP2pWdev[idx])
 			continue;
 
 		DBGLOG(INIT, INFO, "Unregister gprP2pRoleWdev[%d]\n", idx);
@@ -282,7 +347,7 @@ u_int8_t p2pRemove(struct GLUE_INFO *prGlueInfo)
 	 * system operation (poweroff, suspend) might reference it.
 	 * set_wiphy_dev(wiphy, NULL): set the wiphy->dev->parent = NULL
 	 */
-	if (gprP2pWdev != NULL)
+	if (gprP2pWdev[0] != NULL)
 		set_wiphy_dev(gprP2pWdev->wiphy, NULL);
 #endif
 

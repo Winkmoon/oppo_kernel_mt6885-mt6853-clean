@@ -189,7 +189,7 @@ signed int fm_cmd_tx(unsigned char *buf, unsigned short len, signed int mask, si
 
 signed int fm_event_parser(signed int(*rds_parser) (struct rds_rx_t *, signed int))
 {
-	signed int len;
+	signed int len = 0;
 	signed int i = 0;
 	unsigned char opcode = 0;
 	unsigned short length = 0;

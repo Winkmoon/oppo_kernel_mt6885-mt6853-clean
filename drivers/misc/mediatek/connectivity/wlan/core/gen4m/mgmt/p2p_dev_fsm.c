@@ -656,7 +656,7 @@ void p2pDevFsmRunEventScanRequest(IN struct ADAPTER *prAdapter,
 }				/* p2pDevFsmRunEventScanRequest */
 
 void p2pDevFsmRunEventScanAbort(IN struct ADAPTER *prAdapter,
-		IN struct MSG_HDR *prMsgHdr)
+		IN uint8_t ucBssIdx)
 {
 	struct P2P_DEV_FSM_INFO *prP2pDevFsmInfo =
 		(struct P2P_DEV_FSM_INFO *) NULL;
@@ -680,10 +680,6 @@ void p2pDevFsmRunEventScanAbort(IN struct ADAPTER *prAdapter,
 		}
 
 	} while (FALSE);
-
-	if (prMsgHdr)
-		cnmMemFree(prAdapter, prMsgHdr);
-
 }				/* p2pDevFsmRunEventScanAbort */
 
 void
@@ -1326,6 +1322,28 @@ p2pDevFsmRunEventMgmtFrameTxDone(IN struct ADAPTER *prAdapter,
 		kalP2PIndicateMgmtTxStatus(prAdapter->prGlueInfo,
 			prMsduInfo,
 			fgIsSuccess);
+
+		if (IS_BSS_INDEX_VALID(prMsduInfo->ucBssIndex)) {
+			struct BSS_INFO *prBssInfo =
+				GET_BSS_INFO_BY_INDEX(prAdapter,
+				prMsduInfo->ucBssIndex);
+			struct WLAN_MAC_HEADER *prWlanHdr =
+				(struct WLAN_MAC_HEADER *)
+				((unsigned long) prMsduInfo->prPacket +
+				MAC_TX_RESERVED_FIELD);
+
+			/* Redirect to assoc rsp tx done */
+			if (IS_BSS_APGO(prBssInfo) &&
+				(prBssInfo->u4RsnSelectedAKMSuite ==
+				RSN_AKM_SUITE_OWE) &&
+				((prWlanHdr->u2FrameCtrl &
+				MASK_FRAME_TYPE) ==
+				MAC_FRAME_ASSOC_RSP))
+				aaaFsmRunEventTxDone(prAdapter,
+					prMsduInfo,
+					rTxDoneStatus);
+		}
+
 	} while (FALSE);
 
 	return WLAN_STATUS_SUCCESS;

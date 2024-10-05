@@ -162,8 +162,13 @@ void mt6632CapInit(IN struct ADAPTER *prAdapter)
 	switch (prGlueInfo->u4InfType) {
 #if defined(_HIF_PCIE)
 	case MT_DEV_INF_PCIE:
-		prChipInfo->u2TxInitCmdPort = TX_RING_FWDL_IDX_3;
-		prChipInfo->u2TxFwDlPort = TX_RING_FWDL_IDX_3;
+#if CFG_TRI_TX_RING
+		prChipInfo->u2TxInitCmdPort = TX_RING_FWDL_IDX_5;
+		prChipInfo->u2TxFwDlPort = TX_RING_FWDL_IDX_5;
+#else
+		prChipInfo->u2TxInitCmdPort = TX_RING_FWDL_IDX_4;
+		prChipInfo->u2TxFwDlPort = TX_RING_FWDL_IDX_4;
+#endif
 		break;
 #endif /* _HIF_PCIE */
 #if defined(_HIF_USB)
@@ -429,8 +434,8 @@ struct RX_DESC_OPS_T mt6632RxDescOps = {
 struct ATE_OPS_T mt6632AteOps = {
 	.setICapStart = mt6632SetICapStart,
 	.getICapStatus = mt6632GetICapStatus,
-	.getICapIQData = commonGetICapIQData,
-	.getRbistDataDumpEvent = nicExtEventQueryMemDump,
+	.getICapIQData = NULL,
+	.getRbistDataDumpEvent = NULL,
 };
 #endif
 
@@ -442,6 +447,7 @@ struct CHIP_DBG_OPS mt6632_debug_ops = {
 	.showCsrInfo = NULL,
 	.showDmaschInfo = NULL,
 	.dumpMacInfo = NULL,
+	.dumpTxdInfo = NULL,
 	.showWtblInfo = NULL,
 	.showHifInfo = NULL,
 	.printHifDbgInfo = NULL,

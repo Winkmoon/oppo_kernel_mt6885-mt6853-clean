@@ -1,24 +1,38 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #ifndef _GPS_DL_LOG_H
 #define _GPS_DL_LOG_H
 
 #include "gps_dl_config.h"
 #if GPS_DL_ON_LINUX
 #include <linux/printk.h>
+#define __GDL_LOGE(mod, fmt, ...) pr_notice("GDL[E:%d] [%s:%d]: "fmt, \
+	mod, __func__, __LINE__, ##__VA_ARGS__)
+#define __GDL_LOGW(mod, fmt, ...) pr_notice("GDL[W:%d] [%s:%d]: "fmt, \
+	mod, __func__, __LINE__, ##__VA_ARGS__)
+#define __GDL_LOGI(mod, fmt, ...) pr_info("GDL[I:%d] [%s:%d]: "fmt, \
+	mod, __func__, __LINE__, ##__VA_ARGS__)
+#define __GDL_LOGD(mod, fmt, ...) pr_info("GDL[D:%d] [%s:%d]: "fmt, \
+	mod, __func__, __LINE__, ##__VA_ARGS__)
+
+#define __GDL_LOGXE(mod, link_id, fmt, ...) pr_notice("GDL-%d[E:%d] [%s:%d]: "fmt, \
+	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
+
+#define __GDL_LOGXW(mod, link_id, fmt, ...) pr_notice("GDL-%d[W:%d] [%s:%d]: "fmt, \
+	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
+
+#define __GDL_LOGXI(mod, link_id, fmt, ...) pr_info("GDL-%d[I:%d] [%s:%d]: "fmt, \
+	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
+
+#define __GDL_LOGXD(mod, link_id, fmt, ...) pr_info("GDL-%d[D:%d] [%s:%d]: "fmt, \
+	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
 #elif GPS_DL_ON_CTP
 #include "gps_dl_ctp_log.h"
-#endif
+#endif /* GPS_DL_ON_XX */
+
 
 enum gps_dl_log_level_enum {
 	GPS_DL_LOG_LEVEL_DBG  = 1,
@@ -65,6 +79,8 @@ enum gps_dl_log_reg_rw_ctrl_enum {
 		(0UL << GPS_DL_REG_RW_MCUB_IRQ_HANDLER)  |\
 	0)
 
+#define OPID_DURATION_MAX_MS 500
+
 enum gps_dl_log_level_enum gps_dl_log_level_get(void);
 void gps_dl_log_level_set(enum gps_dl_log_level_enum level);
 
@@ -78,29 +94,11 @@ bool gps_dl_log_reg_rw_is_on(enum gps_dl_log_reg_rw_ctrl_enum log_reg_rw);
 
 void gps_dl_log_info_show(void);
 
-
-#if GPS_DL_ON_LINUX
-#define __GDL_LOGE(mod, fmt, ...) pr_notice("GDL[E:%d] [%s:%d]: "fmt, \
-	mod, __func__, __LINE__, ##__VA_ARGS__)
-#define __GDL_LOGW(mod, fmt, ...) pr_notice("GDL[W:%d] [%s:%d]: "fmt, \
-	mod, __func__, __LINE__, ##__VA_ARGS__)
-#define __GDL_LOGI(mod, fmt, ...) pr_info("GDL[I:%d] [%s:%d]: "fmt, \
-	mod, __func__, __LINE__, ##__VA_ARGS__)
-#define __GDL_LOGD(mod, fmt, ...) pr_info("GDL[D:%d] [%s:%d]: "fmt, \
-	mod, __func__, __LINE__, ##__VA_ARGS__)
-
-#define __GDL_LOGXE(mod, link_id, fmt, ...) pr_notice("GDL-%d[E:%d] [%s:%d]: "fmt, \
-	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
-
-#define __GDL_LOGXW(mod, link_id, fmt, ...) pr_notice("GDL-%d[W:%d] [%s:%d]: "fmt, \
-	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
-
-#define __GDL_LOGXI(mod, link_id, fmt, ...) pr_info("GDL-%d[I:%d] [%s:%d]: "fmt, \
-	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
-
-#define __GDL_LOGXD(mod, link_id, fmt, ...) pr_info("GDL-%d[D:%d] [%s:%d]: "fmt, \
-	link_id, mod, __func__, __LINE__, ##__VA_ARGS__)
-#endif /* GPS_DL_ON_XX */
+unsigned long gps_dl_opid_enque_timeout_get(void);
+void gps_dl_opid_enque_timeout_set(unsigned long timeout);
+unsigned long gps_dl_opid_opfunc_timeout_get(void);
+void gps_dl_opid_opfunc_timeout_set(unsigned long timeout);
+void gps_dl_opid_timeout_info_show(void);
 
 
 #define _GDL_LOGE(...) \

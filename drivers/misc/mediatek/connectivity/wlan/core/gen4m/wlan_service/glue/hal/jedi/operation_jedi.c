@@ -2183,3 +2183,14 @@ s_int32 mt_op_set_mutb_spe(
 
 	return SERV_STATUS_SUCCESS;
 }
+
+s_int32 mt_op_listmode_cmd(
+	struct test_wlan_info *winfos,
+	u_int8 *para,
+	u_int16 para_len,
+	uint32_t *rsp_len,
+	void *rsp_data)
+{
+	return SERV_STATUS_SERV_TEST_NOT_SUPPORTED;
+}
+

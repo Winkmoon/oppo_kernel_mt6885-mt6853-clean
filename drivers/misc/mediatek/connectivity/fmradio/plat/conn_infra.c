@@ -13,33 +13,8 @@
 
 #include "plat.h"
 
-/* CONNSYS register address */
-#if CFG_FM_CONNAC2
-#define AP_BASE_ADDRESS             0x18000000
-#define MCU_CFG_ADDR                (AP_BASE_ADDRESS + 0x0)
-#define MCU_CFG_CONSYS_BASE         MCU_CFG_ADDR
-#define MCU_CFG_SIZE                0x10000
-#define TOP_MISC_OFF_ADDR           (AP_BASE_ADDRESS + 0x60000)
-#define TOP_MISC_OFF_CONSYS_BASE    TOP_MISC_OFF_ADDR
-#define TOP_MISC_OFF_SIZE           0x1000
-#define TOP_RF_SPI_AON_ADDR         (AP_BASE_ADDRESS + 0x4000)
-#define TOP_RF_SPI_AON_CONSYS_BASE  TOP_RF_SPI_AON_ADDR
-#define TOP_RF_SPI_AON_SIZE         0x1000
-#else
-#define AP_BASE_ADDRESS             0x18000000
-#define MCU_CFG_ADDR                (AP_BASE_ADDRESS + 0x02000)
-#define MCU_CFG_CONSYS_BASE         0x80000000
-#define MCU_CFG_SIZE                0x1000
-#define TOP_MISC_OFF_ADDR           (AP_BASE_ADDRESS + 0xB0000)
-#define TOP_MISC_OFF_CONSYS_BASE    0x80020000
-#define TOP_MISC_OFF_SIZE           0x10000
-#define TOP_RF_SPI_AON_ADDR         (AP_BASE_ADDRESS + 0xC0000)
-#define TOP_RF_SPI_AON_CONSYS_BASE  0x81020000
-#define TOP_RF_SPI_AON_SIZE         0x10000
-#endif /* CFG_FM_CONNAC2 */
-
-#define FM_IRQ_NUMBER 0
 #define MAX_SET_OWN_COUNT    1000
+#define FM_POLLING_LIMIT     100
 
 #if CFG_FM_CONNAC2
 static int (*whole_chip_reset)(signed int sta);
@@ -287,22 +262,27 @@ static void drv_mcu_write(
 static void drv_host_read(
 	struct fm_spi_interface *si, unsigned int addr, unsigned int *data)
 {
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 	unsigned new_addr = addr;
 
-	if (addr >= TOP_RF_SPI_AON_CONSYS_BASE &&
-	    addr <= TOP_RF_SPI_AON_CONSYS_BASE + TOP_RF_SPI_AON_SIZE) {
-		new_addr = addr - TOP_RF_SPI_AON_CONSYS_BASE;
+	if (addr >= ei->base_addr[CONN_RF_SPI_MST_REG] &&
+	    addr <= ei->base_addr[CONN_RF_SPI_MST_REG] +
+		ei->base_size[CONN_RF_SPI_MST_REG]) {
+		new_addr = addr - ei->base_addr[CONN_RF_SPI_MST_REG];
 		drv_spi_read(si, new_addr, data);
-	} else if (addr >= MCU_CFG_CONSYS_BASE &&
-		   addr <= MCU_CFG_CONSYS_BASE + MCU_CFG_SIZE) {
-		new_addr = addr - MCU_CFG_CONSYS_BASE;
+	} else if (addr >= ei->base_addr[MCU_CFG_CONSYS] &&
+		   addr <= ei->base_addr[MCU_CFG_CONSYS] +
+		ei->base_size[MCU_CFG_CONSYS]) {
+		new_addr = addr - ei->base_addr[MCU_CFG_CONSYS];
 		drv_mcu_read(si, new_addr, data);
-	} else if (addr >= TOP_MISC_OFF_CONSYS_BASE &&
-		   addr <= TOP_MISC_OFF_CONSYS_BASE + TOP_MISC_OFF_SIZE) {
-		new_addr = addr - TOP_MISC_OFF_CONSYS_BASE;
+	} else if (addr >= ei->base_addr[CONN_HOST_CSR_TOP] &&
+		   addr <= ei->base_addr[CONN_HOST_CSR_TOP] +
+			ei->base_size[CONN_HOST_CSR_TOP]) {
+		new_addr = addr - ei->base_addr[CONN_HOST_CSR_TOP];
 		drv_top_read(si, new_addr, data);
 	} else {
-		WCN_DBG(FM_WAR | CHIP, "not support addr[0x%08x].\n", addr);
+		WCN_DBG(FM_WAR | CHIP, "not support addr[0x%08x].\n",
+			addr);
 		return;
 	}
 
@@ -313,22 +293,27 @@ static void drv_host_read(
 static void drv_host_write(
 	struct fm_spi_interface *si, unsigned int addr, unsigned int data)
 {
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 	unsigned new_addr = addr;
 
-	if (addr >= TOP_RF_SPI_AON_CONSYS_BASE &&
-	    addr <= TOP_RF_SPI_AON_CONSYS_BASE + TOP_RF_SPI_AON_SIZE) {
-		new_addr = addr - TOP_RF_SPI_AON_CONSYS_BASE;
+	if (addr >= ei->base_addr[CONN_RF_SPI_MST_REG] &&
+	    addr < ei->base_addr[CONN_RF_SPI_MST_REG] +
+		ei->base_size[CONN_RF_SPI_MST_REG]) {
+		new_addr = addr - ei->base_addr[CONN_RF_SPI_MST_REG];
 		drv_spi_write(si, new_addr, data);
-	} else if (addr >= MCU_CFG_CONSYS_BASE &&
-		   addr <= MCU_CFG_CONSYS_BASE + MCU_CFG_SIZE) {
-		new_addr = addr - MCU_CFG_CONSYS_BASE;
+	} else if (addr >= ei->base_addr[MCU_CFG_CONSYS] &&
+		   addr < ei->base_addr[MCU_CFG_CONSYS] +
+		ei->base_size[MCU_CFG_CONSYS]) {
+		new_addr = addr - ei->base_addr[MCU_CFG_CONSYS];
 		drv_mcu_write(si, new_addr, data);
-	} else if (addr >= TOP_MISC_OFF_CONSYS_BASE &&
-		   addr <= TOP_MISC_OFF_CONSYS_BASE + TOP_MISC_OFF_SIZE) {
-		new_addr = addr - TOP_MISC_OFF_CONSYS_BASE;
+	} else if (addr >= ei->base_addr[CONN_HOST_CSR_TOP] &&
+		   addr < ei->base_addr[CONN_HOST_CSR_TOP] +
+			ei->base_size[CONN_HOST_CSR_TOP]) {
+		new_addr = addr - ei->base_addr[CONN_HOST_CSR_TOP];
 		drv_top_write(si, new_addr, data);
 	} else {
-		WCN_DBG(FM_WAR | CHIP, "not support addr[0x%08x].\n", addr);
+		WCN_DBG(FM_WAR | CHIP, "not support addr[0x%08x].\n",
+			addr);
 		return;
 	}
 
@@ -636,7 +621,7 @@ static void fm_softmute_tune(unsigned short freq, unsigned char *pos)
 	/* clear soft mute tune */
 	fw_bop_modify(FM_MAIN_CG2_CTRL, 0xBFFF, 0x0000);
 
-	WCN_DBG(FM_NTC | CHIP,
+	WCN_DBG(FM_DBG | CHIP,
 		"freq %d, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x, 0x%04x\n",
 		p_cqi->ch, p_cqi->rssi, p_cqi->pamd,
 		p_cqi->pr, p_cqi->fpamd, p_cqi->mr,
@@ -728,6 +713,10 @@ static void fm_task_rx_basic_op(
 		fw_bop_spi_modify(buf[0], fm_get_u16_from_auc(&buf[1]),
 				  fm_get_u32_from_auc(&buf[3]),
 				  fm_get_u32_from_auc(&buf[7]));
+		break;
+	case FM_COPY_BY_MASK_BASIC_OP:
+		fw_bop_copy_by_mask(buf[0], buf[1],
+				fm_get_u16_from_auc(&buf[2]));
 		break;
 
 	default:
@@ -922,7 +911,7 @@ static bool drv_set_own(void)
 {
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
 	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
-	unsigned int val, tmp, i;
+	unsigned int val, hw_id, tmp1, tmp2, i;
 	int ret = 0;
 
 	ret = FM_LOCK(fm_wcn_ops.own_lock);
@@ -938,23 +927,47 @@ static bool drv_set_own(void)
 	}
 
 	/* wakeup conninfra */
-	drv_host_write(si, 0x180601B0, 0x1);
+	drv_host_write(si, ei->reg_map[CONN_INFRA_WAKEPU_FM], 0x1);
 
 	/* polling chipid */
-	drv_host_read(si, 0x18001000, &val);
-	for (i = 0; (val & 0xFFFF0000) != 0x20010000 && i < MAX_SET_OWN_COUNT; i++) {
+	for (i = 0; i < MAX_SET_OWN_COUNT; i++) {
+		drv_host_read(si, ei->reg_map[CONN_HW_VER], &val);
+		hw_id = val >> 16;
+		if (hw_id == ei->conn_id)
+			break;
 		fm_delayus(5000);
-		drv_host_read(si, 0x18001000, &val);
+	}
+
+	if (ei->family_id == 0x6983) {
+		/* polling conninfra_ready */
+		for (i = 0; i < MAX_SET_OWN_COUNT; i++) {
+			drv_host_read(si, ei->reg_map[CONN_INFRA_CFG_PWRCTRL1], &val);
+			if ((val & 0x10000) == 0x10000)
+				break;
+			fm_delayus(5000);
+		}
+
+		if (i == MAX_SET_OWN_COUNT) {
+			WCN_DBG(FM_ERR | CHIP,
+				"%s: conninfra_ready fail!!! 0x%08x:0x%08x\n",
+				__func__,
+				ei->reg_map[CONN_INFRA_CFG_PWRCTRL1], val);
+			return false;
+		}
 	}
 
 	/* polling fail */
 	if (i == MAX_SET_OWN_COUNT) {
-		/* unlock if set own fail */
-		drv_host_read(si, 0x180601B0, &val);
-		drv_host_read(si, 0x18001808, &tmp);
 		WCN_DBG(FM_ERR | CHIP,
-			"polling chip id fail [0x180601B0]=[0x%08x], [0x18001808]=[0x%08x]\n",
-			val, tmp);
+			"%s: invalid hw_id: %d!!!\n", __func__, val);
+
+		/* unlock if set own fail */
+		drv_host_read(si, ei->reg_map[CONN_INFRA_WAKEPU_FM], &tmp1);
+		drv_host_read(si, ei->reg_map[OSC_MASK], &tmp2);
+		WCN_DBG(FM_ERR | CHIP,
+			"polling chip id fail [0x%08x]=[0x%08x], [0x%08x]=[0x%08x]\n",
+			ei->reg_map[CONN_INFRA_WAKEPU_FM], tmp1,
+			ei->reg_map[OSC_MASK], tmp2);
 		FM_UNLOCK(fm_wcn_ops.own_lock);
 		return false;
 	}
@@ -965,7 +978,9 @@ static bool drv_set_own(void)
 	}
 
 	/* conn_infra bus debug function setting */
-	conninfra_config_setup();
+	/* This is a software workaround for mt6885, mt6891 and mt6893 */
+	if (ei->family_id == 0x6885)
+		conninfra_config_setup();
 
 	return true;
 }
@@ -973,8 +988,9 @@ static bool drv_set_own(void)
 static bool drv_clr_own(void)
 {
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 
-	drv_host_write(si, 0x180601B0, 0x0);
+	drv_host_write(si, ei->reg_map[CONN_INFRA_WAKEPU_FM], 0x0);
 
 	FM_UNLOCK(fm_wcn_ops.own_lock);
 
@@ -1018,9 +1034,170 @@ static int drv_stp_recv_data(unsigned char *buf, unsigned int len)
 	return length;
 }
 
+static void drv_host_reg_dump(void)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	unsigned int host_reg[3] = {0};
+
+	if (si->set_own && !si->set_own()) {
+		WCN_DBG(FM_ERR | CHIP, "set_own fail\n");
+		return;
+	}
+
+	drv_host_read(si, ei->reg_map[FM_CTRL], &host_reg[0]);
+	drv_host_read(si, ei->reg_map[ADIE_CTL], &host_reg[1]);
+	drv_host_read(si, ei->reg_map[CONN_TCR_CKMCTL], &host_reg[2]);
+
+	WCN_DBG(FM_ALT | CHIP,
+		"host read 0x%08x:0x%08x, 0x%08x:0x%08x, 0x%08x:0x%08x\n",
+		ei->reg_map[FM_CTRL], host_reg[0],
+		ei->reg_map[ADIE_CTL], host_reg[1],
+		ei->reg_map[CONN_TCR_CKMCTL], host_reg[2]);
+
+	if (si->clr_own)
+		si->clr_own();
+}
+
+static int drv_host_pre_on(void)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	unsigned int tem = 0, count = 0;
+	int ret = 0;
+
+	if (si->set_own && !si->set_own()) {
+		WCN_DBG(FM_ERR | CHIP, "set_own fail\n");
+		return -1;
+	}
+
+	/* enable osc_en to conn_infra_cfg */
+	if (ei->family_id == 0x6885 || ei->family_id == 0x6877) {
+		drv_host_write(si, ei->reg_map[CONN_TCR_CKMCTL],
+				0x00000001);
+	} else if (ei->family_id == 0x6983) {
+		drv_host_read(si, ei->reg_map[CONN_INFRA_CFG_FM_PWRCTRL0],
+				&tem);
+		tem |= 0x00000001;
+		drv_host_write(si, ei->reg_map[CONN_INFRA_CFG_FM_PWRCTRL0],
+				tem);
+	} else {
+		return -1;
+	}
+
+	/* polling 26M rdy, max 5 times */
+	do {
+		fm_delayus(1000);
+		drv_host_read(si, ei->reg_map[CONN_INFRA_CFG_RC_STATUS],
+				&tem);
+		WCN_DBG(FM_NTC | CHIP, "26M_rdy 0x%08x:0x%08x\n",
+			ei->reg_map[CONN_INFRA_CFG_RC_STATUS], tem);
+		count++;
+	} while ((tem & 0x80000) == 0 && count < FM_POLLING_LIMIT);
+
+	if (count >= FM_POLLING_LIMIT) {
+		WCN_DBG(FM_ERR | CHIP, "polling 26M rdy failed\n");
+		ret = -1;
+	}
+
+	/* Wholechip FM Power Up: step 1, set common SPI parameter */
+	drv_host_write(si, ei->reg_map[FM_CTRL], 0x0000801F);
+
+	if (si->clr_own)
+		si->clr_own();
+
+	return ret;
+}
+
+static int drv_host_post_on(void)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	int ret = 0;
+
+	if (si->set_own && !si->set_own()) {
+		WCN_DBG(FM_ERR | CHIP, "set_own fail\n");
+		return -1;
+	}
+
+	/* power on FM memory in D-DIE chip */
+	/* G2: Release fmsys memory power down*/
+	drv_host_write(si, ei->reg_map[FM_CTRL_MEM_SWCTL_PDN], 0x00000000);
+
+	/* G3: Enable FMAUD trigger, 20170119 */
+	drv_host_write(si, ei->reg_map[CONN_TCR_FMAUD_SET], 0x888100C3);
+	/* G4: Enable aon_osc_clk_cg */
+	drv_host_write(si, ei->reg_map[CONN_TCR_FI2SCK_DIV_CNT],
+			0x00000014);
+
+	if (si->clr_own)
+		si->clr_own();
+
+	return ret;
+}
+
+static int drv_host_pre_off(void)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	int ret = 0;
+
+	if (si->set_own && !si->set_own()) {
+		WCN_DBG(FM_ERR | CHIP, "set_own fail\n");
+		return -1;
+	}
+
+	/* A0.1. Disable aon_osc_clk_cg */
+	drv_host_write(si, ei->reg_map[CONN_TCR_FI2SCK_DIV_CNT],
+			0x00000004);
+
+	/* A0.1. Disable FMAUD trigger */
+	drv_host_write(si, ei->reg_map[CONN_TCR_FMAUD_SET], 0x88800000);
+
+	/* A1. power off FM memory in D-DIE chip */
+	drv_host_write(si, ei->reg_map[FM_CTRL_MEM_SWCTL_PDN], 0x00000001);
+
+	if (si->clr_own)
+		si->clr_own();
+
+	return ret;
+}
+
+static int drv_host_post_off(void)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	unsigned int tem = 0;
+	int ret = 0;
+
+	if (si->set_own && !si->set_own()) {
+		WCN_DBG(FM_ERR | CHIP, "set_own fail\n");
+		return -1;
+	}
+
+	/* set common spi fm parameter */
+	drv_host_read(si, ei->reg_map[FM_CTRL], &tem);
+	tem = tem & 0xFFFF0000; /* D15:D0 */
+	drv_host_write(si, ei->reg_map[FM_CTRL], tem);
+
+	/* clear 26M crystal sleep */
+	WCN_DBG(FM_DBG | CHIP,
+		"Enable 26M crystal sleep, Set 0x%08x[0]=0x0\n",
+		ei->reg_map[CONN_TCR_CKMCTL]);
+	drv_host_read(si, ei->reg_map[CONN_TCR_CKMCTL], &tem);
+	tem = tem & 0xFFFFFFFE;
+	drv_host_write(si, ei->reg_map[CONN_TCR_CKMCTL], tem);
+
+	if (si->clr_own)
+		si->clr_own();
+
+	return ret;
+}
+
 static int drv_spi_hopping(void)
 {
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 	int ret = 0, i = 0;
 	unsigned int val = 0;
 
@@ -1029,36 +1206,99 @@ static int drv_spi_hopping(void)
 		return -1;
 	}
 
-	/* enable 'rf_spi_div_en' */
-	drv_host_read(si, 0x18001A00, &val);
-	drv_host_write(si, 0x18001A00, val | (0x1 << 28));
+	if (ei->family_id == 0x6885) {
+		/* enable 'rf_spi_div_en' */
+		drv_host_read(si, ei->reg_map[CKGEN_BUS], &val);
+		drv_host_write(si, ei->reg_map[CKGEN_BUS],
+				val | (0x1 << 28));
 
-	/* lock 64M */
-	drv_host_read(si, 0x18003004, &val);
-	drv_host_write(si, 0x18003004, val | (0x1 << 15));
+		/* lock 64M */
+		drv_host_read(si, ei->reg_map[RG_DIG_EN_02], &val);
+		drv_host_write(si, ei->reg_map[RG_DIG_EN_02],
+				val | (0x1 << 15));
 
-	/*rd 0x18001810 until D1 == 1*/
-	for (i = 0; i < 100; i++) {
-		drv_host_read(si, 0x18001810, &val);
-		if (val & 0x00000002) {
-			WCN_DBG(FM_NTC | CHIP,
-				"%s: POLLING PLL_RDY success !\n", __func__);
-			/* switch SPI clock to 64MHz */
-			if (conninfra_spi_clock_switch(CONNSYS_SPI_SPEED_64M) == -1) {
-				WCN_DBG(FM_ERR | CHIP,
-					"conninfra clock switch 64M fail.\n");
-				ret = -1;
+		/*rd 0x18001810 until D1 == 1*/
+		for (i = 0; i < FM_POLLING_LIMIT; i++) {
+			drv_host_read(si, ei->reg_map[PLL_STATUS], &val);
+			if (val & 0x00000002) {
+				WCN_DBG(FM_NTC | CHIP,
+					"%s: POLLING PLL_RDY success !\n",
+					__func__);
+				/* switch SPI clock to 64MHz */
+				if (conninfra_spi_clock_switch(
+					CONNSYS_SPI_SPEED_64M) == -1) {
+					WCN_DBG(FM_ERR | CHIP,
+						"conninfra clock switch 64M fail.\n");
+					ret = -1;
+				}
+				break;
 			}
-			break;
+			fm_delayus(10);
 		}
-		fm_delayus(10);
+	} else if (ei->family_id == 0x6877 || ei->family_id == 0x6983) {
+		/* TODO: add 0x6983 */
+		/* switch SPI clock to 64MHz */
+		if (conninfra_spi_clock_switch(CONNSYS_SPI_SPEED_64M)
+			== -1) {
+			WCN_DBG(FM_ERR | CHIP,
+				"conninfra clock switch 64M fail.\n");
+			ret = -1;
+		}
+	} else {
+		WCN_DBG(FM_ERR | CHIP,
+			"%s: invalid family_id:0x%04x!!!\n",
+			__func__, ei->family_id);
 	}
 
-	if (i == 100) {
+	if (i == FM_POLLING_LIMIT) {
 		ret = -1;
 		WCN_DBG(FM_ERR | CHIP,
-			"%s: Polling to read rd 0x18001810[1] ==0x1 failed !\n",
-			__func__);
+			"%s: Polling to read rd 0x%08x[1]==0x1 failed !\n",
+			__func__, ei->reg_map[PLL_STATUS]);
+	}
+
+	if (si->clr_own)
+		si->clr_own();
+
+	return ret;
+}
+
+static int drv_disable_spi_hopping(void)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	int ret = 0;
+	unsigned int val = 0;
+
+	if (si->set_own && !si->set_own()) {
+		WCN_DBG(FM_ERR | CHIP, "set_own fail\n");
+		return -1;
+	}
+
+	/* switch SPI clock to 26MHz */
+	if (conninfra_spi_clock_switch(CONNSYS_SPI_SPEED_26M) == -1) {
+		WCN_DBG(FM_ERR | CHIP,
+			"conninfra clock switch 26M fail.\n");
+		ret = -1;
+	}
+
+	if (ei->family_id == 0x6885) {
+		/* unlock 64M */
+		drv_host_read(si, ei->reg_map[RG_DIG_EN_02], &val);
+		drv_host_write(si, ei->reg_map[RG_DIG_EN_02],
+				val & (~(0x1 << 15)));
+
+		/* disable 'rf_spi_div_en' */
+		drv_host_read(si, ei->reg_map[CKGEN_BUS], &val);
+		drv_host_write(si, ei->reg_map[CKGEN_BUS],
+				val | (0x1 << 28));
+	} else if (ei->family_id == 0x6877 || ei->family_id == 0x6983) {
+		/* no need to do anything */
+		/* conninfra do the spi hopping control */
+	} else {
+		WCN_DBG(FM_ERR | CHIP,
+			"%s: invalid family_id:0x%04x!!!\n",
+			__func__, ei->family_id);
 	}
 
 	if (si->clr_own)
@@ -1108,40 +1348,57 @@ static void drv_eint_handler(void)
 		si->clr_own();
 }
 
-static int drv_interface_init(void)
+static int drv_do_ioremap(void)
 {
 	struct fm_spi_interface *interface = &fm_wcn_ops.si;
 	struct fm_wcn_reg_info *info = &interface->info;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 
-	info->spi_phy_addr = TOP_RF_SPI_AON_ADDR;
-	info->spi_size = TOP_RF_SPI_AON_SIZE;
+	info->spi_phy_addr = ei->base_addr[CONN_RF_SPI_MST_REG];
+	info->spi_size = ei->base_size[CONN_RF_SPI_MST_REG];
 	request_mem_region(info->spi_phy_addr, info->spi_size, "FM_SPI");
-	info->spi_vir_addr = ioremap_nocache(
+	info->spi_vir_addr = ioremap(
 		info->spi_phy_addr, info->spi_size);
 	if (info->spi_vir_addr == NULL) {
-		WCN_DBG(FM_ERR | CHIP, "Cannot remap address.\n");
+		WCN_DBG(FM_ERR | CHIP, "[FM_SPI] Cannot remap address.\n");
 		return -1;
+	} else {
+		WCN_DBG(FM_NTC | CHIP, "[FM_SPI] 0x%llx:0x%08x\n",
+			info->spi_phy_addr, info->spi_size);
 	}
 
-	info->top_phy_addr = TOP_MISC_OFF_ADDR;
-	info->top_size = TOP_MISC_OFF_SIZE;
+	info->top_phy_addr = ei->base_addr[CONN_HOST_CSR_TOP];
+	info->top_size = ei->base_size[CONN_HOST_CSR_TOP];
 	request_mem_region(info->top_phy_addr, info->top_size, "FM_TOP");
-	info->top_vir_addr = ioremap_nocache(
+	info->top_vir_addr = ioremap(
 		info->top_phy_addr, info->top_size);
 	if (info->top_vir_addr == NULL) {
-		WCN_DBG(FM_ERR | CHIP, "Cannot remap address.\n");
+		WCN_DBG(FM_ERR | CHIP, "[FM_TOP] Cannot remap address.\n");
 		return -1;
+	} else {
+		WCN_DBG(FM_NTC | CHIP, "[FM_TOP] 0x%llx:0x%08x\n",
+			info->top_phy_addr, info->top_size);
 	}
 
-	info->mcu_phy_addr = MCU_CFG_ADDR;
-	info->mcu_size = MCU_CFG_SIZE;
+	info->mcu_phy_addr = ei->base_addr[MCU_CFG_CONSYS];
+	info->mcu_size = ei->base_size[MCU_CFG_CONSYS];
 	request_mem_region(info->mcu_phy_addr, info->mcu_size, "FM_MCU");
-	info->mcu_vir_addr = ioremap_nocache(
+	info->mcu_vir_addr = ioremap(
 		info->mcu_phy_addr, info->mcu_size);
 	if (info->mcu_vir_addr == NULL) {
-		WCN_DBG(FM_ERR | CHIP, "Cannot remap address.\n");
+		WCN_DBG(FM_ERR | CHIP, "[FM_MCU] Cannot remap address.\n");
 		return -1;
+	} else {
+		WCN_DBG(FM_NTC | CHIP, "[FM_MCU] 0x%llx:0x%08x\n",
+			info->mcu_phy_addr, info->mcu_size);
 	}
+
+	return 0;
+}
+
+static int drv_interface_init(void)
+{
+	struct fm_spi_interface *interface = &fm_wcn_ops.si;
 
 	interface->spi_read = drv_spi_read;
 	interface->spi_write = drv_spi_write;
@@ -1181,6 +1438,7 @@ static int drv_interface_uninit(void)
 		iounmap(info->mcu_vir_addr);
 		release_mem_region(info->mcu_phy_addr, info->mcu_size);
 	}
+
 	return 0;
 }
 
@@ -1215,9 +1473,41 @@ static int fm_conninfra_msgcb_reg(void *data)
 		CONNDRV_TYPE_FM, &fm_drv_cbs);
 }
 
+static int fm_conninfra_set_reg_top_ck_en(unsigned int val)
+{
+	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	int ret = 0;
+	int i = 0;
+	unsigned int tem = 0;
+	int check = 0;
+
+	/* set 'reg_top_ck_en_4' to initial Power and Clock in A-DIE chip  before FM power on */
+	drv_host_read(si, ei->reg_map[WB_SLP_TOP_CK_4], &tem);
+	tem = ((tem & 0xFFFFFFFE) | val);
+	drv_host_write(si, ei->reg_map[WB_SLP_TOP_CK_4], tem);
+
+	/* polling initial command done */
+	for (i = 0; i < FM_POLLING_LIMIT; i++) {
+		fm_delayus(5000);
+		drv_host_read(si, ei->reg_map[WB_SLP_TOP_CK_4], &tem);
+		check = (tem & 0x2) >> 1;
+		WCN_DBG(FM_NTC | CHIP, "%s, 0x%08x[1]:%d\n", __func__,
+			ei->reg_map[WB_SLP_TOP_CK_4], check);
+		if (check == 0x0)
+			break;
+	}
+
+	if (i == FM_POLLING_LIMIT)
+		ret = -1;
+
+	return ret;
+}
+
 static int fm_conninfra_func_on(void)
 {
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 	int ret = 0;
 
 	ret = conninfra_pwr_on(CONNDRV_TYPE_FM);
@@ -1231,7 +1521,17 @@ static int fm_conninfra_func_on(void)
 		return 0;
 	}
 
-	ret = conninfra_adie_top_ck_en_on(CONNSYS_ADIE_CTL_HOST_FM);
+	if (ei->family_id == 0x6885) {
+		/* set top_ck_en_adie */
+		ret = conninfra_adie_top_ck_en_on(
+			CONNSYS_ADIE_CTL_HOST_FM);
+	} else if (ei->family_id == 0x6877 || ei->family_id == 0x6983)
+		ret = fm_conninfra_set_reg_top_ck_en(0x1);
+	else {
+		WCN_DBG(FM_ERR | CHIP,
+			"%s: invalid family_id:0x%04x!!!\n",
+			__func__, ei->family_id);
+	}
 
 	if (si->clr_own)
 		si->clr_own();
@@ -1247,6 +1547,7 @@ static int fm_conninfra_func_on(void)
 static int fm_conninfra_func_off(void)
 {
 	struct fm_spi_interface *si = &fm_wcn_ops.si;
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 	int ret = 0;
 
 	if (si->set_own && !si->set_own()) {
@@ -1254,7 +1555,17 @@ static int fm_conninfra_func_off(void)
 		return 0;
 	}
 
-	ret  = conninfra_adie_top_ck_en_off(CONNSYS_ADIE_CTL_HOST_FM);
+	if (ei->family_id == 0x6885) {
+		/* clear top_clk_en_adie */
+		ret = conninfra_adie_top_ck_en_off(
+			CONNSYS_ADIE_CTL_HOST_FM);
+	} else if (ei->family_id == 0x6877 || ei->family_id == 0x6983)
+		ret = fm_conninfra_set_reg_top_ck_en(0x0);
+	else {
+		WCN_DBG(FM_ERR | CHIP,
+			"%s: invalid family_id:0x%04x!!!\n",
+			__func__, ei->family_id);
+	}
 
 	if (si->clr_own)
 		si->clr_own();
@@ -1380,14 +1691,14 @@ static int fm_wmt_spi_clock_switch(enum fm_spi_speed speed)
 
 	switch (speed) {
 	case FM_SPI_SPEED_26M:
-		si->host_read(si, 0x18004004, &reg_val);
+		si->host_read(si, ei->reg_map[SPI_CRTL], &reg_val);
 		reg_val &= 0xFFFFFFFE;
-		si->host_write(si, 0x18004004, reg_val);
+		si->host_write(si, ei->reg_map[SPI_CTRL], reg_val);
 		break;
 	case FM_SPI_SPEED_64M:
-		si->host_read(si, 0x18004004, &reg_val);
+		si->host_read(si, ei->reg_map[SPI_CTRL], &reg_val);
 		reg_val |= 0x00000001;
-		si->host_write(si, 0x18004004, reg_val);
+		si->host_write(si, ei->reg_map[SPI_CTRL], reg_val);
 		break;
 	default:
 		break;
@@ -1414,29 +1725,157 @@ static irqreturn_t fm_isr(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
-int fm_register_irq(struct platform_driver *drv)
+int fm_register_irq(struct platform_driver *drv, unsigned int irq_num)
 {
-#ifdef CONFIG_OF
-	struct device_node *node = NULL;
-#endif
 	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
 	int ret = 0;
 
 	ei->drv = drv;
-	ei->irq_id = FM_IRQ_NUMBER;
-#ifdef CONFIG_OF
-	node = of_find_compatible_node(NULL, NULL, "mediatek,fm");
-	if (node)
-		ei->irq_id = irq_of_parse_and_map(node, 0);
-	else
-		WCN_DBG(FM_ERR | CHIP, "get fm dts node fail\n");
-#endif
-	WCN_DBG(FM_NTC | CHIP, "request_irq num(%d)\n", ei->irq_id);
-	ret = request_irq(ei->irq_id, fm_isr, IRQF_SHARED, FM_NAME, drv);
-	if (ret != 0)
-		WCN_DBG(FM_ERR | CHIP, "request_irq  ERROR(%d)\n", ret);
+	ei->irq_id = irq_num;
+
+	if (ei->irq_id != 0) {
+		WCN_DBG(FM_NTC | CHIP, "%s irq_num(%d)\n",
+			__func__, ei->irq_id);
+		ret = request_irq(ei->irq_id, fm_isr, IRQF_SHARED,
+					FM_NAME, drv);
+		if (ret != 0)
+			WCN_DBG(FM_ERR | CHIP, "request_irq ERROR(%d)\n",
+			ret);
+	} else {
+		WCN_DBG(FM_ERR | CHIP, "%s invalid irq_num(%d)\n",
+			__func__, ei->irq_id);
+	}
 
 	return ret;
+}
+
+int fm_register_plat(unsigned int family_id, unsigned int conn_id)
+{
+	struct fm_ext_interface *ei = &fm_wcn_ops.ei;
+	int i = 0;
+
+	ei->family_id = family_id;
+	ei->conn_id = conn_id;
+
+	for (i = 0; i < FM_REG_MAP_MAX; i++)
+		ei->reg_map[i] = FM_REG_NO_USED;
+
+	if (ei->family_id == 0x6885) {
+		/* base address */
+		ei->base_addr[CONN_RF_SPI_MST_REG]	= 0x18004000;
+		ei->base_size[CONN_RF_SPI_MST_REG]	= 0x00001000;
+		ei->base_addr[CONN_HOST_CSR_TOP]	= 0x18060000;
+		ei->base_size[CONN_HOST_CSR_TOP]	= 0x00001000;
+		ei->base_addr[MCU_CFG_CONSYS]		= 0x18000000;
+		ei->base_size[MCU_CFG_CONSYS]		= 0x00010000;
+
+		/* conn_fm_ctrl */
+		ei->reg_map[CONN_TCR_CKMCTL]		= 0x18008040;
+		ei->reg_map[CONN_TCR_FMAUD_SET]		= 0x18008058;
+		ei->reg_map[CONN_TCR_FI2SCK_DIV_CNT]	= 0x18008064;
+
+		/* conn_host_csr_top */
+		ei->reg_map[CONN_INFRA_WAKEPU_FM] =
+			ei->base_addr[CONN_HOST_CSR_TOP] + 0x1B0;
+
+		/* conn_infra_cfg */
+		ei->reg_map[CONN_HW_VER]		= 0x18001000;
+		ei->reg_map[OSC_MASK]			= 0x18001808;
+		ei->reg_map[PLL_STATUS]			= 0x18001810;
+		ei->reg_map[CONN_INFRA_CFG_RC_STATUS]	= 0x18001830;
+		ei->reg_map[ADIE_CTL]			= 0x18001900;
+		ei->reg_map[CKGEN_BUS]			= 0x18001A00;
+
+		/* conn_infra_rgu */
+		ei->reg_map[FM_CTRL_MEM_SWCTL_PDN]	= 0x18000070;
+
+		/* conn_afe_ctl */
+		ei->reg_map[RG_DIG_EN_02]		= 0x18003004;
+
+		/* conn_rf_spi_mst_reg */
+		ei->reg_map[SPI_CRTL] =
+			ei->base_addr[CONN_RF_SPI_MST_REG] + 0x004;
+		ei->reg_map[FM_CTRL] =
+			ei->base_addr[CONN_RF_SPI_MST_REG] + 0x00C;
+
+	} else if (ei->family_id == 0x6877) {
+		/* base address */
+		ei->base_addr[CONN_RF_SPI_MST_REG]	= 0x18004000;
+		ei->base_size[CONN_RF_SPI_MST_REG]	= 0x00001000;
+		ei->base_addr[CONN_HOST_CSR_TOP]	= 0x18060000;
+		ei->base_size[CONN_HOST_CSR_TOP]	= 0x00001000;
+		ei->base_addr[MCU_CFG_CONSYS]		= 0x18000000;
+		ei->base_size[MCU_CFG_CONSYS]		= 0x00010000;
+
+		/* conn_fm_ctrl */
+		ei->reg_map[CONN_TCR_CKMCTL]		= 0x18008040;
+		ei->reg_map[CONN_TCR_FMAUD_SET]		= 0x18008058;
+		ei->reg_map[CONN_TCR_FI2SCK_DIV_CNT]	= 0x18008064;
+
+		/* conn_host_csr_top */
+		ei->reg_map[CONN_INFRA_WAKEPU_FM] =
+			ei->base_addr[CONN_HOST_CSR_TOP] + 0x1B0;
+
+		/* conn_infra_cfg */
+		ei->reg_map[CONN_HW_VER]		= 0x18001000;
+		ei->reg_map[OSC_MASK]			= 0x18001808;
+		ei->reg_map[CONN_INFRA_CFG_RC_STATUS]	= 0x18001384; /*!*/
+		ei->reg_map[ADIE_CTL]			= 0x18001900;
+
+		/* conn_infra_rgu */
+		ei->reg_map[FM_CTRL_MEM_SWCTL_PDN]	= 0x18000098; /*!*/
+
+		/* conn_wt_slp_ctl_reg */
+		ei->reg_map[WB_SLP_TOP_CK_4]		= 0x18005130;
+
+		/* conn_rf_spi_mst_reg */
+		ei->reg_map[SPI_CRTL] =
+			ei->base_addr[CONN_RF_SPI_MST_REG] + 0x004;
+		ei->reg_map[FM_CTRL] =
+			ei->base_addr[CONN_RF_SPI_MST_REG] + 0x00C;
+
+	} else if (ei->family_id == 0x6983) {
+		/* base address */
+		ei->base_addr[CONN_RF_SPI_MST_REG]	= 0x18042000;
+		ei->base_size[CONN_RF_SPI_MST_REG]	= 0x00001000;
+		ei->base_addr[CONN_HOST_CSR_TOP]	= 0x18060000;
+		ei->base_size[CONN_HOST_CSR_TOP]	= 0x00001000;
+		ei->base_addr[MCU_CFG_CONSYS]		= 0x18000000;
+		ei->base_size[MCU_CFG_CONSYS]		= 0x00020000;
+
+		/* conn_fm_ctrl */
+		ei->reg_map[CONN_TCR_FMAUD_SET]		= 0x18017058; /*!*/
+		ei->reg_map[CONN_TCR_FI2SCK_DIV_CNT]	= 0x18017064; /*!*/
+
+		/* conn_host_csr_top */
+		ei->reg_map[CONN_INFRA_WAKEPU_FM] =
+			ei->base_addr[CONN_HOST_CSR_TOP] + 0x1B0;
+
+		/* conn_infra_cfg */
+		ei->reg_map[CONN_HW_VER]		= 0x18011000; /*!*/
+
+		/* conn_infra_cfg_on */
+		ei->reg_map[OSC_MASK]			= 0x18001308;
+		/* replace CONN_TCR_CKMCTL */
+		ei->reg_map[CONN_INFRA_CFG_FM_PWRCTRL0]	= 0x18001204; /*!*/
+		ei->reg_map[CONN_INFRA_CFG_RC_STATUS]	= 0x18001344; /*!*/
+		ei->reg_map[ADIE_CTL]			= 0x18001010; /*!*/
+		ei->reg_map[CONN_INFRA_CFG_PWRCTRL1]	= 0x18001210; /*!*/
+
+		/* conn_infra_rgu */
+		ei->reg_map[FM_CTRL_MEM_SWCTL_PDN]	= 0x18000098;
+
+		/* conn_wt_slp_ctl_reg */
+		ei->reg_map[WB_SLP_TOP_CK_4]		= 0x18003130;
+
+		/* conn_rf_spi_mst_reg */
+		ei->reg_map[SPI_CRTL] =
+			ei->base_addr[CONN_RF_SPI_MST_REG] + 0x004;
+		ei->reg_map[FM_CTRL] =
+			ei->base_addr[CONN_RF_SPI_MST_REG] + 0x00C;
+	}
+
+	return drv_do_ioremap();
 }
 
 static void register_drv_ops_init(void)
@@ -1463,6 +1902,12 @@ static void register_drv_ops_init(void)
 	ei->spi_clock_switch = fm_conninfra_spi_clock_switch;
 	ei->is_bus_hang = fm_conninfra_is_bus_hang;
 	ei->spi_hopping = drv_spi_hopping;
+	ei->disable_spi_hopping = drv_disable_spi_hopping;
+	ei->host_reg_dump = drv_host_reg_dump;
+	ei->host_pre_on = drv_host_pre_on;
+	ei->host_post_on = drv_host_post_on;
+	ei->host_pre_off = drv_host_pre_off;
+	ei->host_post_off = drv_host_post_off;
 #else
 	ei->enable_eint = NULL;
 	ei->disable_eint = NULL;
@@ -1475,9 +1920,15 @@ static void register_drv_ops_init(void)
 	ei->spi_clock_switch = fm_wmt_spi_clock_switch;
 	ei->is_bus_hang = NULL;
 	ei->spi_hopping = NULL;
+	ei->disable_spi_hopping = NULL;
+	ei->host_reg_dump = NULL;
+	ei->host_pre_on = NULL;
+	ei->host_post_on = NULL;
+	ei->host_pre_off = NULL;
+	ei->host_post_off = NULL;
 #endif
-	ei->low_ops_register = mt6635_fm_low_ops_register;
-	ei->rds_ops_unregister = mt6635_fm_rds_ops_unregister;
+	ei->low_ops_register = connac2x_fm_low_ops_register;
+	ei->low_ops_unregister = connac2x_fm_low_ops_unregister;
 	ei->rds_ops_register = mt6635_fm_rds_ops_register;
 	ei->rds_ops_unregister = mt6635_fm_rds_ops_unregister;
 }

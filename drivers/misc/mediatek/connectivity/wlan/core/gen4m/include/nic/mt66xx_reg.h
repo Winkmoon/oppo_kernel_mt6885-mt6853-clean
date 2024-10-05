@@ -81,9 +81,12 @@ extern struct mt66xx_hif_driver_data mt66xx_driver_data_mt7663;
 #ifdef CONNAC
 extern struct mt66xx_hif_driver_data mt66xx_driver_data_connac;
 #endif /* CONNAC */
-#ifdef CONNAC2X2
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_connac2x2;
-#endif /* CONNAC2X2 */
+#ifdef SOC2_1X1
+extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc2_1x1;
+#endif /* SOC2_1X1 */
+#ifdef SOC2_2X2
+extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc2_2x2;
+#endif /* SOC2_2X2 */
 #ifdef UT_TEST_MODE
 extern struct mt66xx_hif_driver_data mt66xx_driver_data_ut;
 #endif /* UT_TEST_MODE */
@@ -96,6 +99,12 @@ extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc3_0;
 #ifdef MT7961
 extern struct mt66xx_hif_driver_data mt66xx_driver_data_mt7961;
 #endif /* MT7961 */
+#ifdef SOC5_0
+extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc5_0;
+#endif /* SOC5_0 */
+#ifdef SOC7_0
+extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc7_0;
+#endif /* SOC7_0 */
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -900,7 +909,8 @@ union WPDMA_GLO_CFG_STRUCT {
 		uint32_t big_endian:1;
 		uint32_t dmad_32b_en:1;
 		uint32_t bypass_dmashdl_txring:1;
-		uint32_t reserved10:2;
+		uint32_t csr_wfdma_dummy_reg:1;
+		uint32_t csr_axi_bufrdy_byp:1;
 		uint32_t fifo_little_endian:1;
 		uint32_t csr_rx_wb_ddone:1;
 		uint32_t csr_pp_hif_txp_active_en:1;
@@ -1274,6 +1284,10 @@ enum enum_workAround {
 	WORKAROUND_NUM
 };
 
+enum ENUM_CHIP_CAPABILITY {
+	CHIP_CAPA_FW_LOG_TIME_SYNC
+};
+
 struct mt66xx_chip_info {
 	struct BUS_INFO *bus_info;
 	struct FWDL_OPS_T *fw_dl_ops;
@@ -1309,6 +1323,7 @@ struct mt66xx_chip_info {
 	const unsigned int custom_oid_interface_version;
 	const unsigned int em_interface_version;
 	const unsigned int cmd_max_pkt_size;
+	const bool isSupportMddpAOR;
 
 	const struct ECO_INFO *eco_info;	/* chip version table */
 	uint8_t eco_ver;	/* chip version */
@@ -1329,6 +1344,7 @@ struct mt66xx_chip_info {
 	uint32_t u4ChipIpVersion;
 	uint32_t u4ChipIpConfig;
 	uint16_t u2ADieChipVersion;
+	void *CSRBaseAddress;
 
 	void (*asicCapInit)(IN struct ADAPTER *prAdapter);
 	void (*asicEnableFWDownload)(IN struct ADAPTER *prAdapter,
@@ -1363,6 +1379,7 @@ struct mt66xx_chip_info {
 	u_int8_t is_support_asic_lp;
 	u_int8_t is_support_wfdma1;
 	u_int8_t is_support_dma_shdl;
+	u_int8_t get_rxv_from_rxrpt;
 	u_int8_t rx_event_port;
 #if defined(_HIF_USB)
 	void (*asicUsbInit)(IN struct ADAPTER *prAdapter,
@@ -1394,9 +1411,8 @@ struct mt66xx_chip_info {
 	void (*coantSetMD)(void);
 	void (*coantVFE28En)(IN struct ADAPTER *prAdapter);
 	void (*coantVFE28Dis)(void);
-	int (*trigger_wholechiprst)(char *reason);
-	void (*sw_interrupt_handler)(IN struct ADAPTER *prAdapter);
-	void (*conninra_cb_register)(void);
+	bool (*get_sw_interrupt_status)(struct ADAPTER *prAdapter,
+		uint32_t *status);
 	void (*dumpwfsyscpupcr)(IN struct ADAPTER *prAdapter);
 	uint8_t* (*getCalResult)(OUT uint32_t *prCalSize);
 	void (*calDebugCmd)(uint32_t cmd, uint32_t para);
@@ -1404,10 +1420,16 @@ struct mt66xx_chip_info {
 	int (*checkbushang)(void *prAdapter,
 		uint8_t ucWfResetEnable);
 	void (*dumpBusHangCr)(IN struct ADAPTER *prAdapter);
+	uint64_t chip_capability;
 };
 
 struct mt66xx_hif_driver_data {
 	struct mt66xx_chip_info *chip_info;
+	const char *fw_flavor;
+#if (CFG_SUPPORT_POWER_THROTTLING == 1)
+	uint32_t u4PwrLevel;
+	struct conn_pwr_event_max_temp rTempInfo;
+#endif
 };
 
 /*******************************************************************************

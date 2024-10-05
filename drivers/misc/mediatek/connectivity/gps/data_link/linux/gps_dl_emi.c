@@ -121,7 +121,7 @@ static int gps_icap_release(struct inode *inode, struct file *file)
 /******************************************************************************/
 static ssize_t gps_icap_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
-	void *p_src;
+	void *p_src = NULL;
 
 	GDL_LOGI("begin");
 

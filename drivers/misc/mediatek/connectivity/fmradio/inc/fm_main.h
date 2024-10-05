@@ -224,12 +224,12 @@ struct fm_gps_rtc_info {
 	signed int retryCnt;	/* GPS mnl can decide retry times */
 	signed int ageThd;		/* GPS 3D fix time diff threshold */
 	signed int driftThd;	/* GPS RTC drift threshold */
-	struct timeval tvThd;	/* time value diff threshold */
+	struct timespec64 tvThd;	/* time value diff threshold */
 	signed int age;		/* GPS 3D fix time diff */
 	signed int drift;		/* GPS RTC drift */
 	union {
 		unsigned long stamp;	/* time stamp in jiffies */
-		struct timeval tv;	/* time stamp value in RTC */
+		struct timespec64 tv;	/* time stamp value in RTC */
 	};
 	signed int flag;		/* rw flag */
 };

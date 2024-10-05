@@ -110,6 +110,10 @@ static long wmt_detect_unlocked_ioctl(struct file *filp, unsigned int cmd, unsig
 		retval = sdio_detect_do_autok(arg);
 		break;
 
+	case COMBO_IOCTL_CONNSYS_SOC_HW_INIT:
+		retval = wmt_plat_consys_hw_init();
+		break;
+
 	case COMBO_IOCTL_GET_SOC_CHIP_ID:
 		retval = wmt_plat_get_soc_chipid();
 		/*get soc chipid by HAL interface */

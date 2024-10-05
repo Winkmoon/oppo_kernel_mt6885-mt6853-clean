@@ -84,8 +84,12 @@
 #define MSEC_PER_SEC			1000
 #undef USEC_PER_MSEC
 #define USEC_PER_MSEC			1000
+#undef NSEC_PER_USEC
+#define NSEC_PER_USEC			1000
 #undef USEC_PER_SEC
 #define USEC_PER_SEC			1000000
+#undef NSEC_PER_SEC
+#define NSEC_PER_SEC			1000000000
 
 #define USEC_PER_TU			1024	/* microsecond */
 
@@ -159,8 +163,12 @@ struct TIMER {
 
 /* The macros to convert second & millisecond */
 #define MSEC_TO_SEC(_msec)		((_msec) / MSEC_PER_SEC)
+#define NSEC_TO_USEC(_nsec)		((_nsec) / NSEC_PER_USEC)
 #define SEC_TO_MSEC(_sec)		((uint32_t)(_sec) * MSEC_PER_SEC)
 #define SEC_TO_USEC(_sec)		((uint32_t)(_sec) * USEC_PER_SEC)
+#define SEC_TO_NSEC(_sec)		((uint64_t)(_sec) * NSEC_PER_SEC)
+#define SEC_TO_TU(_sec) \
+	((uint32_t)(_sec) * USEC_PER_SEC / USEC_PER_TU)
 
 /* The macros to convert millisecond & microsecond */
 #define USEC_TO_MSEC(_usec)		((_usec) / USEC_PER_MSEC)
@@ -180,6 +188,14 @@ struct TIMER {
 
 /* The macro to get the current OS system time */
 #define GET_CURRENT_SYSTIME(_systime_p)	{ *(_systime_p) = kalGetTimeTick(); }
+
+/* monotonic time since boot, which also includes the time spent in suspend */
+#define GET_BOOT_SYSTIME(_systime_p)			\
+	{ *(_systime_p) =				\
+		({uint64_t __ret = kalGetBootTime();	\
+		do_div(__ret, USEC_PER_MSEC);		\
+		(OS_SYSTIME) __ret; });			\
+	}
 
 /* The macro to copy the system time */
 #define COPY_SYSTIME(_destTime, _srcTime)	{(_destTime) = (_srcTime); }

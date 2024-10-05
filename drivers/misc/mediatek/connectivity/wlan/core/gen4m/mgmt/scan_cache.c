@@ -186,7 +186,8 @@ static u_int8_t doScanCache(struct GL_SCAN_CACHE_INFO *prScanCache)
 {
 	GLUE_SPIN_LOCK_DECLARATION();
 
-	kalUpdateBssTimestamp(prScanCache->prGlueInfo);
+	kalUpdateBssTimestamp(prScanCache->prGlueInfo,
+				prScanCache->u4LastScanTime);
 	GLUE_ACQUIRE_SPIN_LOCK(prScanCache->prGlueInfo, SPIN_LOCK_NET_DEV);
 	kalCfg80211ScanDone(prScanCache->prRequest, FALSE);
 	GLUE_RELEASE_SPIN_LOCK(prScanCache->prGlueInfo, SPIN_LOCK_NET_DEV);

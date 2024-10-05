@@ -19,8 +19,8 @@
 #include "stp_core.h"
 #include "btm_core.h"
 #include "wmt_plat.h"
-#include "wmt_step.h"
 #include "wmt_detect.h"
+#include "wmt_lib.h"
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 #include "connsys_debug_utility.h"
 #endif
@@ -67,21 +67,21 @@ MTKSTP_BTM_T stp_btm_i;
 MTKSTP_BTM_T *stp_btm = &stp_btm_i;
 
 const PINT8 g_btm_op_name[] = {
-	"STP_OPID_BTM_RETRY",
-	"STP_OPID_BTM_RST",
-	"STP_OPID_BTM_DBG_DUMP",
-	"STP_OPID_BTM_DUMP_TIMEOUT",
-	"STP_OPID_BTM_POLL_CPUPCR",
-	"STP_OPID_BTM_PAGED_DUMP",
-	"STP_OPID_BTM_FULL_DUMP",
-	"STP_OPID_BTM_PAGED_TRACE",
-	"STP_OPID_BTM_FORCE_FW_ASSERT",
+	[0x0] = "STP_OPID_BTM_RETRY",
+	[0x1] = "STP_OPID_BTM_RST",
+	[0x2] = "STP_OPID_BTM_DBG_DUMP",
+	[0x3] = "STP_OPID_BTM_DUMP_TIMEOUT",
+	[0x4] = "STP_OPID_BTM_POLL_CPUPCR",
+	[0x5] = "STP_OPID_BTM_PAGED_DUMP",
+	[0x6] = "STP_OPID_BTM_FULL_DUMP",
+	[0x7] = "STP_OPID_BTM_PAGED_TRACE",
+	[0x8] = "STP_OPID_BTM_FORCE_FW_ASSERT",
 #if CFG_WMT_LTE_COEX_HANDLING
-	"STP_OPID_BTM_WMT_LTE_COEX",
+	[0x9] = "STP_OPID_BTM_WMT_LTE_COEX",
 #endif
-	"STP_OPID_BTM_ASSERT_TIMEOUT",
-	"STP_OPID_BTM_EMI_DUMP_END",
-	"STP_OPID_BTM_EXIT"
+	[0xa] = "STP_OPID_BTM_ASSERT_TIMEOUT",
+	[0xb] = "STP_OPID_BTM_EMI_DUMP_END",
+	[0xc] = "STP_OPID_BTM_EXIT"
 };
 
 static VOID stp_btm_trigger_assert_timeout_handler(timer_handler_arg arg)
@@ -115,7 +115,7 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 		ret = 0;
 		break;
 
-		/*whole chip reset */
+		/* whole chip reset */
 	case STP_OPID_BTM_RST:
 		STP_BTM_PR_INFO("whole chip reset start!\n");
 		if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC &&
@@ -126,7 +126,9 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 			stp_dbg_core_dump_flush(0, MTK_WCN_BOOL_FALSE);
 		}
 		STP_BTM_PR_INFO("....+\n");
-		WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_BEFORE_CHIP_RESET);
+
+		wmt_lib_before_chip_reset_dump();
+
 		if (stp_btm->wmt_notify) {
 			stp_btm->wmt_notify(BTM_RST_OP);
 			ret = 0;
@@ -136,17 +138,16 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 		}
 
 		STP_BTM_PR_INFO("whole chip reset end!\n");
-		WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_AFTER_CHIP_RESET);
 		break;
 
 	case STP_OPID_BTM_DBG_DUMP:
-		/*Notify the wmt to get dump data */
+		/* Notify the wmt to get dump data */
 		STP_BTM_PR_DBG("wmt dmp notification\n");
 		set_user_nice(stp_btm->BTMd.pThread, -20);
 		ret = stp_dbg_core_dump(dump_sink);
 		set_user_nice(stp_btm->BTMd.pThread, 0);
 		break;
-
+		/* coredump timeout */
 	case STP_OPID_BTM_DUMP_TIMEOUT:
 		/* append fake coredump end message */
 		if (dump_sink == 2 && wmt_detect_get_chip_type() == WMT_CHIP_TYPE_COMBO) {
@@ -167,6 +168,7 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 		ret = wmt_idc_msg_to_lte_handing();
 		break;
 #endif
+	/* assert timeout */
 	case STP_OPID_BTM_ASSERT_TIMEOUT:
 		mtk_wcn_stp_assert_timeout_handle();
 		ret = 0;
@@ -573,12 +575,6 @@ INT32 stp_btm_notify_emi_dump_end(MTKSTP_BTM_T *stp_btm)
 	return _stp_btm_notify_emi_dump_end_wq(stp_btm);
 }
 
-INT32 stp_notify_btm_poll_cpupcr_ctrl(UINT32 en)
-{
-	return stp_dbg_poll_cpupcr_ctrl(en);
-}
-
-
 #if CFG_WMT_LTE_COEX_HANDLING
 
 static inline INT32 _stp_notify_btm_handle_wmt_lte_coex(MTKSTP_BTM_T *stp_btm)
@@ -765,7 +761,7 @@ INT32 stp_btm_init_trigger_assert_timer(MTKSTP_BTM_T *stp_btm)
 
 INT32 stp_btm_start_trigger_assert_timer(MTKSTP_BTM_T *stp_btm)
 {
-	return osal_timer_start(&stp_btm->trigger_assert_timer, stp_btm->timeout);
+	return osal_timer_modify(&stp_btm->trigger_assert_timer, stp_btm->timeout);
 }
 
 INT32 stp_btm_stop_trigger_assert_timer(MTKSTP_BTM_T *stp_btm)

@@ -176,6 +176,16 @@ void p2pFuncReleaseCh(IN struct ADAPTER *prAdapter,
 		IN struct P2P_CHNL_REQ_INFO *prChnlReqInfo);
 
 #if (CFG_SUPPORT_DFS_MASTER == 1)
+void p2pFuncSetDfsChannelAvailable(IN struct ADAPTER *prAdapter,
+		IN uint8_t ucChannel, IN uint8_t ucAvailable);
+
+void p2pFuncChannelListFiltering(IN struct ADAPTER *prAdapter,
+		IN uint16_t ucFilteredCh, IN uint8_t ucFilteredBw,
+		IN uint8_t pucNumOfChannel,
+		IN struct RF_CHANNEL_INFO *paucChannelList,
+		OUT uint8_t *pucOutNumOfChannel,
+		OUT struct RF_CHANNEL_INFO *paucOutChannelList);
+
 void p2pFuncStartRdd(IN struct ADAPTER *prAdapter, IN uint8_t ucBssIdx);
 
 void p2pFuncStopRdd(IN struct ADAPTER *prAdapter, IN uint8_t ucBssIdx);
@@ -215,6 +225,10 @@ uint8_t p2pFuncGetDfsState(void);
 
 uint8_t *p2pFuncShowDfsState(void);
 
+uint8_t p2pFuncGetCsaBssIndex(void);
+
+void p2pFuncSetCsaBssIndex(IN uint8_t ucBssIdx);
+
 void p2pFuncRecordCacStartBootTime(void);
 
 uint32_t p2pFuncGetCacRemainingTime(void);
@@ -223,6 +237,12 @@ uint32_t p2pFuncGetCacRemainingTime(void);
 void p2pFuncSetChannel(IN struct ADAPTER *prAdapter,
 		IN uint8_t ucRoleIdx,
 		IN struct RF_CHANNEL_INFO *prRfChannelInfo);
+
+int p2pFuncPreStartRdd(
+	IN struct ADAPTER *prAdapter,
+	IN uint8_t ucRoleIdx,
+	IN struct cfg80211_chan_def *chandef,
+	IN unsigned int cac_time_ms);
 
 u_int8_t p2pFuncRetryJOIN(IN struct ADAPTER *prAdapter,
 		IN struct STA_RECORD *prStaRec,
@@ -253,7 +273,8 @@ p2pFuncAssocRespUpdate(IN struct ADAPTER *prAdapter,
 uint32_t
 p2pFuncProbeRespUpdate(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prP2pBssInfo,
-		IN uint8_t *ProbeRespIE, IN uint32_t u4ProbeRespLen);
+		IN uint8_t *ProbeRespIE, IN uint32_t u4ProbeRespLen,
+		IN enum ENUM_IE_UPD_METHOD eMethod);
 #endif
 
 u_int8_t
@@ -288,6 +309,8 @@ void p2pFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 
 u_int8_t p2pFuncIsAPMode(IN struct P2P_CONNECTION_SETTINGS *prP2pConnSettings);
 
+u_int8_t p2pFuncIsDualAPMode(IN struct ADAPTER *prAdapter);
+
 void
 p2pFuncParseBeaconContent(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prP2pBssInfo,
@@ -296,9 +319,7 @@ p2pFuncParseBeaconContent(IN struct ADAPTER *prAdapter,
 struct BSS_DESC *
 p2pFuncKeepOnConnection(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prBssInfo,
-		IN struct P2P_CONNECTION_REQ_INFO *prConnReqInfo,
-		IN struct P2P_CHNL_REQ_INFO *prChnlReqInfo,
-		IN struct P2P_SCAN_REQ_INFO *prScanReqInfo);
+		IN struct P2P_ROLE_FSM_INFO *prP2pRoleFsmInfo);
 
 void p2pFuncStoreAssocRspIEBuffer(IN struct ADAPTER *prAdapter,
 		IN struct P2P_JOIN_INFO *prP2pJoinInfo,
@@ -416,6 +437,9 @@ void p2pFuncGenerateP2P_IE_NoA(IN struct ADAPTER *prAdapter,
 void p2pFunCleanQueuedMgmtFrame(IN struct ADAPTER *prAdapter,
 		IN struct P2P_QUEUED_ACTION_FRAME *prFrame);
 
+void p2pFuncSwitchGcChannel(IN struct ADAPTER *prAdapter,
+		IN struct BSS_INFO *prP2pBssInfo);
+
 void p2pFuncSwitchSapChannel(IN struct ADAPTER *prAdapter);
 
 uint32_t p2pFunGetPreferredFreqList(IN struct ADAPTER *prAdapter,
@@ -442,7 +466,8 @@ uint8_t p2pFunGetAcsBestCh(IN struct ADAPTER *prAdapter,
 		IN enum ENUM_MAX_BANDWIDTH_SETTING eChnlBw,
 		IN uint32_t u4LteSafeChnMask_2G,
 		IN uint32_t u4LteSafeChnMask_5G_1,
-		IN uint32_t u4LteSafeChnMask_5G_2);
+		IN uint32_t u4LteSafeChnMask_5G_2,
+		IN uint32_t u4LteSafeChnMask_6G);
 #if (CFG_SUPPORT_P2PGO_ACS == 1)
 
 void p2pFunGetAcsBestChList(IN struct ADAPTER *prAdapter,
@@ -451,6 +476,7 @@ void p2pFunGetAcsBestChList(IN struct ADAPTER *prAdapter,
 		IN uint32_t u4LteSafeChnMask_2G,
 		IN uint32_t u4LteSafeChnMask_5G_1,
 		IN uint32_t u4LteSafeChnMask_5G_2,
+		IN uint32_t u4LteSafeChnMask_6G,
 		OUT uint8_t *pucSortChannelNumber,
 		OUT struct RF_CHANNEL_INFO *paucSortChannelList);
 #endif
@@ -481,5 +507,11 @@ p2pFunChnlSwitchNotifyDone(IN struct ADAPTER *prAdapter);
 uint8_t p2pFuncIsBufferableMMPDU(IN struct ADAPTER *prAdapter,
 		IN enum ENUM_P2P_CONNECT_STATE eConnState,
 		IN struct MSDU_INFO *prMgmtTxMsdu);
+
+void p2pFuncSetAclPolicy(
+	IN struct ADAPTER *prAdapter,
+	IN uint8_t ucBssIdx,
+	IN enum ENUM_PARAM_CUSTOM_ACL_POLICY ePolicy,
+	IN uint8_t aucAddr[]);
 
 #endif

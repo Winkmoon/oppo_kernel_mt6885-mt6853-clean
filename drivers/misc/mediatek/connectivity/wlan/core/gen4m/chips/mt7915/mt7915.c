@@ -218,7 +218,7 @@ uint16_t wlanHarrierUsbRxByteCount(
 static void wlanHarrierInitPcieInt(
 	struct GLUE_INFO *prGlueInfo)
 {
-	uint32_t u4MacVal;
+	uint32_t u4MacVal, u4MacVal1;
 
 	/* Backup original setting */
 	HAL_MCR_RD(prGlueInfo->prAdapter,
@@ -233,6 +233,16 @@ static void wlanHarrierInitPcieInt(
 	HAL_MCR_WR(prGlueInfo->prAdapter,
 		0xF11AC,
 		0x7403);
+
+	while (1) {
+		HAL_MCR_RD(prGlueInfo->prAdapter,
+			0xF11AC,
+			&u4MacVal1);
+
+		if (u4MacVal1 == 0x18007403)
+			break;
+	}
+
 	HAL_MCR_WR(prGlueInfo->prAdapter,
 		0xE0188,
 		0x000000FF);
@@ -247,31 +257,31 @@ static bool mt7915WfdmaAllocRxRing(
 	struct GLUE_INFO *prGlueInfo,
 	bool fgAllocMem)
 {
-	if (!halWpdmaAllocRxRing(prGlueInfo, WFDMA0_RX_RING_IDX_2,
-			RX_RING1_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
-			fgAllocMem)) {
-		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
-		return false;
-	}
-	if (!halWpdmaAllocRxRing(prGlueInfo, WFDMA0_RX_RING_IDX_3,
-			RX_RING1_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
-			fgAllocMem)) {
-		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
-		return false;
-	}
-	if (!halWpdmaAllocRxRing(prGlueInfo, WFDMA1_RX_RING_IDX_0,
-			RX_RING1_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
-			fgAllocMem)) {
-		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
-		return false;
-	}
-	if (!halWpdmaAllocRxRing(prGlueInfo, WFDMA1_RX_RING_IDX_1,
+	if (!halWpdmaAllocRxRing(prGlueInfo, RX_RING_DATA1_IDX_2,
 			RX_RING_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
 			fgAllocMem)) {
 		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
 		return false;
 	}
-	if (!halWpdmaAllocRxRing(prGlueInfo, WFDMA1_RX_RING_IDX_2,
+	if (!halWpdmaAllocRxRing(prGlueInfo, RX_RING_TXDONE0_IDX_3,
+			RX_RING1_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
+			fgAllocMem)) {
+		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
+		return false;
+	}
+	if (!halWpdmaAllocRxRing(prGlueInfo, RX_RING_TXDONE1_IDX_4,
+			RX_RING1_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
+			fgAllocMem)) {
+		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
+		return false;
+	}
+	if (!halWpdmaAllocRxRing(prGlueInfo, RX_RING_WAEVT0_IDX_5,
+			RX_RING_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
+			fgAllocMem)) {
+		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
+		return false;
+	}
+	if (!halWpdmaAllocRxRing(prGlueInfo, RX_RING_WAEVT1_IDX_6,
 			RX_RING_SIZE, RXD_SIZE, RX_BUFFER_AGGRESIZE,
 			fgAllocMem)) {
 		DBGLOG(HAL, ERROR, "AllocWfdmaRxRing fail\n");
@@ -531,11 +541,15 @@ struct CHIP_DBG_OPS mt7915_debug_ops = {
 	.showCsrInfo = NULL,
 	.showDmaschInfo = NULL,
 	.dumpMacInfo = NULL,
+	.dumpTxdInfo = NULL,
 	.showHifInfo = NULL,
 	.printHifDbgInfo = NULL,
 	.show_rx_rate_info = connac2x_show_rx_rate_info,
 	.show_rx_rssi_info = connac2x_show_rx_rssi_info,
 	.show_stat_info = connac2x_show_stat_info,
+#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
+	.get_rx_rate_info = connac2x_get_rx_rate_info
+#endif
 };
 
 /* Litien code refine to support multi chip */

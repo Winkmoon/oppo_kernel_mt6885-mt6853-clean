@@ -361,6 +361,9 @@ extern MTK_WCN_BOOL wmt_lib_put_worker_op(P_OSAL_OP pOp);
 /* extern ENUM_WMTHWVER_TYPE_T wmt_lib_get_hwver (VOID); */
 extern UINT32 wmt_lib_get_icinfo(ENUM_WMT_CHIPINFO_TYPE_T type);
 
+extern UINT32 wmt_lib_get_adie_workable(VOID);
+extern VOID wmt_lib_set_adie_workable(UINT32 workable);
+
 extern MTK_WCN_BOOL wmt_lib_is_therm_ctrl_support(ENUM_WMTTHERM_TYPE_T eType);
 extern MTK_WCN_BOOL wmt_lib_is_dsns_ctrl_support(VOID);
 extern INT32 wmt_lib_trigger_cmd_signal(INT32 result);
@@ -478,6 +481,7 @@ extern INT32 wmt_lib_get_active_patch_version(struct wmt_vendor_patch *p);
 extern INT32 wmt_lib_get_need_update_patch_version(VOID);
 extern INT32 wmt_lib_set_need_update_patch_version(INT32 need);
 extern VOID wmt_lib_set_bt_link_status(INT32 type, INT32 value);
+extern PVOID wmt_lib_consys_clock_get_regmap(VOID);
 VOID mtk_lib_set_mcif_mpu_protection(MTK_WCN_BOOL enable);
 INT32 wmt_lib_dmp_consys_state(P_CONSYS_STATE_DMP_INFO dmp_info,
 				UINT32 cpupcr_times, UINT32 slp_ms);
@@ -485,6 +489,15 @@ INT32 wmt_lib_dmp_consys_state(P_CONSYS_STATE_DMP_INFO dmp_info,
 extern INT32 wmt_lib_reg_readable(VOID);
 extern INT32 wmt_lib_reg_readable_by_addr(SIZE_T addr);
 extern INT32 wmt_lib_utc_time_sync(VOID);
+
+extern INT32 wmt_lib_dump_cpupcr(UINT32 times, UINT32 sleep_ms);
+extern INT32 wmt_lib_dump_pc_log(VOID);
+extern INT32 wmt_lib_cmd_tx_timeout_dump(VOID);
+extern INT32 wmt_lib_cmd_rx_timeout_dump(VOID);
+extern INT32 wmt_lib_coredump_timeout_dump(VOID);
+extern INT32 wmt_lib_assert_timeout_dump(VOID);
+extern INT32 wmt_lib_before_chip_reset_dump(VOID);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

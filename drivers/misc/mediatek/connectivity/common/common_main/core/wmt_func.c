@@ -324,6 +324,9 @@ INT32 wmt_func_bt_on(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 		return -2;
 	}
 	osal_set_bit(WMT_BT_ON, &gBtWifiGpsState);
+
+	wmt_send_bt_tssi_cmd();
+
 	return 0;
 }
 

@@ -248,11 +248,10 @@
 #define CONN_INFRA_SYSRAM_SW_CR_D_DIE_EFUSE		0x2820
 
 #define CONN_INFRA_SYSRAM_SW_CR_A_DIE_TOP_CK_EN_CTRL	0x2830
-#define CONN_INFRA_SYSRAM_SW_CR_RADIO_STATUS			0x2834
+#define CONN_INFRA_SYSRAM_SW_CR_RADIO_STATUS		0x2834
+#define CONN_INFRA_SYSRAM_SW_CR_BUILD_MODE		0x2838
 
-#define CONN_INFRA_SYSRAM_SW_CR_OFFSET				0x2800
-#define CONN_INFRA_SYSRAM_SW_CR_SIZE				(4 * 1024)
-
+#define CONN_INFRA_SYSRAM_SIZE				(16 * 1024)
 
 /**********************************************************************/
 /* Base: conn_host_csr_top (0x1806_0000) */

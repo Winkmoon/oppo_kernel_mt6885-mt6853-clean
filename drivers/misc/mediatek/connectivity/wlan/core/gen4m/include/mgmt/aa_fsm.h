@@ -103,6 +103,8 @@
 #define TX_AUTHENTICATION_RESPONSE_TIMEOUT_TU        512 /* TU. */
 
 #define TX_ASSOCIATE_TIMEOUT_TU        2048 /* TU. */
+#define JOIN_MAX_RETRY_OVERLOAD_RN		    1	/* Times */
+
 
 /*******************************************************************************
  *                             D A T A   T Y P E S

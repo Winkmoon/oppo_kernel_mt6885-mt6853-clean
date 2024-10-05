@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #ifndef _GPS_DSP_FSM_H_
 #define _GPS_DSP_FSM_H_
 
@@ -79,7 +72,40 @@ enum gps_dsp_event_t {
 #define GPS_DSP_MVCD_TIMEOUT_MS         (1000)
 #define GPS_DSP_WAKEUP_TIMEOUT_MS       (180)
 
+enum dsp_ctrl_enum {
+	GPS_L1_DSP_ON,
+	GPS_L1_DSP_OFF,
+	GPS_L5_DSP_ON,
+	GPS_L5_DSP_OFF,
+	GPS_L1_DSP_ENTER_DSLEEP,
+	GPS_L1_DSP_EXIT_DSLEEP,
+	GPS_L1_DSP_ENTER_DSTOP,
+	GPS_L1_DSP_EXIT_DSTOP,
+	GPS_L5_DSP_ENTER_DSLEEP,
+	GPS_L5_DSP_EXIT_DSLEEP,
+	GPS_L5_DSP_ENTER_DSTOP,
+	GPS_L5_DSP_EXIT_DSTOP,
+	GPS_L1_DSP_CLEAR_PWR_STAT,
+	GPS_L5_DSP_CLEAR_PWR_STAT,
+	GPS_DSP_CTRL_MAX
+};
 
+#define GPS_DSP_STATE_HISTORY_ITEM_MAX (16)
+
+struct gps_dsp_state_history_item_t {
+	unsigned long tick;
+	enum gps_dsp_state_t state;
+};
+
+struct gps_dsp_state_history_struct_t {
+	struct gps_dsp_state_history_item_t items[GPS_DSP_STATE_HISTORY_ITEM_MAX];
+	/* index may larger than GPS_DSP_STATE_HISTORY_ITEM_MAX, only index % GPS_DSP_STATE_HISTORY_ITEM_MAX*/
+	/*can be used for indexing of items*/
+	unsigned int index;
+};
+
+bool gps_dsp_state_is_dump_needed_for_reset_done(enum gps_dl_link_id_enum link_id);
+enum gps_dsp_state_t gps_dsp_history_state_get(enum gps_dl_link_id_enum link_id, unsigned int item_index);
 enum gps_dsp_state_t gps_dsp_state_get(enum gps_dl_link_id_enum link_id);
 void gps_dsp_state_change_to(enum gps_dsp_state_t state, enum gps_dl_link_id_enum link_id);
 bool gps_dsp_state_is(enum gps_dsp_state_t state, enum gps_dl_link_id_enum link_id);

@@ -186,8 +186,13 @@ void asicCapInit(IN struct ADAPTER *prAdapter)
 #if defined(_HIF_PCIE) || defined(_HIF_AXI)
 	case MT_DEV_INF_PCIE:
 	case MT_DEV_INF_AXI:
-		prChipInfo->u2TxInitCmdPort = TX_RING_FWDL_IDX_3;
-		prChipInfo->u2TxFwDlPort = TX_RING_FWDL_IDX_3;
+#if CFG_TRI_TX_RING
+		prChipInfo->u2TxInitCmdPort = TX_RING_FWDL_IDX_5;
+		prChipInfo->u2TxFwDlPort = TX_RING_FWDL_IDX_5;
+#else
+		prChipInfo->u2TxInitCmdPort = TX_RING_FWDL_IDX_4;
+		prChipInfo->u2TxFwDlPort = TX_RING_FWDL_IDX_4;
+#endif /* CFG_TRI_TX_RING */
 		prChipInfo->ucPacketFormat = TXD_PKT_FORMAT_TXD;
 		prChipInfo->u4HifDmaShdlBaseAddr = PCIE_HIF_DMASHDL_BASE;
 
@@ -232,9 +237,7 @@ uint32_t asicGetFwDlInfo(struct ADAPTER *prAdapter,
 
 	prComTailer = &prAdapter->rVerInfo.rCommonTailer;
 
-	kalMemZero(aucBuf, sizeof(aucBuf));
-	kalMemCopy(aucBuf, prComTailer->aucRamVersion,
-			sizeof(prComTailer->aucRamVersion));
+	kalSnprintf(aucBuf, sizeof(aucBuf), "%10s", prComTailer->aucRamVersion);
 	u4Offset += snprintf(pcBuf + u4Offset, i4TotalLen - u4Offset,
 			     "Tailer Ver[%u:%u] %s (%s) info %u:E%u\n",
 			     prComTailer->ucFormatVer,
@@ -483,6 +486,11 @@ void fillTxDescTxByteCountWithCR4(IN struct ADAPTER
 void asicPcieDmaShdlInit(IN struct ADAPTER *prAdapter)
 {
 	uint32_t u4BaseAddr, u4MacVal = 0;
+	uint32_t u4GroupCtrl0 = 0, u4GroupCtrl1 = 0, u4GroupCtrl2 = 0,
+		u4DmashdlQMap0 = 0;
+#if CFG_TRI_TX_RING
+	uint32_t u4GroupCtrl3 = 0;
+#endif
 	struct mt66xx_chip_info *prChipInfo;
 	struct BUS_INFO *prBusInfo;
 	uint32_t u4FreePageCnt = 0;
@@ -520,43 +528,67 @@ void asicPcieDmaShdlInit(IN struct ADAPTER *prAdapter)
 	/* Always use group 1 if we support 2 Data TxRing */
 	if (prBusInfo->tx_ring0_data_idx != prBusInfo->tx_ring1_data_idx) {
 		u4MacVal &=
-	~CONN_HIF_DMASHDL_TOP_REFILL_CONTROL_GROUP1_REFILL_DISABLE_MASK;
+		~CONN_HIF_DMASHDL_TOP_REFILL_CONTROL_GROUP1_REFILL_DISABLE_MASK;
 	}
+	if (prBusInfo->tx_ring2_data_idx) {
+		u4MacVal &=
+		~CONN_HIF_DMASHDL_TOP_REFILL_CONTROL_GROUP2_REFILL_DISABLE_MASK;
+	}
+#if CFG_TRI_TX_RING
+	if (prBusInfo->tx_ring3_data_idx) {
+		u4MacVal &=
+		~CONN_HIF_DMASHDL_TOP_REFILL_CONTROL_GROUP3_REFILL_DISABLE_MASK;
+	}
+#endif
 	HAL_MCR_WR(prAdapter,
 		   CONN_HIF_DMASHDL_REFILL_CONTROL(u4BaseAddr), u4MacVal);
 
-	/* Always use group 1 if we support 2 TxRing for data */
+	HAL_MCR_RD(prAdapter,
+		CONN_HIF_DMASHDL_STATUS_RD(u4BaseAddr), &u4FreePageCnt);
+	u4FreePageCnt = (u4FreePageCnt & DMASHDL_FREE_PG_CNT_MASK)
+		>> DMASHDL_FREE_PG_CNT_OFFSET;
+	u4GroupCtrl0 = DMASHDL_MIN_QUOTA_NUM(0x3);
+	u4GroupCtrl0 |= DMASHDL_MAX_QUOTA_NUM(0xFFF);
 	if (prBusInfo->tx_ring0_data_idx != prBusInfo->tx_ring1_data_idx) {
 		/* HW has no gruantee to switch Quota at runtime */
 		/* Just separate equally. */
-		HAL_MCR_RD(prAdapter,
-			CONN_HIF_DMASHDL_STATUS_RD(u4BaseAddr), &u4FreePageCnt);
-		u4FreePageCnt = (u4FreePageCnt & DMASHDL_FREE_PG_CNT_MASK)
-			>> DMASHDL_FREE_PG_CNT_OFFSET;
-		u4MacVal = DMASHDL_MIN_QUOTA_NUM(0x3);
-		u4MacVal |= DMASHDL_MAX_QUOTA_NUM(0xFFF);
-		HAL_MCR_WR(prAdapter,
-			CONN_HIF_DMASHDL_GROUP0_CTRL(u4BaseAddr), u4MacVal);
-		HAL_MCR_WR(prAdapter,
-			CONN_HIF_DMASHDL_GROUP1_CTRL(u4BaseAddr), u4MacVal);
+		u4GroupCtrl1 = DMASHDL_MIN_QUOTA_NUM(0x3);
+		u4GroupCtrl1 |= DMASHDL_MAX_QUOTA_NUM(0xFFF);
 		/* Wmm1: group 1, others group 0 */
-		HAL_MCR_WR(prAdapter,
-			CONN_HIF_DMASHDL_Q_MAP0(u4BaseAddr), 0x11110000);
-	} else {
-		u4MacVal = DMASHDL_MIN_QUOTA_NUM(0x3);
-		u4MacVal |= DMASHDL_MAX_QUOTA_NUM(0xFFF);
-		HAL_MCR_WR(prAdapter,
-			CONN_HIF_DMASHDL_GROUP0_CTRL(u4BaseAddr), u4MacVal);
-		u4MacVal = 0;
-		HAL_MCR_WR(prAdapter,
-			CONN_HIF_DMASHDL_GROUP1_CTRL(u4BaseAddr), u4MacVal);
+		u4DmashdlQMap0 |= 0x11110000;
 	}
+	if (prBusInfo->tx_ring2_data_idx) {
+		u4GroupCtrl2 = DMASHDL_MIN_QUOTA_NUM(0x3);
+		u4GroupCtrl2 |= DMASHDL_MAX_QUOTA_NUM(0xFFF);
+		u4DmashdlQMap0 &= 0x0FFF0FFF;
+		u4DmashdlQMap0 |= 0x20002000;
+	}
+#if CFG_TRI_TX_RING
+	if (prBusInfo->tx_ring3_data_idx) {
+		u4GroupCtrl3 = DMASHDL_MIN_QUOTA_NUM(0x3);
+		u4GroupCtrl3 |= DMASHDL_MAX_QUOTA_NUM(0xFFF);
+		u4DmashdlQMap0 &= 0x0FFF0FFF;
+		u4DmashdlQMap0 |= 0x20002000;
+	}
+#endif
+	HAL_MCR_WR(prAdapter,
+		CONN_HIF_DMASHDL_GROUP0_CTRL(u4BaseAddr), u4GroupCtrl0);
+	HAL_MCR_WR(prAdapter,
+		CONN_HIF_DMASHDL_GROUP1_CTRL(u4BaseAddr), u4GroupCtrl1);
+	HAL_MCR_WR(prAdapter,
+		CONN_HIF_DMASHDL_GROUP2_CTRL(u4BaseAddr), u4GroupCtrl2);
+#if CFG_TRI_TX_RING
+	HAL_MCR_WR(prAdapter,
+		CONN_HIF_DMASHDL_GROUP3_CTRL(u4BaseAddr), u4GroupCtrl3);
+#endif
+	HAL_MCR_WR(prAdapter,
+		CONN_HIF_DMASHDL_Q_MAP0(u4BaseAddr), u4DmashdlQMap0);
 
 	u4MacVal = 0;
-	HAL_MCR_WR(prAdapter,
-		   CONN_HIF_DMASHDL_GROUP2_CTRL(u4BaseAddr), u4MacVal);
+#if (CFG_TRI_TX_RING == 0)
 	HAL_MCR_WR(prAdapter,
 		   CONN_HIF_DMASHDL_GROUP3_CTRL(u4BaseAddr), u4MacVal);
+#endif
 	HAL_MCR_WR(prAdapter,
 		   CONN_HIF_DMASHDL_GROUP4_CTRL(u4BaseAddr), u4MacVal);
 	HAL_MCR_WR(prAdapter,
@@ -602,7 +634,6 @@ void asicPdmaLoopBackConfig(struct GLUE_INFO *prGlueInfo, u_int8_t fgEnable)
 	kalDevRegWrite(prGlueInfo, WPDMA_GLO_CFG, GloCfg.word);
 }
 
-#if CFG_MTK_MCIF_WIFI_SUPPORT
 static void configPdmaRxRingThreshold(struct GLUE_INFO *prGlueInfo)
 {
 	uint32_t u4OldVal = 0, u4NewVal = 0;
@@ -627,10 +658,10 @@ static void configPdmaRxRingThreshold(struct GLUE_INFO *prGlueInfo)
 	DBGLOG(HAL, TRACE, "RX_RING[2, 3] TH(0x%x) from 0x%x to 0x%x\n",
 			WPDMA_PAUSE_RX_Q_TH32, u4OldVal, u4NewVal);
 }
-#endif
 
 void asicPdmaIntMaskConfig(struct GLUE_INFO *prGlueInfo,
-		u_int8_t fgEnable)
+	uint8_t ucType,
+	u_int8_t fgEnable)
 {
 	struct BUS_INFO *prBusInfo =
 			prGlueInfo->prAdapter->chip_info->bus_info;
@@ -639,28 +670,43 @@ void asicPdmaIntMaskConfig(struct GLUE_INFO *prGlueInfo,
 	kalDevRegRead(prGlueInfo, WPDMA_INT_MSK, &IntMask.word);
 
 	if (fgEnable == TRUE) {
-		IntMask.field.rx_done_0 = 1;
-		IntMask.field.rx_done_1 = 1;
-		IntMask.field.tx_done =
-			BIT(prBusInfo->tx_ring_fwdl_idx) |
-			BIT(prBusInfo->tx_ring_cmd_idx) |
-			BIT(prBusInfo->tx_ring0_data_idx) |
-			BIT(prBusInfo->tx_ring1_data_idx);
-		IntMask.field_conn.tx_coherent = 0;
-		IntMask.field_conn.rx_coherent = 0;
-		IntMask.field_conn.tx_dly_int = 0;
-		IntMask.field_conn.rx_dly_int = 0;
-		IntMask.field_conn.mcu2host_sw_int_ena = 1;
+		if (ucType & BIT(DMA_INT_TYPE_MCU2HOST))
+			IntMask.field_conn.mcu2host_sw_int_ena = 1;
+		if (ucType & BIT(DMA_INT_TYPE_TRX)) {
+			IntMask.field.rx_done_0 = 1;
+			IntMask.field.rx_done_1 = 1;
+			IntMask.field.tx_done =
+				BIT(prBusInfo->tx_ring_fwdl_idx) |
+				BIT(prBusInfo->tx_ring_cmd_idx) |
+				BIT(prBusInfo->tx_ring0_data_idx) |
+				BIT(prBusInfo->tx_ring1_data_idx) |
+#if CFG_TRI_TX_RING
+				BIT(prBusInfo->tx_ring2_data_idx) |
+				BIT(prBusInfo->tx_ring3_data_idx);
+#else
+				BIT(prBusInfo->tx_ring2_data_idx);
+#endif
+			IntMask.field_conn.tx_coherent = 0;
+			IntMask.field_conn.rx_coherent = 0;
+			IntMask.field_conn.tx_dly_int = 0;
+			IntMask.field_conn.rx_dly_int = 0;
+		}
 	} else {
-		IntMask.field_conn.rx_done_0 = 0;
-		IntMask.field_conn.rx_done_1 = 0;
-		IntMask.field_conn.tx_done = 0;
-		IntMask.field_conn.tx_coherent = 0;
-		IntMask.field_conn.rx_coherent = 0;
-		IntMask.field_conn.tx_dly_int = 0;
-		IntMask.field_conn.rx_dly_int = 0;
-		IntMask.field_conn.mcu2host_sw_int_ena = 0;
+		if (ucType & BIT(DMA_INT_TYPE_MCU2HOST))
+			IntMask.field_conn.mcu2host_sw_int_ena = 0;
+		if (ucType & BIT(DMA_INT_TYPE_TRX)) {
+			IntMask.field_conn.rx_done_0 = 0;
+			IntMask.field_conn.rx_done_1 = 0;
+			IntMask.field_conn.tx_done = 0;
+			IntMask.field_conn.tx_coherent = 0;
+			IntMask.field_conn.rx_coherent = 0;
+			IntMask.field_conn.tx_dly_int = 0;
+			IntMask.field_conn.rx_dly_int = 0;
+		}
 	}
+
+	DBGLOG(HAL, INFO, "type:0x%x, enable:%u, mask:0x%08x\n",
+		ucType, fgEnable, IntMask.word);
 
 	kalDevRegWrite(prGlueInfo, WPDMA_INT_MSK, IntMask.word);
 }
@@ -673,7 +719,9 @@ void asicPdmaConfig(struct GLUE_INFO *prGlueInfo, u_int8_t fgEnable,
 	union WPDMA_GLO_CFG_STRUCT GloCfg;
 	uint32_t u4Val = 0;
 
-	asicPdmaIntMaskConfig(prGlueInfo, fgEnable);
+	asicPdmaIntMaskConfig(prGlueInfo,
+		BIT(DMA_INT_TYPE_MCU2HOST) | BIT(DMA_INT_TYPE_TRX),
+		fgEnable);
 	kalDevRegRead(prGlueInfo, WPDMA_GLO_CFG, &GloCfg.word);
 
 	if (fgEnable == TRUE) {
@@ -703,20 +751,16 @@ void asicPdmaConfig(struct GLUE_INFO *prGlueInfo, u_int8_t fgEnable,
 
 	if (fgEnable) {
 		kalDevRegWrite(prGlueInfo, WPDMA_PAUSE_TX_Q, 0);
-#if CFG_MTK_MCIF_WIFI_SUPPORT
 		configPdmaRxRingThreshold(prGlueInfo);
-#endif
 	} else {
 		halWpdmaWaitIdle(prGlueInfo, 100, 1000);
 		/* Reset DMA Index */
 		kalDevRegWrite(prGlueInfo, WPDMA_RST_PTR, 0xFFFFFFFF);
-#if CFG_MTK_MCIF_WIFI_SUPPORT
 		if (fgResetHif) {
 			halEnableSlpProt(prGlueInfo);
 			halHifRst(prGlueInfo);
 			halDisableSlpProt(prGlueInfo);
 		}
-#endif
 	}
 }
 
@@ -757,6 +801,14 @@ uint32_t asicUpdatTxRingMaxQuota(IN struct ADAPTER *prAdapter,
 	case TX_RING_DATA1_IDX_1:
 		u4GroupIdx = 1;
 		break;
+	case TX_RING_DATA2_IDX_2:
+		u4GroupIdx = 2;
+		break;
+#if CFG_TRI_TX_RING
+	case TX_RING_DATA3_IDX_3:
+		u4GroupIdx = 3;
+		break;
+#endif
 	default:
 		return WLAN_STATUS_NOT_ACCEPTED;
 	}
@@ -912,10 +964,12 @@ bool asicIsValidRegAccess(IN struct ADAPTER *prAdapter, IN uint32_t u4Register)
 void asicGetMailboxStatus(IN struct ADAPTER *prAdapter,
 			  OUT uint32_t *pu4Val)
 {
+#define WF_MAILBOX_DBG (CONN_HIF_BASE + 0x11C)
+
 	uint32_t u4RegValue = 0;
 
 	HAL_MCR_RD(prAdapter,
-		   CONN_MCU_CONFG_ON_HOST_MAILBOX_WF_ADDR, &u4RegValue);
+		   WF_MAILBOX_DBG, &u4RegValue);
 	*pu4Val = u4RegValue;
 }
 
@@ -1597,6 +1651,9 @@ void asicInitTxdHook(
 		nic_txd_v1_set_hw_amsdu_template;
 	prTxDescOps->nic_txd_change_data_port_by_ac =
 		nic_txd_v1_change_data_port_by_ac;
+	prTxDescOps->u2TxdFrNstsMask = TX_DESC_NSTS_MASK;
+	prTxDescOps->ucTxdFrNstsOffset = TX_DESC_NSTS_OFFSET;
+	prTxDescOps->u2TxdFrStbcMask = TX_DESC_STBC;
 }
 
 void asicInitRxdHook(
@@ -1613,6 +1670,7 @@ void asicInitRxdHook(
 	prRxDescOps->nic_rxd_get_rf_band = nic_rxd_v1_get_rf_band;
 	prRxDescOps->nic_rxd_get_tcl = nic_rxd_v1_get_tcl;
 	prRxDescOps->nic_rxd_get_ofld = nic_rxd_v1_get_ofld;
+	prRxDescOps->nic_rxd_get_HdrTrans = nic_rxd_v1_get_HdrTrans;
 	prRxDescOps->nic_rxd_fill_rfb = nic_rxd_v1_fill_rfb;
 	prRxDescOps->nic_rxd_sanity_check = nic_rxd_v1_sanity_check;
 #if CFG_SUPPORT_WAKEUP_REASON_DEBUG
@@ -1813,14 +1871,11 @@ void asicRxPerfIndProcessRXV(IN struct ADAPTER *prAdapter,
 			prRxStatusGroup3, 0) &
 			RX_VT_SHORT_GI) ? 1 : 0;	/* VHTA2 B0 */
 
-		if ((ucMcs > PHY_RATE_MCS9) ||
-			(ucFrMode > RX_VT_FR_MODE_160) ||
-			(ucShortGI > MAC_GI_SHORT))
-			return;
-
 		/* ucRate(500kbs) = u4PhyRate(100kbps) */
 		u4PhyRate = nicGetPhyRateByMcsRate(ucMcs, ucFrMode,
 					ucShortGI);
+		if (u4PhyRate == 0)
+			return;
 		u2Rate = u4PhyRate / 5;
 
 	}

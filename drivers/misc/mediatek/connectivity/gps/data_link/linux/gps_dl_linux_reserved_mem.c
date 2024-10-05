@@ -5,31 +5,20 @@
 #include "gps_dl_config.h"
 
 #if GPS_DL_HAS_PLAT_DRV
-#include "gps_dl_context.h"
 #include "gps_dl_linux_plat_drv.h"
 #include "gps_dl_linux_reserved_mem.h"
-#include "gps_dl_emi.h"
+
 
 #include <linux/of_reserved_mem.h>
 
 #if (GPS_DL_SET_EMI_MPU_CFG)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+#include <soc/mediatek/emi.h>
+#else
 #include <memory/mediatek/emi.h>
-#if (defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6893))
-#define GPS_DL_EMI_MPU_DOMAIN_AP      0
-#define GPS_DL_EMI_MPU_DOMAIN_CONN    2
-#define GPS_DL_EMI_MPU_REGION_NUM     29
 #endif
 #endif
 
-#define GPS_ICAP_MEM_SIZE (GPS_ICAP_BUF_SIZE)
-#define GPS_RESERVED_MEM_PADDING_SIZE (4*1024)
-
-struct gps_dl_reserved_mem_layout {
-	unsigned char icap_buf[GPS_ICAP_MEM_SIZE];
-	unsigned char padding1[GPS_RESERVED_MEM_PADDING_SIZE];
-	unsigned char tx_dma_buf[GPS_DATA_LINK_NUM][GPS_DL_RX_BUF_SIZE + GPS_RESERVED_MEM_PADDING_SIZE];
-	unsigned char rx_dma_buf[GPS_DATA_LINK_NUM][GPS_DL_RX_BUF_SIZE + GPS_RESERVED_MEM_PADDING_SIZE];
-};
 
 struct gps_dl_iomem_addr_map_entry g_gps_dl_res_emi;
 
@@ -49,7 +38,8 @@ void gps_dl_reserved_mem_init(void)
 		return;
 	}
 
-	host_virt_addr = ioremap_nocache(gGpsRsvMemPhyBase, gGpsRsvMemSize);
+	host_virt_addr = ioremap(gGpsRsvMemPhyBase, gGpsRsvMemSize);
+
 	if (host_virt_addr == NULL) {
 		GDL_LOGE_INI("res_mem: base = 0x%llx, size = 0x%llx, ioremap fail",
 			(unsigned long long)gGpsRsvMemPhyBase, (unsigned long long)gGpsRsvMemSize);
@@ -58,16 +48,18 @@ void gps_dl_reserved_mem_init(void)
 
 	/* Set EMI MPU permission */
 #if (GPS_DL_SET_EMI_MPU_CFG)
-	GDL_LOGI_INI("emi mpu cfg: region = %d, no protection domain = %d, %d",
-		GPS_DL_EMI_MPU_REGION_NUM, GPS_DL_EMI_MPU_DOMAIN_AP, GPS_DL_EMI_MPU_DOMAIN_CONN);
-	emimpu_ret1 = mtk_emimpu_init_region(&region, GPS_DL_EMI_MPU_REGION_NUM);
-	emimpu_ret2 = mtk_emimpu_set_addr(&region, gGpsRsvMemPhyBase, gGpsRsvMemPhyBase + gGpsRsvMemSize - 1);
-	emimpu_ret3 = mtk_emimpu_set_apc(&region, GPS_DL_EMI_MPU_DOMAIN_AP, MTK_EMIMPU_NO_PROTECTION);
-	emimpu_ret4 = mtk_emimpu_set_apc(&region, GPS_DL_EMI_MPU_DOMAIN_CONN, MTK_EMIMPU_NO_PROTECTION);
-	emimpu_ret5 = mtk_emimpu_set_protection(&region);
-	emimpu_ret6 = mtk_emimpu_free_region(&region);
-	GDL_LOGI_INI("emi mpu cfg: ret = %d, %d, %d, %d, %d, %d",
-		emimpu_ret1, emimpu_ret2, emimpu_ret3, emimpu_ret4, emimpu_ret5, emimpu_ret6);
+	if (gps_not_allocate_emi_from_lk2 == 1) {
+		GDL_LOGI_INI("emi mpu cfg: region = %d, no protection domain = %d, %d",
+			GPS_DL_EMI_MPU_REGION_NUM, GPS_DL_EMI_MPU_DOMAIN_AP, GPS_DL_EMI_MPU_DOMAIN_CONN);
+		emimpu_ret1 = mtk_emimpu_init_region(&region, GPS_DL_EMI_MPU_REGION_NUM);
+		emimpu_ret2 = mtk_emimpu_set_addr(&region, gGpsRsvMemPhyBase, gGpsRsvMemPhyBase + gGpsRsvMemSize - 1);
+		emimpu_ret3 = mtk_emimpu_set_apc(&region, GPS_DL_EMI_MPU_DOMAIN_AP, MTK_EMIMPU_NO_PROTECTION);
+		emimpu_ret4 = mtk_emimpu_set_apc(&region, GPS_DL_EMI_MPU_DOMAIN_CONN, MTK_EMIMPU_NO_PROTECTION);
+		emimpu_ret5 = mtk_emimpu_set_protection(&region);
+		emimpu_ret6 = mtk_emimpu_free_region(&region);
+		GDL_LOGI_INI("emi mpu cfg: ret = %d, %d, %d, %d, %d, %d",
+			emimpu_ret1, emimpu_ret2, emimpu_ret3, emimpu_ret4, emimpu_ret5, emimpu_ret6);
+	}
 #endif
 
 	g_gps_dl_res_emi.host_phys_addr = gGpsRsvMemPhyBase;

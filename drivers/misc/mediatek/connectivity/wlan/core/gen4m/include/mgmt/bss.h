@@ -257,6 +257,10 @@ void ibssInitForAdHoc(IN struct ADAPTER *prAdapter,
 uint32_t bssUpdateBeaconContent(IN struct ADAPTER
 				*prAdapter, IN uint8_t uBssIndex);
 
+uint32_t bssUpdateBeaconContentEx(IN struct ADAPTER
+				*prAdapter, IN uint8_t uBssIndex,
+				enum ENUM_IE_UPD_METHOD eMethod);
+
 /*----------------------------------------------------------------------------*/
 /* Routines for BSS(AP) only                                                  */
 /*----------------------------------------------------------------------------*/

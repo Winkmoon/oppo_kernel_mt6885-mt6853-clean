@@ -208,6 +208,13 @@ wlanSendSetQueryExtCmd(IN struct ADAPTER *prAdapter,
 		       IN uint32_t u4SetQueryBufferLen);
 #endif
 
+uint32_t wlanSendInitCmd(IN struct ADAPTER *prAdapter,
+		    uint8_t ucCID,
+		    u_int8_t fgSetQuery,
+		    u_int8_t fgNeedResp,
+		    uint32_t u4SetQueryInfoLen,
+		    uint8_t *pucInfoBuffer);
+
 void cmdBufDumpCmdQueue(struct QUE *prQueue,
 			int8_t *queName);
 #if (CFG_SUPPORT_TRACE_TC4 == 1)

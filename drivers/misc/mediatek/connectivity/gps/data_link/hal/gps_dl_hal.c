@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_hal.h"
 #include "gps_dl_hw_api.h"
 #include "gps_dsp_fsm.h"
@@ -18,41 +11,42 @@
 #include "gps_dl_context.h"
 #include "gps_dl_name_list.h"
 #include "gps_dl_subsys_reset.h"
+#include "gps_dl_time_tick.h"
+#include "gps_dl_hist_rec2.h"
 #if GPS_DL_HAS_CONNINFRA_DRV
 #include "conninfra.h"
 #endif
 
-#include "linux/jiffies.h"
 
+static bool s_gps_has_data_irq_masked[GPS_DATA_LINK_NUM];
 void gps_dl_hal_event_send(enum gps_dl_hal_event_id evt,
 	enum gps_dl_link_id_enum link_id)
 {
-#if (GPS_DL_HAS_CTRLD == 0)
-	gps_dl_hal_event_proc(evt, link_id, gps_each_link_get_session_id(link_id));
-#else
-	{
-		struct gps_dl_osal_lxop *pOp;
-		struct gps_dl_osal_signal *pSignal;
-		int iRet;
+#if GPS_DL_HAS_CTRLD
+	struct gps_dl_osal_lxop *pOp = NULL;
+	struct gps_dl_osal_signal *pSignal = NULL;
+	int iRet;
 
-		pOp = gps_dl_get_free_op();
-		if (!pOp)
-			return;
+	pOp = gps_dl_get_free_op();
+	if (!pOp)
+		return;
 
-		pSignal = &pOp->signal;
-		pSignal->timeoutValue = 0;/* send data need to wait ?ms */
-		if (link_id < GPS_DATA_LINK_NUM) {
-			pOp->op.opId = GPS_DL_OPID_HAL_EVENT_PROC;
-			pOp->op.au4OpData[0] = link_id;
-			pOp->op.au4OpData[1] = evt;
-			pOp->op.au4OpData[2] = gps_each_link_get_session_id(link_id);
-			iRet = gps_dl_put_act_op(pOp);
-		} else {
-			gps_dl_put_op_to_free_queue(pOp);
-			/*printf error msg*/
-			return;
-		}
+	pSignal = &pOp->signal;
+	pSignal->timeoutValue = 0;/* send data need to wait ?ms */
+	if (link_id < GPS_DATA_LINK_NUM) {
+		pOp->op.opId = GPS_DL_OPID_HAL_EVENT_PROC;
+		pOp->op.au4OpData[0] = link_id;
+		pOp->op.au4OpData[1] = evt;
+		pOp->op.au4OpData[2] = gps_each_link_get_session_id(link_id);
+		pOp->op.op_enq = gps_dl_tick_get_ms();
+		iRet = gps_dl_put_act_op(pOp);
+	} else {
+		gps_dl_put_op_to_free_queue(pOp);
+		/*printf error msg*/
+		return;
 	}
+#else
+	gps_dl_hal_event_proc(evt, link_id, gps_each_link_get_session_id(link_id));
 #endif
 }
 
@@ -66,10 +60,12 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 	int curr_sid;
 	bool last_session_msg = false;
 	unsigned long j0, j1;
-	bool show_log, reg_rw_log;
-	bool conninfra_okay, dma_irq_en;
+	bool show_log = false;
+	bool reg_rw_log = false;
+	bool conninfra_okay = false;
+	bool dma_irq_en = false;
 
-	j0 = jiffies;
+	j0 =  gps_dl_tick_get();
 	curr_sid = gps_each_link_get_session_id(link_id);
 
 	if (!gps_dl_reset_level_is_none(link_id) ||
@@ -120,9 +116,12 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 	GDL_LOGXD_EVT(link_id, "evt = %s", gps_dl_hal_event_name(evt));
 	switch (evt) {
 	case GPS_DL_HAL_EVT_D2A_RX_HAS_DATA:
+		gps_dl_hist_rec2_data_routing(link_id, DATA_TRANS_START);
+
 		gdl_ret = gdl_dma_buf_get_free_entry(
 			&p_link->rx_dma_buf, &dma_buf_entry, true);
 
+		s_gps_has_data_irq_masked[link_id] = true;
 		if (gdl_ret == GDL_OKAY) {
 			gps_dl_hal_d2a_rx_dma_claim_emi_usage(link_id, true);
 			gps_dl_hal_d2a_rx_dma_start(link_id, &dma_buf_entry);
@@ -137,6 +136,7 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 	/* the rx_dma_done and usrt_has_nodata both happen. */
 	case GPS_DL_HAL_EVT_D2A_RX_DMA_DONE:
 		/* TODO: to make mock work with it */
+		gps_dl_hist_rec2_data_routing(link_id, DATA_TRANS_CONTINUE);
 
 		/* stop and clear int flag in isr */
 		/* gps_dl_hal_d2a_rx_dma_stop(link_id); */
@@ -156,11 +156,16 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 		if (gdl_ret == GDL_OKAY) {
 			p_link->rx_dma_buf.dma_working_entry.is_valid = false;
 			gps_dl_link_wake_up(&p_link->waitables[GPS_DL_WAIT_READ]);
-		}
+		} else
+			GDL_LOGXI(link_id, "DMA_DONE : gdl_dma_buf_set_free_entry ret = %s", gdl_ret_to_name(gdl_ret));
 
 		gps_dl_hal_d2a_rx_dma_claim_emi_usage(link_id, false);
 		/* mask data irq */
-		gps_dl_irq_each_link_unmask(link_id, GPS_DL_IRQ_TYPE_HAS_DATA, GPS_DL_IRQ_CTRL_FROM_HAL);
+		if (s_gps_has_data_irq_masked[link_id] == true) {
+			gps_dl_irq_each_link_unmask(link_id, GPS_DL_IRQ_TYPE_HAS_DATA, GPS_DL_IRQ_CTRL_FROM_HAL);
+			s_gps_has_data_irq_masked[link_id] = false;
+		} else
+			GDL_LOGXW_DRW(link_id, "D2A_RX_DMA_DONE  while s_gps_has_data_irq_masked is false");
 		break;
 
 	case GPS_DL_HAL_EVT_D2A_RX_HAS_NODATA:
@@ -179,10 +184,13 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 				&p_link->rx_dma_buf.dma_working_entry);
 
 			if (gdl_ret != GDL_OKAY)
-				GDL_LOGD("gdl_dma_buf_set_free_entry ret = %s", gdl_ret_to_name(gdl_ret));
+				GDL_LOGXI(link_id, "NODATA : gdl_dma_buf_set_free_entry ret = %s",
+					gdl_ret_to_name(gdl_ret));
 
 		} else
-			GDL_LOGD("gps_dl_hal_d2a_rx_dma_get_write_index ret = %s", gdl_ret_to_name(gdl_ret));
+			GDL_LOGXD(link_id, "gps_dl_hal_d2a_rx_dma_get_write_index ret = %s", gdl_ret_to_name(gdl_ret));
+
+		gps_dl_hist_rec2_data_routing(link_id, DATA_TRANS_END);
 
 		if (gdl_ret == GDL_OKAY) {
 			p_link->rx_dma_buf.dma_working_entry.is_valid = false;
@@ -196,8 +204,14 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 			GDL_LOGXE(link_id, "test mask hasdata irq, not unmask irq and wait reset");
 			gps_dl_test_mask_hasdata_irq_set(link_id, false);
 			gps_dl_hal_set_irq_dis_flag(link_id, GPS_DL_IRQ_TYPE_HAS_DATA, true);
-		} else
-			gps_dl_irq_each_link_unmask(link_id, GPS_DL_IRQ_TYPE_HAS_DATA, GPS_DL_IRQ_CTRL_FROM_HAL);
+		} else {
+			if (s_gps_has_data_irq_masked[link_id] == true) {
+				gps_dl_irq_each_link_unmask(link_id, GPS_DL_IRQ_TYPE_HAS_DATA,
+					GPS_DL_IRQ_CTRL_FROM_HAL);
+				s_gps_has_data_irq_masked[link_id] = false;
+			} else
+				GDL_LOGXW_DRW(link_id, "D2A_RX_HAS_NODATA  while s_gps_has_data_irq_masked is false");
+		}
 		break;
 
 	case GPS_DL_HAL_EVT_A2D_TX_DMA_DONE:
@@ -265,7 +279,7 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 		break;
 	}
 
-	j1 = jiffies;
+	j1 =  gps_dl_tick_get();
 	GDL_LOGXI_EVT(link_id, "evt = %s, on_sid = %d, dj = %lu",
 		gps_dl_hal_event_name(evt), sid_on_evt, j1 - j0);
 }
@@ -273,7 +287,7 @@ void gps_dl_hal_event_proc(enum gps_dl_hal_event_id evt,
 bool gps_dl_hal_mcub_flag_handler(enum gps_dl_link_id_enum link_id)
 {
 	struct gps_dl_hal_mcub_info d2a;
-	bool conninfra_okay;
+	bool conninfra_okay = false;
 
 	/* Todo: while condition make sure DSP is on and session ID */
 	while (1) {

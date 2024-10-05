@@ -19,11 +19,18 @@
 #ifndef _PLATFORM_CLOCK_MNG_H_
 #define _PLATFORM_CLOCK_MNG_H_
 
-#include "osal.h"
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
 */
+
+#include <linux/version.h>
+#include <linux/regmap.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#define COMMON_KERNEL_CLK_SUPPORT	1
+#else
+#define COMMON_KERNEL_CLK_SUPPORT	0
+#endif
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -61,6 +68,8 @@
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
+struct regmap* consys_clock_mng_get_regmap(void);
+int clock_mng_register_device(void);
 
 
 /*******************************************************************************

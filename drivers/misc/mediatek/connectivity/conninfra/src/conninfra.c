@@ -98,14 +98,13 @@ int conninfra_get_clock_schematic(void)
 }
 EXPORT_SYMBOL(conninfra_get_clock_schematic);
 
-void conninfra_get_phy_addr(unsigned int *addr, unsigned int *size)
+void conninfra_get_phy_addr(phys_addr_t *addr, unsigned int *size)
 {
 	phys_addr_t base;
 
 	conninfra_get_emi_phy_addr(CONNSYS_EMI_FW, &base, size);
 	if (addr)
-		*addr = (unsigned int)base;
-	return;
+		*addr = base;
 }
 EXPORT_SYMBOL(conninfra_get_phy_addr);
 
@@ -154,6 +153,7 @@ EXPORT_SYMBOL(conninfra_pwr_on);
 
 int conninfra_pwr_off(enum consys_drv_type drv_type)
 {
+	pr_info("[%s] drv=[%d]", __func__, drv_type);
 	if (conninfra_core_is_rst_locking()) {
 		DUMP_LOG();
 		return CONNINFRA_ERR_RST_ONGOING;
@@ -180,6 +180,12 @@ int conninfra_reg_readable_no_lock(void)
 	return conninfra_core_reg_readable_no_lock();
 }
 EXPORT_SYMBOL(conninfra_reg_readable_no_lock);
+
+int conninfra_reg_readable_for_coredump(void)
+{
+	return conninfra_core_reg_readable_for_coredump();
+}
+EXPORT_SYMBOL(conninfra_reg_readable_for_coredump);
 
 int conninfra_is_bus_hang(void)
 {
@@ -249,12 +255,34 @@ int conninfra_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsi
 		pr_err("[%s] wrong subsys %d", __func__, subsystem);
 		return -EINVAL;
 	}
-	conninfra_core_spi_read(subsystem, addr, data);
-	return 0;
+	return conninfra_core_spi_read(subsystem, addr, data);;
 }
 EXPORT_SYMBOL(conninfra_spi_read);
 
 int conninfra_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data)
+{
+	int ret = 0;
+
+	if (conninfra_core_is_rst_locking()) {
+		DUMP_LOG();
+		return CONNINFRA_ERR_RST_ONGOING;
+	}
+
+	if (subsystem >= SYS_SPI_MAX) {
+		pr_err("[%s] wrong subsys %d", __func__, subsystem);
+		return -EINVAL;
+	}
+
+	ret = conninfra_core_spi_write(subsystem, addr, data);
+
+	if (ret == CONNINFRA_SPI_ADDR_INVALID)
+		pr_info("[%s] Error: write invalid spi addr=[0x%x], value=[0x%x]\n", __func__, addr, data);
+
+	return ret;
+}
+EXPORT_SYMBOL(conninfra_spi_write);
+
+int conninfra_spi_update_bits(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask)
 {
 	if (conninfra_core_is_rst_locking()) {
 		DUMP_LOG();
@@ -265,10 +293,10 @@ int conninfra_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, uns
 		pr_err("[%s] wrong subsys %d", __func__, subsystem);
 		return -EINVAL;
 	}
-	conninfra_core_spi_write(subsystem, addr, data);
-	return 0;
+
+	return conninfra_core_spi_update_bits(subsystem, addr, data, mask);
 }
-EXPORT_SYMBOL(conninfra_spi_write);
+EXPORT_SYMBOL(conninfra_spi_update_bits);
 
 int conninfra_adie_top_ck_en_on(enum consys_adie_ctl_type type)
 {
@@ -314,3 +342,9 @@ int conninfra_bus_clock_ctrl(enum consys_drv_type drv_type, unsigned int bus_clo
 	return conninfra_core_bus_clock_ctrl(drv_type, bus_clock, status);
 }
 EXPORT_SYMBOL(conninfra_bus_clock_ctrl);
+
+unsigned int conninfra_get_ic_info(enum connsys_ic_info_type type)
+{
+	return consys_hw_get_ic_info(type);
+}
+EXPORT_SYMBOL(conninfra_get_ic_info);

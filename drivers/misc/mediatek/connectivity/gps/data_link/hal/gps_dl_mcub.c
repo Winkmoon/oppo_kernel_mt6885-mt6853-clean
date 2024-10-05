@@ -1,51 +1,24 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 #include "gps_dl_log.h"
 #include "gps_dl_hw_api.h"
+#include "gps_dl_hw_dep_macro.h"
 #include "gps_dsp_fsm.h"
+#include "gps_dl_hal.h"
 
-#define GPS_DSP_REG_POLL_MAX (11)
 const unsigned int c_gps_dsp_reg_list[GPS_DATA_LINK_NUM][GPS_DSP_REG_POLL_MAX] = {
-	/* 8: HW TICK H/L, BG tick H/L, TX_END/TX_RD, RX_END/RX_WR
-	 * 3: PC, GALMAN CNT, WRHOST CNT
-	 */
-	{
-		0x5028, 0x5029, 0x0100, 0x0101, 0x4882, 0x4883, 0x4886, 0x4887,
-		0xEF00, 0xEF01, 0xEF02,
-	},
-	{
-		0x5014, 0x5015, 0x0100, 0x0101, 0x4882, 0x4883, 0x4886, 0x4887,
-		0xEF00, 0xEF01, 0xEF02,
-	}
+	GPS_L1_REG_POLL_LIST,
+	GPS_L5_REG_POLL_LIST
 };
 
-#define GPS_DSP_REG_DBG_POLL_MAX (20)
 const unsigned int c_gps_dsp_reg_dbg_list[GPS_DATA_LINK_NUM][GPS_DSP_REG_DBG_POLL_MAX] = {
-	/* 9: PC, GALMAN CNT, WRHOST CNT, DBTT CNT, NEXT CNT, BG TICK H/L, HW TICK H/L
-	 * 11: USRT CTL, STA, TX_END/RD/MAX, RX_MAX/END/WR, TX_CNT, RX_CNT, MISC
-	 */
-	{
-		0xEF00, 0xEF01, 0xEF02, 0xEF03, 0xEF04, 0x0100, 0x0101, 0x5028, 0x5029,
-		0x4880, 0x4881, 0x4882, 0x4883, 0x4884, 0x4885, 0x4886, 0x4887, 0x4888, 0x4889, 0x488a,
-	},
-	{
-		0xEF00, 0xEF01, 0xEF02, 0xEF03, 0xEF04, 0x0100, 0x0101, 0x5014, 0x5015,
-		0x4880, 0x4881, 0x4882, 0x4883, 0x4884, 0x4885, 0x4886, 0x4887, 0x4888, 0x4889, 0x488a,
-	}
+	GPS_L1_REG_DBG_POLL_LIST,
+	GPS_L5_REG_DBG_POLL_LIST
 };
-
-
 
 struct gps_each_dsp_reg_read_context {
 	bool poll_ongoing;
@@ -65,6 +38,7 @@ struct gps_each_dsp_reg_read_context {
 
 struct gps_each_dsp_reg_read_context g_gps_each_dsp_reg_read_context[GPS_DATA_LINK_NUM];
 
+struct gps_each_dsp_reg_read_value g_gps_rec_dsp_reg[GPS_DATA_LINK_NUM];
 
 enum GDL_RET_STATUS gps_each_dsp_reg_read_request(
 	enum gps_dl_link_id_enum link_id, unsigned int reg_addr)
@@ -86,7 +60,7 @@ void gps_each_dsp_reg_gourp_read_next(enum gps_dl_link_id_enum link_id, bool res
 {
 	unsigned int reg_addr;
 	enum GDL_RET_STATUS ret;
-	struct gps_each_dsp_reg_read_context *p_read_context;
+	struct gps_each_dsp_reg_read_context *p_read_context = NULL;
 	int i;
 
 	ASSERT_LINK_ID(link_id, GDL_VOIDF());
@@ -117,19 +91,42 @@ void gps_each_dsp_reg_gourp_read_next(enum gps_dl_link_id_enum link_id, bool res
 void gps_each_dsp_reg_read_ack(
 	enum gps_dl_link_id_enum link_id, const struct gps_dl_hal_mcub_info *p_d2a)
 {
+	struct gps_each_dsp_reg_read_context *p_read_context = NULL;
+	struct gps_each_dsp_reg_read_value *p_read_value = NULL;
+
 	ASSERT_LINK_ID(link_id, GDL_VOIDF());
 
-	GDL_LOGXI(link_id,
-		"n = %d/%d, addr = 0x%04x, val = 0x%04x/0x%04x, round = %d/%d",
-		g_gps_each_dsp_reg_read_context[link_id].poll_index + 1,
-		g_gps_each_dsp_reg_read_context[link_id].poll_list_len,
-		g_gps_each_dsp_reg_read_context[link_id].poll_addr,
-		p_d2a->dat0, p_d2a->dat1,
-		g_gps_each_dsp_reg_read_context[link_id].round_index + 1,
-		g_gps_each_dsp_reg_read_context[link_id].round_max);
+	p_read_context = &g_gps_each_dsp_reg_read_context[link_id];
+	p_read_value = &g_gps_rec_dsp_reg[link_id];
 
+	if (p_read_value->record_d2a_index >= GPS_DSP_REG_DBG_POLL_MAX) {
+		GDL_LOGXW(link_id, "warning : poll_index : %d, write_index : %d, REG_DBG_POLL_MAX : %d",
+			p_read_context->poll_index, p_read_value->record_d2a_index, GPS_DSP_REG_DBG_POLL_MAX + 1);
+	} else {
+		p_read_value->g_gps_rec_dsp_value[p_read_value->record_d2a_index] = p_d2a->dat0;
+		p_read_value->record_d2a_index++;
+
+		if (p_read_value->record_d2a_index >= p_read_context->poll_list_len) {
+			p_read_value->g_gps_rec_dsp_value[p_read_value->record_d2a_index] = p_d2a->dat1;
+			gps_dl_hal_show_dsp_reg("dsp_reg_normal", link_id, p_read_value->g_gps_rec_dsp_value,
+				p_read_value->record_d2a_index + 1);
+			p_read_value->record_d2a_index = 0;
+		}
+	}
 	g_gps_each_dsp_reg_read_context[link_id].poll_ongoing = false;
 	gps_each_dsp_reg_gourp_read_next(link_id, false);
+}
+
+void gps_each_dsp_reg_dump_if_any_rec(enum gps_dl_link_id_enum link_id)
+{
+	struct gps_each_dsp_reg_read_value *p_read_value = NULL;
+
+	ASSERT_LINK_ID(link_id, GDL_VOIDF());
+
+	p_read_value = &g_gps_rec_dsp_reg[link_id];
+	gps_dl_hal_show_dsp_reg("dsp_reg_force_dump", link_id, p_read_value->g_gps_rec_dsp_value,
+		p_read_value->record_d2a_index);
+	p_read_value->record_d2a_index = 0;
 }
 
 void gps_each_dsp_reg_gourp_read_start(enum gps_dl_link_id_enum link_id,
@@ -178,5 +175,81 @@ void gps_each_dsp_reg_gourp_read_init(enum gps_dl_link_id_enum link_id)
 
 	memset(&g_gps_each_dsp_reg_read_context[link_id], 0,
 		sizeof(g_gps_each_dsp_reg_read_context[link_id]));
+}
+
+void gps_dl_hal_show_dsp_reg(unsigned char *tag, enum gps_dl_link_id_enum link_id,
+	unsigned int *buf, unsigned int len)
+{
+	int base = 0, line_idx = 0;
+	int line_len = 8;
+	int left_len = len;
+
+#define SHOW_BUF_FMT0 "[%s] len = %u"
+#define SHOW_BUF_FMT1 SHOW_BUF_FMT0", data = %04x"
+#define SHOW_BUF_FMT2 SHOW_BUF_FMT1" %04x"
+#define SHOW_BUF_FMT3 SHOW_BUF_FMT2" %04x"
+#define SHOW_BUF_FMT4 SHOW_BUF_FMT3" %04x"
+#define SHOW_BUF_FMT5 SHOW_BUF_FMT4", %04x"
+#define SHOW_BUF_FMT6 SHOW_BUF_FMT5" %04x"
+#define SHOW_BUF_FMT7 SHOW_BUF_FMT6" %04x"
+#define SHOW_BUF_FMT8 SHOW_BUF_FMT7" %04x"
+
+#define SHOW_BUF_ARG0 do {GDL_LOGI(SHOW_BUF_FMT0, tag, len); } while (0)
+
+#define SHOW_BUF_ARG1 do {GDL_LOGI(SHOW_BUF_FMT1, tag, len, buf[base+0]); } while (0)
+
+#define SHOW_BUF_ARG2 do {GDL_LOGI(SHOW_BUF_FMT2, tag, len, buf[base+0], buf[base+1]); } while (0)
+
+#define SHOW_BUF_ARG3 do {GDL_LOGI(SHOW_BUF_FMT3, tag, len, buf[base+0], buf[base+1], buf[base+2]) \
+	; } while (0)
+
+#define SHOW_BUF_ARG4 do {GDL_LOGI(SHOW_BUF_FMT4, tag, len, buf[base+0], buf[base+1], buf[base+2], \
+	buf[base+3]); } while (0)
+
+#define SHOW_BUF_ARG5 do {GDL_LOGI(SHOW_BUF_FMT5, tag, len, buf[base+0], buf[base+1], buf[base+2], \
+	buf[base+3], buf[base+4]); } while (0)
+
+#define SHOW_BUF_ARG6 do {GDL_LOGI(SHOW_BUF_FMT6, tag, len, buf[base+0], buf[base+1], buf[base+2], \
+	buf[base+3], buf[base+4], buf[base+5]); } while (0)
+
+#define SHOW_BUF_ARG7 do {GDL_LOGI(SHOW_BUF_FMT7, tag, len, buf[base+0], buf[base+1], buf[base+2], \
+	buf[base+3], buf[base+4], buf[base+5], buf[base+6]); } while (0)
+
+#define SHOW_BUF_ARG8 do {GDL_LOGI(SHOW_BUF_FMT8, tag, len, buf[base+0], buf[base+1], buf[base+2], \
+	buf[base+3], buf[base+4], buf[base+5], buf[base+6], buf[base+7]); } while (0)
+
+	for (left_len = len, base = 0, line_idx = 0;
+		left_len > 0 && line_idx < 3;
+		left_len -= 8, base += 8, line_idx++) {
+
+		if (left_len > 8)
+			line_len = 8;
+		else
+			line_len = left_len;
+
+		switch (line_len) {
+		/* case 0 is impossible */
+#if 0
+		case 0:
+			SHOW_BUF_ARG0; break;
+#endif
+		case 1:
+			SHOW_BUF_ARG1; break;
+		case 2:
+			SHOW_BUF_ARG2; break;
+		case 3:
+			SHOW_BUF_ARG3; break;
+		case 4:
+			SHOW_BUF_ARG4; break;
+		case 5:
+			SHOW_BUF_ARG5; break;
+		case 6:
+			SHOW_BUF_ARG6; break;
+		case 7:
+			SHOW_BUF_ARG7; break;
+		default:
+			SHOW_BUF_ARG8; break;
+		}
+	}
 }
 

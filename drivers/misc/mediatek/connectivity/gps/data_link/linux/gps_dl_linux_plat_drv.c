@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 
 #if GPS_DL_HAS_PLAT_DRV
@@ -45,7 +38,11 @@
 /* #ifdef CONFIG_OF */
 const struct of_device_id gps_dl_of_ids[] = {
 	{ .compatible = "mediatek,mt6885-gps", },
-	{}
+	{ .compatible = "mediatek,mt6877-gps", },
+	{ .compatible = "mediatek,mt6983-gps", },
+	{ .compatible = "mediatek,mt6879-gps", },
+	{ .compatible = "mediatek,mt6895-gps", },
+	{},
 };
 /* #endif */
 #define GPS_DL_IOMEM_NUM 2
@@ -55,13 +52,15 @@ struct gps_dl_iomem_addr_map_entry g_gps_dl_status_dummy_cr;
 struct gps_dl_iomem_addr_map_entry g_gps_dl_tia1_gps;
 struct gps_dl_iomem_addr_map_entry g_gps_dl_tia2_gps_on;
 struct gps_dl_iomem_addr_map_entry g_gps_dl_tia2_gps_rc_sel;
+struct gps_dl_iomem_addr_map_entry g_gps_dl_tia2_gps_debug;
+struct gps_dl_iomem_addr_map_entry g_gps_dl_b13_status_cr;
 
 
 void __iomem *gps_dl_host_addr_to_virt(unsigned int host_addr)
 {
 	int i;
 	int offset;
-	struct gps_dl_iomem_addr_map_entry *p;
+	struct gps_dl_iomem_addr_map_entry *p = NULL;
 
 	for (i = 0; i < GPS_DL_IOMEM_NUM; i++) {
 		p = &g_gps_dl_iomem_arrary[i];
@@ -134,12 +133,24 @@ void gps_dl_tia1_gps_ctrl(bool gps_is_on)
 		tia_temp, tia_temp1);
 }
 
+#define DEBUG_CR_NUM 10
+struct gps_tia2_gps_ctrl_debug_reg {
+	unsigned int tia2_gps_debug[DEBUG_CR_NUM];
+};
+
+struct gps_tia2_gps_ctrl_debug_reg gps_tia2_gps_reg;
+
 void gps_dl_tia2_gps_ctrl(bool gps_is_on)
 {
 	void __iomem *p_gps_on = g_gps_dl_tia2_gps_on.host_virt_addr;
 	void __iomem *p_gps_rc_sel = g_gps_dl_tia2_gps_rc_sel.host_virt_addr;
+	void __iomem *p_gps_debug = g_gps_dl_tia2_gps_debug.host_virt_addr;
+
 	unsigned int tia2_gps_on_old = 0, tia2_gps_rc_sel_old = 0;
 	unsigned int tia2_gps_on_new = 0, tia2_gps_rc_sel_new = 0;
+	struct gps_tia2_gps_ctrl_debug_reg *gps_tia2_reg_p = &gps_tia2_gps_reg;
+	unsigned int i;
+	unsigned int gps_debug_length = g_gps_dl_tia2_gps_debug.length;
 
 	if (p_gps_on == NULL) {
 		GDL_LOGW_INI("on = %d, tia2_gps_on addr is null", gps_is_on);
@@ -149,7 +160,7 @@ void gps_dl_tia2_gps_ctrl(bool gps_is_on)
 	tia2_gps_on_old = __raw_readl(p_gps_on);
 	if (gps_is_on) {
 		/* 0x1001C000[5] = 1 (GPS on) */
-		gps_dl_linux_sync_writel(tia2_gps_on_old | (1UL << 5), p_gps_on);
+		/*gps_dl_linux_sync_writel(tia2_gps_on_old | (1UL << 5), p_gps_on);*/
 
 		if (p_gps_rc_sel == NULL)
 			GDL_LOGW_INI("on = %d, p_gps_rc_sel addr is null", gps_is_on);
@@ -166,11 +177,31 @@ void gps_dl_tia2_gps_ctrl(bool gps_is_on)
 		}
 	} else {
 		tia2_gps_rc_sel_old = __raw_readl(p_gps_rc_sel);
-
 		/* 0x1001C000[5] = 0 (GPS off) */
-		gps_dl_linux_sync_writel(tia2_gps_on_old & ~(1UL << 5), p_gps_on);
+		/*gps_dl_linux_sync_writel(tia2_gps_on_old & ~(1UL << 5), p_gps_on);*/
 	}
 	tia2_gps_on_new = __raw_readl(p_gps_on);
+
+	if (p_gps_debug == NULL) {
+		GDL_LOGW_INI("on = %d, p_gps_debug addr is null", gps_is_on);
+	} else {
+		/* dump register : base + 0CC/0D0/0D4/0D8/0DC/0E0/0F0 for debug*/
+		for (i = 0; i <= DEBUG_CR_NUM - 1; i++) {
+			if (gps_debug_length > (i * 4))
+				gps_tia2_reg_p->tia2_gps_debug[i] = __raw_readl(p_gps_debug + (i * 0x4));
+			else
+				gps_tia2_reg_p->tia2_gps_debug[i] = 0xdeadbeef;
+		}
+		if (gps_debug_length < (i * 4))
+			GDL_LOGW_INI("warning : memory access is out of bounds : %d/%d", gps_debug_length, i * 4);
+
+		GDL_LOGI_INI(
+			"gps_tia2_reg_debug [CC~E0]: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x, [F0]: 0x%08x",
+			gps_tia2_reg_p->tia2_gps_debug[0], gps_tia2_reg_p->tia2_gps_debug[1],
+			gps_tia2_reg_p->tia2_gps_debug[2], gps_tia2_reg_p->tia2_gps_debug[3],
+			gps_tia2_reg_p->tia2_gps_debug[4], gps_tia2_reg_p->tia2_gps_debug[5],
+			gps_tia2_reg_p->tia2_gps_debug[9]);
+	}
 	GDL_LOGI_INI(
 		"on = %d, tia2_gps_on = 0x%08x/0x%08x, rc_sel = 0x%08x/0x%08x",
 		gps_is_on,
@@ -213,8 +244,8 @@ struct pinctrl *g_gps_dl_pinctrl_ptr;
 void gps_dl_pinctrl_show_info(void)
 {
 	enum gps_dl_pinctrl_state_enum state_id;
-	const char *p_name;
-	struct pinctrl_state *p_state;
+	const char *p_name = NULL;
+	struct pinctrl_state *p_state = NULL;
 
 	GDL_LOGD_INI("pinctrl_ptr = 0x%p", g_gps_dl_pinctrl_ptr);
 
@@ -229,8 +260,8 @@ void gps_dl_pinctrl_show_info(void)
 void gps_dl_pinctrl_context_init(void)
 {
 	enum gps_dl_pinctrl_state_enum state_id;
-	const char *p_name;
-	struct pinctrl_state *p_state;
+	const char *p_name = NULL;
+	struct pinctrl_state *p_state = NULL;
 
 	if (IS_ERR(g_gps_dl_pinctrl_ptr)) {
 		GDL_LOGE_INI("pinctrl is error");
@@ -293,7 +324,7 @@ bool gps_dl_get_iomem_by_name(struct platform_device *pdev, const char *p_name,
 	struct gps_dl_iomem_addr_map_entry *p_entry)
 {
 	struct resource *regs;
-	bool okay;
+	bool okay = false;
 
 	regs = platform_get_resource_byname(pdev, IORESOURCE_MEM, p_name);
 	if (regs != NULL) {
@@ -314,13 +345,14 @@ bool gps_dl_get_iomem_by_name(struct platform_device *pdev, const char *p_name,
 	return okay;
 }
 
+int gps_not_allocate_emi_from_lk2;
 #if (GPS_DL_GET_RSV_MEM_IN_MODULE)
 phys_addr_t gGpsRsvMemPhyBase;
 unsigned long long gGpsRsvMemSize;
 static int gps_dl_get_reserved_memory(struct device *dev)
 {
-	struct device_node *np;
-	struct reserved_mem *rmem;
+	struct device_node *np = NULL;
+	struct reserved_mem *rmem = NULL;
 
 	np = of_parse_phandle(dev->of_node, "memory-region", 0);
 	if (!np) {
@@ -338,18 +370,79 @@ static int gps_dl_get_reserved_memory(struct device *dev)
 	gGpsRsvMemSize = (unsigned long long)rmem->size;
 	return 0;
 }
+
+static int gps_dl_get_reserved_memory_lk(struct device *dev)
+{
+	struct device_node *node;
+	unsigned int phy_addr = 0;
+	unsigned int phy_size = 0;
+
+	node = dev->of_node;
+	if (!node) {
+		pr_info("gps_dl_get_reserved_memory_lk: unable to get consys node\n");
+		return -1;
+	}
+
+	if (of_property_read_u32(node, "emi-addr", &phy_addr)) {
+		pr_info("gps_dl_get_reserved_memory_lk: unable to get emi_addr\n");
+		return -1;
+	}
+
+	if (of_property_read_u32(node, "emi-size", &phy_size)) {
+		pr_info("gps_dl_get_reserved_memory_lk: unable to get emi_size\n");
+		return -1;
+	}
+
+	pr_info("gps_dl_get_reserved_memory_lk emi_addr %x, emi_size %x\n", phy_addr, phy_size);
+	gGpsRsvMemPhyBase = phy_addr;
+	gGpsRsvMemSize = phy_size;
+
+	return 0;
+
+}
 #endif
+
+unsigned int b13_gps_status_addr;
+static int gps_dl_get_b13_status_addr(struct device *dev)
+{
+	struct device_node *node;
+	unsigned int phy_addr = 0;
+
+	node = dev->of_node;
+	if (!node) {
+		pr_info("gps_dl_get_b13_status_addr: unable to get consys node\n");
+		return -1;
+	}
+
+	if (of_property_read_u32(node, "b13b14-status-addr", &phy_addr)) {
+		pr_info("gps_dl_get_b13_status_addr: unable to get emi_addr\n");
+		return -1;
+	}
+
+	pr_info("gps_dl_get_b13_status_addr: b13b14-status-addr %x\n", phy_addr);
+	b13_gps_status_addr = phy_addr;
+
+	return 0;
+
+}
 
 static int gps_dl_probe(struct platform_device *pdev)
 {
-	struct resource *irq;
+	struct resource *irq = NULL;
 	struct gps_each_device *p_each_dev0 = gps_dl_device_get(GPS_DATA_LINK_ID0);
 	struct gps_each_device *p_each_dev1 = gps_dl_device_get(GPS_DATA_LINK_ID1);
 	int i;
-	bool okay;
+	bool okay = false;
+
+	GDL_LOGW_INI("compatible = %s", (char *)pdev->dev.of_node->properties->value);
+
+	gps_not_allocate_emi_from_lk2 = 1;
 
 #if (GPS_DL_GET_RSV_MEM_IN_MODULE)
-	gps_dl_get_reserved_memory(&pdev->dev);
+	if (gps_dl_get_reserved_memory_lk(&pdev->dev) < 0)
+		gps_dl_get_reserved_memory(&pdev->dev);
+	else
+		gps_not_allocate_emi_from_lk2 = 0;
 #endif
 	gps_dl_get_iomem_by_name(pdev, "conn_infra_base", &g_gps_dl_iomem_arrary[0]);
 	gps_dl_get_iomem_by_name(pdev, "conn_gps_base", &g_gps_dl_iomem_arrary[1]);
@@ -364,6 +457,11 @@ static int gps_dl_probe(struct platform_device *pdev)
 	/* TIA 2 */
 	gps_dl_get_iomem_by_name(pdev, "tia2_gps_on", &g_gps_dl_tia2_gps_on);
 	gps_dl_get_iomem_by_name(pdev, "tia2_gps_rc_sel", &g_gps_dl_tia2_gps_rc_sel);
+	gps_dl_get_iomem_by_name(pdev, "tia2_gps_debug", &g_gps_dl_tia2_gps_debug);
+
+	/* B13B14-status-addr*/
+	if (gps_dl_get_b13_status_addr(&pdev->dev) < 0)
+		GDL_LOGW_INI("warning : get B13B14 status addr fail");
 
 	for (i = 0; i < GPS_DL_IRQ_NUM; i++) {
 		irq = platform_get_resource(pdev, IORESOURCE_IRQ, i);
@@ -502,6 +600,7 @@ static DRIVER_ATTR(flag, 0644, driver_flag_read, driver_flag_set);
 int gps_dl_linux_plat_drv_register(void)
 {
 	int result;
+
 	gps_dl_wake_lock_init();
 
 	result = platform_driver_register(&gps_dl_dev_drv);

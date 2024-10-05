@@ -78,6 +78,21 @@
 					HE_PHY_CAP2_PARTIAL_BW_UL_MU_MIMO)
 #define HE_PHY_CAP6_INFO_DEFAULT_VAL (HE_PHY_CAP6_PPE_THRESHOLD)
 
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#if CFG_SUPPORT_RX_RDG
+#define FIELD_HE_6G_CAP_RDR     HE_6G_CAP_INFO_RD_RESPONDER
+#else
+#define FIELD_HE_6G_CAP_RDR     0
+#endif
+
+#define HE_6G_CAP_INFO_DEFAULT_VAL \
+	(HE_6G_CAP_INFO_MSS_NO_RESTRICIT | \
+	HE_6G_CAP_INFO_MAX_AMPDU_LEN_1024K | \
+	HE_6G_CAP_INFO_MAX_MPDU_LEN_3K | \
+	HE_6G_CAP_INFO_SM_POWER_SAVE | \
+	FIELD_HE_6G_CAP_RDR)
+#endif /* CFG_SUPPORT_WIFI_6G */
+
 #define PPE_RU_IDX_SIZE              4
 #define PPE_SUBFIELD_BITS_NUM        6
 
@@ -183,5 +198,19 @@ uint32_t heRlmSendHtcNullFrame(
 	IN struct STA_RECORD *prStaRec,
 	IN uint8_t ucUP,
 	IN PFN_TX_DONE_HANDLER pfTxDoneHandler);
+uint8_t heGetBssBandBw(
+	struct ADAPTER *prAdapter,
+	struct BSS_INFO *prBssInfo,
+	enum ENUM_BAND eBand);
+uint8_t heRlmMaxBwToHeBw(uint8_t ucMaxBw);
+#if (CFG_SUPPORT_WIFI_6G == 1)
+void heRlmRecHe6GCapInfo(
+	struct ADAPTER *prAdapter,
+	struct STA_RECORD *prStaRec,
+	uint8_t *pucIE);
+void heRlmReqGenerateHe6gBandCapIE(
+	struct ADAPTER *prAdapter,
+	struct MSDU_INFO *prMsduInfo);
+#endif
 #endif /* CFG_SUPPORT_802_11AX == 1 */
 #endif /* !_HE_RLM_H */

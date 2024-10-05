@@ -291,7 +291,7 @@ static struct MSG_HNDL_ENTRY arMsgMapTable[] = {
 	{MID_MNY_P2P_MGMT_FRAME_REGISTER,
 		p2pDevFsmRunEventMgmtFrameRegister},
 	{MID_MNY_P2P_NET_DEV_REGISTER, p2pFsmRunEventNetDeviceRegister},
-	{MID_MNY_P2P_START_AP, p2pRoleFsmRunEventStartAP},
+	{MID_MNY_P2P_START_AP, p2pRoleFsmRunEventPreStartAP},
 	{MID_MNY_P2P_DEL_IFACE, p2pRoleFsmRunEventDelIface},
 	{MID_MNY_P2P_MGMT_FRAME_UPDATE, p2pFsmRunEventUpdateMgmtFrame},
 #if (CFG_SUPPORT_DFS_MASTER == 1)
@@ -337,6 +337,9 @@ static struct MSG_HNDL_ENTRY arMsgMapTable[] = {
 	{MID_TWT_PARAMS_SET, twtPlannerSetParams},
 #endif
 
+#if (CFG_SUPPORT_NAN == 1)
+	{MID_CNM_NAN_CH_GRANT, nanDevSendEnableRequest}
+#endif
 };
 
 /*******************************************************************************

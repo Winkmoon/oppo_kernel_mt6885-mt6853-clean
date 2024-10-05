@@ -480,10 +480,10 @@ static void mt5931_ehpi_reg_init(void)
 	}
 
 	/* 2. memory regioin remapping */
-	mt5931_mcr_base = ioremap_nocache(MEM_MAPPED_ADDR, MEM_MAPPED_LEN);
+	mt5931_mcr_base = ioremap(MEM_MAPPED_ADDR, MEM_MAPPED_LEN);
 	if (!(mt5931_mcr_base)) {
 		release_mem_region(MEM_MAPPED_ADDR, MEM_MAPPED_LEN);
-		pr_err("ioremap_nocache(0x%08X) failed.\n", MEM_MAPPED_ADDR);
+		pr_err("ioremap(0x%08X) failed.\n", MEM_MAPPED_ADDR);
 		return;
 	}
 }
@@ -523,7 +523,7 @@ static irqreturn_t glEhpiInterruptHandler(int irq, void *dev_id)
 	wlanISR(prGlueInfo->prAdapter, TRUE);
 
 	/* 1.1 Halt flag Checking */
-	if (prGlueInfo->ulFlag & GLUE_FLAG_HALT)
+	if (test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag))
 		return IRQ_HANDLED;
 
 	/* 2. Flag marking for interrupt */

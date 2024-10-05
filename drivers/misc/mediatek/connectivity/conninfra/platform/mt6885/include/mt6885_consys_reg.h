@@ -72,27 +72,27 @@ struct consys_base_addr {
 	struct consys_reg_base_addr reg_base_addr[CONSYS_BASE_ADDR_MAX];
 };
 
-extern struct consys_base_addr conn_reg;
+extern struct consys_base_addr conn_reg_mt6885;
 
-#define CON_REG_INFRA_RGU_ADDR 		conn_reg.reg_base_addr[CONN_INFRA_RGU_BASE_INDEX].vir_addr
-#define CON_REG_INFRA_CFG_ADDR 		conn_reg.reg_base_addr[CONN_INFRA_CFG_BASE_INDEX].vir_addr
-#define CON_REG_HOST_CSR_ADDR 		conn_reg.reg_base_addr[CONN_HOST_CSR_TOP_BASE_INDEX].vir_addr
-#define CON_REG_INFRACFG_AO_ADDR 	conn_reg.reg_base_addr[INFRACFG_AO_BASE_INDEX].vir_addr
+#define CON_REG_INFRA_RGU_ADDR 		conn_reg_mt6885.reg_base_addr[CONN_INFRA_RGU_BASE_INDEX].vir_addr
+#define CON_REG_INFRA_CFG_ADDR 		conn_reg_mt6885.reg_base_addr[CONN_INFRA_CFG_BASE_INDEX].vir_addr
+#define CON_REG_HOST_CSR_ADDR 		conn_reg_mt6885.reg_base_addr[CONN_HOST_CSR_TOP_BASE_INDEX].vir_addr
+#define CON_REG_INFRACFG_AO_ADDR 	conn_reg_mt6885.reg_base_addr[INFRACFG_AO_BASE_INDEX].vir_addr
 
-#define CON_REG_TOP_RGU_ADDR 		conn_reg.reg_base_addr[TOPRGU_BASE_INDEX].vir_addr
-#define CON_REG_SPM_BASE_ADDR 		conn_reg.reg_base_addr[SPM_BASE_INDEX].vir_addr
-#define CON_REG_INFRACFG_BASE_ADDR 	conn_reg.reg_base_addr[INFRACFG_BASE_INDEX].vir_addr
-#define CON_REG_WT_SPL_CTL_ADDR 	conn_reg.reg_base_addr[CONN_WT_SLP_CTL_REG_INDEX].vir_addr
+#define CON_REG_TOP_RGU_ADDR 		conn_reg_mt6885.reg_base_addr[TOPRGU_BASE_INDEX].vir_addr
+#define CON_REG_SPM_BASE_ADDR 		conn_reg_mt6885.reg_base_addr[SPM_BASE_INDEX].vir_addr
+#define CON_REG_INFRACFG_BASE_ADDR 	conn_reg_mt6885.reg_base_addr[INFRACFG_BASE_INDEX].vir_addr
+#define CON_REG_WT_SPL_CTL_ADDR 	conn_reg_mt6885.reg_base_addr[CONN_WT_SLP_CTL_REG_INDEX].vir_addr
 
-#define CONN_AFE_CTL_BASE_ADDR		conn_reg.reg_base_addr[CONN_AFE_CTL_INDEX].vir_addr
-#define CONN_INFRA_SYSRAM_BASE_ADDR	conn_reg.reg_base_addr[CONN_INFRA_SYSRAM_INDEX].vir_addr
-#define GPIO_BASE_ADDR			conn_reg.reg_base_addr[GPIO_INDEX].vir_addr
-#define CONN_REG_RFSPI_ADDR		conn_reg.reg_base_addr[CONN_RF_SPI_MST_REG_INDEX].vir_addr
+#define CONN_AFE_CTL_BASE_ADDR		conn_reg_mt6885.reg_base_addr[CONN_AFE_CTL_INDEX].vir_addr
+#define CONN_INFRA_SYSRAM_BASE_ADDR	conn_reg_mt6885.reg_base_addr[CONN_INFRA_SYSRAM_INDEX].vir_addr
+#define GPIO_BASE_ADDR			conn_reg_mt6885.reg_base_addr[GPIO_INDEX].vir_addr
+#define CONN_REG_RFSPI_ADDR		conn_reg_mt6885.reg_base_addr[CONN_RF_SPI_MST_REG_INDEX].vir_addr
 
-#define CONN_REG_SEMAPHORE_ADDR		conn_reg.reg_base_addr[CONN_SEMAPHORE_INDEX].vir_addr
-#define CONN_TOP_THERM_CTL_ADDR		conn_reg.reg_base_addr[CONN_TOP_THERM_CTL_INDEX].vir_addr
-#define IOCFG_RT_ADDR			conn_reg.reg_base_addr[IOCFG_RT_INDEX].vir_addr
-#define CONN_DEBUG_CTRL_ADDR		conn_reg.reg_base_addr[CONN_DEBUG_CTRL].vir_addr
+#define CONN_REG_SEMAPHORE_ADDR		conn_reg_mt6885.reg_base_addr[CONN_SEMAPHORE_INDEX].vir_addr
+#define CONN_TOP_THERM_CTL_ADDR		conn_reg_mt6885.reg_base_addr[CONN_TOP_THERM_CTL_INDEX].vir_addr
+#define IOCFG_RT_ADDR			conn_reg_mt6885.reg_base_addr[IOCFG_RT_INDEX].vir_addr
+#define CONN_DEBUG_CTRL_ADDR		conn_reg_mt6885.reg_base_addr[CONN_DEBUG_CTRL].vir_addr
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -114,7 +114,5 @@ extern struct consys_base_addr conn_reg;
 *                              F U N C T I O N S
 ********************************************************************************
 */
-
-struct consys_base_addr* get_conn_reg_base_addr(void);
 
 #endif				/* _PLATFORM_MT6885_CONSYS_REG_H_ */

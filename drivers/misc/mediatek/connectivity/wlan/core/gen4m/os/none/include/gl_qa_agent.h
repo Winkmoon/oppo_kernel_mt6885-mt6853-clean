@@ -285,13 +285,15 @@ struct PARAM_RX_STAT {
 extern struct PARAM_RX_STAT g_HqaRxStat;
 #endif
 
+#define HQA_CMD_FRAME_DATA_SIZE	4096
+
 struct HQA_CMD_FRAME {
 	uint32_t MagicNo;
 	uint16_t Type;
 	uint16_t Id;
 	uint16_t Length;
 	uint16_t Sequence;
-	uint8_t Data[2048];
+	uint8_t Data[HQA_CMD_FRAME_DATA_SIZE];
 } __KAL_ATTRIB_PACKED__;
 
 /* TODO: os-related, implement with correspoinding structure in OS */
@@ -304,6 +306,17 @@ struct HQA_CMD_TABLE {
 	uint32_t CmdSetSize;
 	uint32_t CmdOffset;
 };
+
+struct PARAM_LIST_MODE_STATUS {
+	uint16_t    u2Status;
+	uint32_t    u4ExtId;
+	uint32_t    u4SegNum;
+	union {
+		uint32_t u4TxStatus[LIST_SEG_MAX];
+	} u;
+};
+
+extern struct list_mode_event g_HqaListModeStatus;
 
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S

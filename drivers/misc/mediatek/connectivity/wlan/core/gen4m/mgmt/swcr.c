@@ -1193,7 +1193,7 @@ void swCrReadWriteCmd(struct ADAPTER *prAdapter,
 	/* Address [7:0] OFFSET */
 
 	DEBUGFUNC("swCrReadWriteCmd");
-	DBGLOG(SW4, INFO, "%u addr 0x%x data 0x%x\n", ucRead,
+	DBGLOG(SW4, TRACE, "%u addr 0x%x data 0x%x\n", ucRead,
 	       u2Addr, *pu4Data);
 
 	if (ucMod < (ARRAY_SIZE(g_arSwCrModHandle))) {

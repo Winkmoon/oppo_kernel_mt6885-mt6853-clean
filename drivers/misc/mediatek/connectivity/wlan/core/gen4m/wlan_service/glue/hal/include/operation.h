@@ -8,6 +8,8 @@
 #include "test_mac.h"
 #include "net_adaption.h"
 
+extern int8_t g_hqa_frame_ctrl;
+
 /*****************************************************************************
  *	Enum value definition
  *****************************************************************************/
@@ -31,6 +33,7 @@ enum op_wlan_oid {
 	OP_WLAN_OID_GET_TEST_ICAP_DATA = 15,
 	OP_WLAN_OID_RESET_RECAL_COUNT = 16,
 	OP_WLAN_OID_GET_CAPABILITY = 17,
+	OP_WLAN_OID_LIST_MODE = 18,
 	OP_WLAN_OID_NUM
 };
 
@@ -483,4 +486,11 @@ s_int32 mt_op_get_wf_path_comb(
 	boolean dbdc_mode_en,
 	u_int8 *path,
 	u_int8 *path_len);
+s_int32 mt_op_listmode_cmd(
+	struct test_wlan_info *winfos,
+	u_int8 *para,
+	u_int16 para_len,
+	uint32_t *rsp_len,
+	void *rsp_data);
+
 #endif /* __OPERATION_H__ */

@@ -205,11 +205,13 @@
 #define NIC_TX_MGMT_DEFAULT_RETRY_COUNT_LIMIT   30
 
 /* in unit of ms */
-#define NIC_TX_AC_BE_REMAINING_TX_TIME	TX_DESC_TX_TIME_NO_LIMIT
-#define NIC_TX_AC_BK_REMAINING_TX_TIME	TX_DESC_TX_TIME_NO_LIMIT
-#define NIC_TX_AC_VO_REMAINING_TX_TIME	TX_DESC_TX_TIME_NO_LIMIT
-#define NIC_TX_AC_VI_REMAINING_TX_TIME	TX_DESC_TX_TIME_NO_LIMIT
+#define NIC_TX_DEFAULT_REMAINING_TX_TIME	2000
+#define NIC_TX_AC_BE_REMAINING_TX_TIME		NIC_TX_DEFAULT_REMAINING_TX_TIME
+#define NIC_TX_AC_BK_REMAINING_TX_TIME		NIC_TX_DEFAULT_REMAINING_TX_TIME
+#define NIC_TX_AC_VO_REMAINING_TX_TIME		NIC_TX_DEFAULT_REMAINING_TX_TIME
+#define NIC_TX_AC_VI_REMAINING_TX_TIME		NIC_TX_DEFAULT_REMAINING_TX_TIME
 #define NIC_TX_MGMT_REMAINING_TX_TIME		2000
+#define NIC_TX_BMC_REMAINING_TX_TIME		NIC_TX_DEFAULT_REMAINING_TX_TIME
 
 #define NIC_TX_CRITICAL_DATA_TID                7
 /*802.1d Voice Traffic,use AC_VO */
@@ -506,10 +508,7 @@ enum ENUM_MCU_Q_INDEX {
 	MCU_Q_NUM
 };
 
-/* +1 for DBDC */
-#define TX_PORT_NUM (TC_NUM + 1)
-
-#define TX_2G_WMM_PORT_NUM (TC_NUM)
+#define TX_PORT_NUM (TC_NUM)
 
 #define BMC_TC_INDEX TC1_INDEX
 
@@ -534,6 +533,8 @@ enum ENUM_TX_STATISTIC_COUNTER {
 	TX_INACTIVE_STA_DROP,
 	TX_FORWARD_OVERFLOW_DROP,
 	TX_AP_BORADCAST_DROP,
+	TX_INVALID_MSDUINFO_COUNT,
+	TX_DROP_PID_COUNT,
 	TX_STATISTIC_COUNTER_NUM
 };
 
@@ -735,6 +736,12 @@ struct PKT_PROFILE {
 	OS_SYSTIME rEnqueueTimestamp;
 	OS_SYSTIME rDequeueTimestamp;
 	OS_SYSTIME rHifTxDoneTimestamp;
+#if CFG_SUPPORT_TX_LATENCY_STATS
+	uint64_t u8XmitArrival;
+	uint64_t u8EnqTime;
+	uint64_t u8DeqTime;
+	uint64_t u8HifTxTime;
+#endif
 };
 #endif
 
@@ -848,6 +855,10 @@ struct MSDU_INFO {
 	uint8_t aucTxDescBuffer[NIC_TX_DESC_AND_PADDING_LENGTH];
 #endif
 
+#if CFG_SUPPORT_NAN
+	uint8_t ucTxToNafQueFlag;
+#endif
+
 #if defined(_HIF_PCIE) || defined(_HIF_AXI)
 	struct MSDU_TOKEN_ENTRY *prToken;
 	struct TX_DATA_REQ rTxReq;
@@ -857,6 +868,11 @@ struct MSDU_INFO {
 	uint8_t ucTarQueue;
 #endif
 	uint8_t fgMgmtUseDataQ;
+
+#if CFG_SUPPORT_DROP_INVALID_MSDUINFO
+	/* sanity drop flag */
+	u_int8_t fgDrop;
+#endif /* CFG_SUPPORT_DROP_INVALID_MSDUINFO */
 };
 
 #define HIF_PKT_FLAGS_CT_INFO_APPLY_TXD            BIT(0)
@@ -1066,6 +1082,10 @@ struct TX_DESC_OPS_T {
 		struct STA_RECORD *prStaRec,
 		uint8_t ucAci,
 		u_int8_t fgToMcu);
+	/* TXD: Rate to be Fixed */
+	uint8_t  ucTxdFrNstsOffset;
+	uint16_t u2TxdFrNstsMask;
+	uint16_t u2TxdFrStbcMask;
 };
 
 /*******************************************************************************
@@ -1186,7 +1206,7 @@ do { \
 
 #define HAL_MAC_TX_DESC_IS_IP_CHKSUM_ENABLED(_prHwMacTxDesc) \
 	(((_prHwMacTxDesc)->ucEtherOffset & TX_DESC_IP_CHKSUM_OFFLOAD) \
-	? FALSE : TRUE)
+	? TRUE : FALSE)
 #define HAL_MAC_TX_DESC_SET_IP_CHKSUM(_prHwMacTxDesc) \
 	((_prHwMacTxDesc)->ucEtherOffset |= TX_DESC_IP_CHKSUM_OFFLOAD)
 #define HAL_MAC_TX_DESC_UNSET_IP_CHKSUM(_prHwMacTxDesc) \
@@ -1194,7 +1214,7 @@ do { \
 
 #define HAL_MAC_TX_DESC_IS_TCP_UDP_CHKSUM_ENABLED(_prHwMacTxDesc) \
 	(((_prHwMacTxDesc)->ucPortIdx_QueueIdx & \
-	TX_DESC_TCP_UDP_CHKSUM_OFFLOAD) ? FALSE : TRUE)
+	TX_DESC_TCP_UDP_CHKSUM_OFFLOAD) ? TRUE : FALSE)
 #define HAL_MAC_TX_DESC_SET_TCP_UDP_CHKSUM(_prHwMacTxDesc) \
 	((_prHwMacTxDesc)->ucPortIdx_QueueIdx |= TX_DESC_TCP_UDP_CHKSUM_OFFLOAD)
 #define HAL_MAC_TX_DESC_UNSET_TCP_UDP_CHKSUM(_prHwMacTxDesc) \
@@ -1653,19 +1673,19 @@ do { \
 	((_prHwMacTxDesc)->ucTxStatus &= ~TX_DESC_TX_STATUS_TO_HOST)
 
 #define HAL_MAC_TX_DESC_IS_DA_FROM_WTBL(_prHwMacTxDesc) \
-	(((_prHwMacTxDesc)->ucPowerOffset & TX_DESC_DA_SOURCE)?TRUE:FALSE)
+	(((_prHwMacTxDesc)->ucTxStatus & TX_DESC_DA_SOURCE)?TRUE:FALSE)
 #define HAL_MAC_TX_DESC_SET_DA_FROM_WTBL(_prHwMacTxDesc) \
-	((_prHwMacTxDesc)->ucPowerOffset |= TX_DESC_DA_SOURCE)
+	((_prHwMacTxDesc)->ucTxStatus |= TX_DESC_DA_SOURCE)
 #define HAL_MAC_TX_DESC_SET_DA_FROM_MSDU(_prHwMacTxDesc) \
-	((_prHwMacTxDesc)->ucPowerOffset &= ~TX_DESC_DA_SOURCE)
+	((_prHwMacTxDesc)->ucTxStatus &= ~TX_DESC_DA_SOURCE)
 
 #define HAL_MAC_TX_DESC_IS_SW_PM_CONTROL(_prHwMacTxDesc) \
-	(((_prHwMacTxDesc)->ucPowerOffset & TX_DESC_POWER_MANAGEMENT_CONTROL) \
+	(((_prHwMacTxDesc)->ucTxStatus & TX_DESC_POWER_MANAGEMENT_CONTROL) \
 	? TRUE : FALSE)
 #define HAL_MAC_TX_DESC_SET_SW_PM_CONTROL(_prHwMacTxDesc) \
-	((_prHwMacTxDesc)->ucPowerOffset |= TX_DESC_POWER_MANAGEMENT_CONTROL)
+	((_prHwMacTxDesc)->ucTxStatus |= TX_DESC_POWER_MANAGEMENT_CONTROL)
 #define HAL_MAC_TX_DESC_SET_HW_PM_CONTROL(_prHwMacTxDesc) \
-	((_prHwMacTxDesc)->ucPowerOffset &= ~TX_DESC_POWER_MANAGEMENT_CONTROL)
+	((_prHwMacTxDesc)->ucTxStatus &= ~TX_DESC_POWER_MANAGEMENT_CONTROL)
 
 /* DW 6 */
 #define HAL_MAC_TX_DESC_SET_FR_BW(_prHwMacTxDesc, ucBw) \
@@ -1747,7 +1767,7 @@ do { \
 	HAL_MCR_WR( \
 		__pAd, \
 		__pAd->chip_info->arb_ac_mode_addr, \
-		0xFFFFFFFF)
+		0xFFFF)
 #endif /* CFG_SUPPORT_802_11AX == 1 */
 
 /*******************************************************************************
@@ -1834,6 +1854,11 @@ void nicTxFreeMsduInfoPacket(IN struct ADAPTER *prAdapter,
 void nicTxReturnMsduInfo(IN struct ADAPTER *prAdapter,
 	IN struct MSDU_INFO *prMsduInfoListHead);
 
+void nicTxInitPktPID(
+	IN struct ADAPTER *prAdapter,
+	IN uint8_t ucWlanIndex
+);
+
 u_int8_t nicTxFillMsduInfo(IN struct ADAPTER *prAdapter,
 	IN struct MSDU_INFO *prMsduInfo, IN void *prNdisPacket);
 
@@ -1919,6 +1944,9 @@ void nicTxSetPktLifeTime(IN struct MSDU_INFO *prMsduInfo,
 
 void nicTxSetPktRetryLimit(IN struct MSDU_INFO *prMsduInfo,
 	IN uint8_t ucRetryLimit);
+
+void nicTxSetForceRts(IN struct MSDU_INFO *prMsduInfo,
+	IN int8_t fgForceRts);
 
 void nicTxSetPktPowerOffset(IN struct MSDU_INFO *prMsduInfo,
 	IN int8_t cPowerOffset);
@@ -2025,6 +2053,9 @@ int32_t nicTxGetVectorInfo(IN char *pcCommand, IN int i4TotalLen,
 			IN struct TX_VECTOR_BBP_LATCH *prTxV);
 
 void nicHifTxMsduDoneCb(IN struct ADAPTER *prAdapter,
+		IN struct MSDU_INFO *prMsduInfo);
+
+u_int8_t nicTxIsPrioPackets(IN struct ADAPTER *prAdapter,
 		IN struct MSDU_INFO *prMsduInfo);
 
 /*******************************************************************************

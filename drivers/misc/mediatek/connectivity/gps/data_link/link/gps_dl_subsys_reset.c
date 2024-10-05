@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 
 #include "gps_dl_context.h"
@@ -27,7 +20,7 @@ bool gps_dl_reset_level_is_none(enum gps_dl_link_id_enum link_id)
 	struct gps_each_link *p = gps_dl_link_get(link_id);
 	enum gps_each_link_state_enum state;
 	enum gps_each_link_reset_level level;
-	bool is_none;
+	bool is_none = false;
 
 	gps_each_link_spin_lock_take(link_id, GPS_DL_SPINLOCK_FOR_LINK_STATE);
 	state = p->state_for_user;
@@ -45,11 +38,11 @@ enum GDL_RET_STATUS gps_dl_reset_level_set_and_trigger(
 	enum gps_each_link_reset_level level, bool wait_reset_done)
 {
 	enum gps_dl_link_id_enum link_id;
-	struct gps_each_link *p;
+	struct gps_each_link *p = NULL;
 	enum gps_each_link_state_enum old_state, new_state;
 	enum gps_each_link_reset_level old_level, new_level;
 	bool need_wait[GPS_DATA_LINK_NUM] = {false};
-	bool to_send_reset_event;
+	bool to_send_reset_event = false;
 	long sigval;
 	enum GDL_RET_STATUS wait_status;
 
@@ -189,10 +182,10 @@ void gps_dl_trigger_gps_print_data_status(void)
 void gps_dl_handle_connsys_reset_done(void)
 {
 	enum gps_dl_link_id_enum link_id;
-	struct gps_each_link *p;
+	struct gps_each_link *p = NULL;
 	enum gps_each_link_state_enum state;
 	enum gps_each_link_reset_level level;
-	bool to_send_reset_event;
+	bool to_send_reset_event = false;
 
 	for (link_id = 0; link_id < GPS_DATA_LINK_NUM; link_id++) {
 		p = gps_dl_link_get(link_id);
@@ -311,7 +304,7 @@ bool gps_dl_conninfra_is_okay_or_handle_it(int *p_hung_value, bool dump_on_hung_
 	int hung_value = 0;
 	bool trigger = false;
 	int trigger_ret = 0;
-	bool check_again;
+	bool check_again = false;
 	int check_cnt = 0;
 
 	do {

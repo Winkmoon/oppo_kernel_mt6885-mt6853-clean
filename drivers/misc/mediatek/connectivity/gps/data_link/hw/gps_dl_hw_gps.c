@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 
 #include "gps_dl_context.h"
@@ -32,7 +25,7 @@ static const struct gps_dl_addr_map_entry g_gps_addr_table[GPS_ADDR_ENTRY_NUM] =
 unsigned int gps_bus_to_host(unsigned int gps_addr)
 {
 	unsigned int i;
-	const struct gps_dl_addr_map_entry *p;
+	const struct gps_dl_addr_map_entry *p = NULL;
 
 	for (i = 0; i < GPS_ADDR_ENTRY_NUM; i++) {
 		p = &g_gps_addr_table[i];
@@ -182,12 +175,14 @@ void gps_dl_hw_print_dma_status_struct(
 	if (!gps_dl_show_reg_wait_log())
 		return;
 
-	GDL_LOGW("dma ch %d, wrap = 0x%08x; tra = 0x%08x, count l/w/t = %d/%d/%d, str/int/sta = %d/%d/%d",
-		ch, p->wrap_to_addr,
-		p->curr_addr, p->left_count, p->wrap_count, p->total_count,
+	GDL_LOGW("dma ch %d, addr curr = 0x%08x, wrap = 0x%08x; str/int/sta = %d/%d/%d",
+		ch, p->curr_addr, p->wrap_to_addr,
 		GDL_HW_EXTRACT_ENTRY(BGF_GPS_DMA_DMA1_START_STR, p->start_flag),
 		GDL_HW_EXTRACT_ENTRY(BGF_GPS_DMA_DMA1_INTSTA_INT, p->intr_flag),
 		GDL_HW_EXTRACT_ENTRY(BGF_GPS_DMA_DMA1_STATE_STATE, p->state));
+
+	GDL_LOGW("dma ch %d, count left/wrap/total = %d/%d/%d",
+		ch, p->left_count, p->wrap_count, p->total_count);
 
 	GDL_LOGW("dma ch %d, conf = 0x%08x, master = %d, b2w = %d, w2b = %d, size = %d",
 		ch, p->config,
@@ -203,9 +198,9 @@ enum GDL_RET_STATUS gps_dl_hw_wait_until_dma_complete_and_stop_it(
 	struct gps_dl_hw_dma_status_struct dma_status;
 	struct gps_dl_hw_usrt_status_struct usrt_status;
 	enum gps_dl_link_id_enum link_id = DMA_CH_TO_LINK_ID(ch);
-	bool last_rw_log_on;
+	bool last_rw_log_on = false;
 	unsigned long tick0, tick1;
-	bool conninfra_okay;
+	bool conninfra_okay = true;
 	bool do_stop = true;
 	enum GDL_RET_STATUS ret = GDL_OKAY;
 	int loop_cnt;
@@ -246,7 +241,9 @@ enum GDL_RET_STATUS gps_dl_hw_wait_until_dma_complete_and_stop_it(
 	}
 
 	while (1) {
+#if GPS_DL_ON_LINUX
 		conninfra_okay = gps_dl_conninfra_is_okay_or_handle_it(NULL, true);
+#endif
 		if (!conninfra_okay) {
 			ret = GDL_FAIL_CONN_NOT_OKAY;
 			do_stop = false;
@@ -358,6 +355,7 @@ void gps_dl_hw_save_usrt_status_struct(
 	p->mcub_a2d_d1 = GDL_HW_RD_GPS_REG(GPS_USRT_APB_MCU_A2D1_ADDR + offset);
 	p->mcub_d2a_d0 = GDL_HW_RD_GPS_REG(GPS_USRT_APB_MCU_D2A0_ADDR + offset);
 	p->mcub_d2a_d1 = GDL_HW_RD_GPS_REG(GPS_USRT_APB_MCU_D2A1_ADDR + offset);
+	p->monf = GDL_HW_RD_GPS_REG(GPS_USRT_APB_MONF_ADDR + offset);
 }
 
 void gps_dl_hw_print_usrt_status_struct(
@@ -366,12 +364,12 @@ void gps_dl_hw_print_usrt_status_struct(
 	if (!gps_dl_show_reg_wait_log())
 		return;
 
-	GDL_LOGXW(link_id, "usrt ctrl = 0x%08x[DMA_EN RX=%d,TX=%d; 1BYTE=%d], intr_en = 0x%08x",
+	GDL_LOGXW(link_id, "usrt ctrl = 0x%08x[DMA_EN RX=%d,TX=%d; 1BYTE=%d], intr_en = 0x%08x, monf = 0x%08x",
 		p->ctrl_setting,
 		GDL_HW_EXTRACT_ENTRY(GPS_USRT_APB_APB_CTRL_RX_EN, p->ctrl_setting),
 		GDL_HW_EXTRACT_ENTRY(GPS_USRT_APB_APB_CTRL_TX_EN, p->ctrl_setting),
 		GDL_HW_EXTRACT_ENTRY(GPS_USRT_APB_APB_CTRL_BYTEN, p->ctrl_setting),
-		p->intr_enable);
+		p->intr_enable, p->monf);
 
 	GDL_LOGXW(link_id, "usrt state = 0x%08x, [UOEFS]RX=%d%d%d%d(%d),TX=%d%d%d%d(%d)",
 		p->state,
@@ -486,15 +484,31 @@ enum GDL_RET_STATUS gps_dl_hw_mcub_dsp_read_request(enum gps_dl_link_id_enum lin
 	return GDL_OKAY;
 }
 
+struct gps_dl_hw_pair_time_struct pair_time;
 void gps_dl_hw_print_ms_counter_status(void)
 {
-	bool show_log;
+	unsigned int record_dsleep_ctl, record_wakeup_ctl, tcxo_low, tcxo_high;
 
-	show_log = gps_dl_set_show_reg_rw_log(true);
-	gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_DSLEEP_CTL_ADDR, BMASK_RW_FORCE_PRINT);
-	gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_WAKEUP_CTL_ADDR, BMASK_RW_FORCE_PRINT);
-	gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_TCXO_MS_H_ADDR, BMASK_RW_FORCE_PRINT);
-	gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_TCXO_MS_L_ADDR, BMASK_RW_FORCE_PRINT);
-	gps_dl_set_show_reg_rw_log(show_log);
+	record_dsleep_ctl = gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_DSLEEP_CTL_ADDR, BMASK_RW_NONEED_PRINT);
+	record_wakeup_ctl = gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_WAKEUP_CTL_ADDR, BMASK_RW_NONEED_PRINT);
+	gps_dl_hw_get_dsp_ms_counter(&tcxo_low, &tcxo_high);
+
+	GDL_LOGI("DSLEEP = 0x%08x, WAKEUP = 0x%08x, TCXO_MS_L = 0x%x, TCXO_MS_H = 0x%x, pair: %x/%lu",
+		record_dsleep_ctl, record_wakeup_ctl, tcxo_low, tcxo_high, pair_time.dsp_ms, pair_time.kernel_ms);
+}
+
+struct gps_dl_hw_pair_time_struct *gps_dl_hw_get_dsp_ms_counter(
+	unsigned int *p_tcxo_low, unsigned int *p_tcxo_high)
+{
+	*p_tcxo_low = gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_TCXO_MS_H_ADDR, BMASK_RW_NONEED_PRINT);
+	*p_tcxo_high = gps_dl_bus_rd_opt(GPS_DL_GPS_BUS, GPS_AON_TOP_TCXO_MS_L_ADDR, BMASK_RW_NONEED_PRINT);
+
+	if ((*p_tcxo_low >= 0x10000) || (*p_tcxo_high >= 0x10000))
+		GDL_LOGE("abnormal, p_tcxo_low = %x, p_tcxo_high = %x", *p_tcxo_low, *p_tcxo_high);
+
+	pair_time.kernel_ms = gps_dl_tick_get_ms();
+	pair_time.dsp_ms = (*p_tcxo_low & 0XFFFF) | ((*p_tcxo_high & 0XFFFF) << 16);
+
+	return &pair_time;
 }
 

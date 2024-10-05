@@ -173,6 +173,10 @@ typedef void(*remove_card) (void);
 #define BIT(n)                          ((uint32_t) 1UL << (n))
 #endif /* BIT */
 
+#ifndef BIT_ULL
+#define BIT_ULL(n)                      ((uint64_t) 1ULL << (n))
+#endif /* BIT_ULL */
+
 #ifndef BITS
 /* bits range: for example BITS(16,23) = 0xFF0000
  *   ==>  (BIT(m)-1)   = 0x0000FFFF     ~(BIT(m)-1)   => 0xFFFF0000

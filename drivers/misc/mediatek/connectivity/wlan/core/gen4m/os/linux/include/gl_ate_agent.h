@@ -131,6 +131,13 @@ struct ATE_OPS_T {
 				      uint8_t *pucEventBuf);
 	void (*icapRiseVcoreClockRate)(void);
 	void (*icapDownVcoreClockRate)(void);
+	uint32_t u4EnBitWidth;/* 0:32bit, 1:96bit, 2:128bit, 3:64bit*/
+	uint32_t u4Architech;/* 0:on-chip, 1:on-the-fly */
+	uint32_t u4PhyIdx;
+	uint32_t u4EmiStartAddress;
+	uint32_t u4EmiEndAddress;
+	uint32_t u4EmiMsbAddress;
+	uint32_t u4CapSource;
 };
 
 

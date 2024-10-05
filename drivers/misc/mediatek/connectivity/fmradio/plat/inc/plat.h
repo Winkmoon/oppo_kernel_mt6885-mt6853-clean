@@ -18,9 +18,6 @@
 #include <linux/platform_device.h>
 #include <linux/ioport.h>
 #include <linux/interrupt.h>
-#include <linux/of_irq.h>
-#include <linux/of_address.h>
-#include <linux/of.h>
 
 #include "fm_typedef.h"
 #include "fm_dbg.h"
@@ -92,5 +89,9 @@ extern signed int mt6635_fm_rds_ops_register(
 	struct fm_basic_interface *bi, struct fm_rds_interface *ri);
 extern signed int mt6635_fm_rds_ops_unregister(
 	struct fm_rds_interface *ri);
+extern signed int connac2x_fm_low_ops_register(
+	struct fm_callback *cb, struct fm_basic_interface *bi);
+extern signed int connac2x_fm_low_ops_unregister(
+	struct fm_basic_interface *bi);
 
 #endif /* FM_PLAT_H */

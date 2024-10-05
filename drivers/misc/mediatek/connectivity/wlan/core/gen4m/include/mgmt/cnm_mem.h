@@ -382,11 +382,28 @@ struct STA_RECORD {
 	uint8_t ucHePhyCapInfo[HE_PHY_CAP_BYTE_NUM];
 
 	uint16_t u2HeRxMcsMapBW80;
+	uint16_t u2HeRxMcsMapBW80Assoc;
 	uint16_t u2HeTxMcsMapBW80;
 	uint16_t u2HeRxMcsMapBW160;
+	uint16_t u2HeRxMcsMapBW160Assoc;
 	uint16_t u2HeTxMcsMapBW160;
 	uint16_t u2HeRxMcsMapBW80P80;
+	uint16_t u2HeRxMcsMapBW80P80Assoc;
 	uint16_t u2HeTxMcsMapBW80P80;
+#endif
+#if (CFG_SUPPORT_802_11BE == 1)
+	/*--------------------------------------------------------------------*/
+	/* EHT capability if (prStaRec->ucPhyTypeSet &                        */
+	/*  PHY_TYPE_BIT_EHT) is set                                          */
+	/* They have the same definition with fields of information element   */
+	/*--------------------------------------------------------------------*/
+	uint8_t ucEhtMacCapInfo[EHT_MAC_CAP_BYTE_NUM];
+	uint8_t ucEhtPhyCapInfo[EHT_PHY_CAP_BYTE_NUM];
+#endif
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	/* HE 6 GHz Band Capabilities */
+	uint16_t u2He6gBandCapInfo;
 #endif
 
 	/*----------------------------------------------------------------------
@@ -396,6 +413,7 @@ struct STA_RECORD {
 	 *----------------------------------------------------------------------
 	 */
 	uint8_t ucHtPeerOpInfo1; /* Backup peer HT OP Info */
+	uint16_t u2HtPeerOpInfo2; /* Backup peer HT OP Info */
 
 	/*----------------------------------------------------------------------
 	 * 802.11ac  VHT operation info when (prStaRec->ucPhyTypeSet &
@@ -516,7 +534,8 @@ struct STA_RECORD {
 	P_TX_BA_ENTRY_T aprTxBaTable[TID_NUM];
 #endif
 
-	struct FRAG_INFO rFragInfo[MAX_NUM_CONCURRENT_FRAGMENTED_MSDUS];
+	struct FRAG_INFO rFragInfo[TID_NUM + 1][
+			MAX_NUM_CONCURRENT_FRAGMENTED_MSDUS];
 
 #if 0 /* TODO: Remove this */
 	struct SEC_INFO rSecInfo; /* The security state machine */
@@ -733,6 +752,46 @@ struct STA_RECORD {
 #if CFG_SUPPORT_HE_ER
 	u_int8_t fgIsExtendedRange;
 #endif
+
+/* fos_change begin*/
+#if CFG_SUPPORT_STAT_STATISTICS
+	uint32_t u4LastPhyRate;
+	uint8_t ucNoise_avg;
+#endif /* fos_change end*/
+#if CFG_SUPPORT_NAN
+	OS_SYSTIME rNanExpiredSendTime;
+	unsigned char fgNanSendTimeExpired;
+	atomic_t NanRefCount;
+#endif
+
+#if CFG_SUPPORT_LLS
+	/* Store data in format from RXV in reduced size to serve Link Stats
+	 * report format defined in STATS_LLS_WIFI_RATE
+	 *
+	 * preamble   :3;   0:OFDM, 1:CCK, 2:HT 3:VHT 4:HE, in separate array
+	 * nss        :1;   0:1x1, 1:2x2
+	 * bw         :2;   0:20MHz, 1:40Mhz, 2:80Mhz, 3:160Mhz
+	 * rateMcsIdx :4;   CCK: [2, 4, 11, 22]
+	 *                  OFDM:  [12, 18, 24, 36, 48, 72, 96, 108];
+	 *                  HT/VHT/HE it would be mcs index
+	 */
+	struct {
+		uint32_t u4RxMpduOFDM[1]
+			[STATS_LLS_MAX_OFDM_BW_NUM][STATS_LLS_OFDM_NUM];
+		uint32_t u4RxMpduCCK[1]
+			[STATS_LLS_MAX_CCK_BW_NUM][STATS_LLS_CCK_NUM];
+		uint32_t u4RxMpduHT[1]
+			[STATS_LLS_MAX_HT_BW_NUM][STATS_LLS_HT_NUM];
+		uint32_t u4RxMpduVHT[STATS_LLS_MAX_NSS_NUM]
+			[STATS_LLS_MAX_VHT_BW_NUM][STATS_LLS_VHT_NUM];
+		uint32_t u4RxMpduHE[STATS_LLS_MAX_NSS_NUM]
+			[STATS_LLS_MAX_HE_BW_NUM][STATS_LLS_HE_NUM];
+	};
+#endif
+
+	u_int8_t fgIsMscsSupported;
+	struct LINK rMscsMonitorList;
+	struct LINK rMscsTcpMonitorList;
 };
 
 #if 0
@@ -1096,6 +1155,10 @@ void cnmStaFreeAllStaByNetwork(struct ADAPTER *prAdapter, uint8_t ucBssIndex,
 
 struct STA_RECORD *cnmGetStaRecByIndex(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucIndex);
+
+struct STA_RECORD *cnmGetStaRecByIndexWithoutInUseCheck(
+	struct ADAPTER *prAdapter,
+	uint8_t ucIndex);
 
 struct STA_RECORD *cnmGetStaRecByAddress(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex, uint8_t aucPeerMACAddress[]);

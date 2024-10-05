@@ -99,13 +99,21 @@
  ******************************************************************************
  */
 
+#if (CFG_SUPPORT_WIFI_6G == 1)
+void rlmUpdate6GOpInfo(struct ADAPTER *prAdapter,
+		struct BSS_INFO *prBssInfo);
+#endif
+
 void rlmBssInitForAP(struct ADAPTER *prAdapter, struct BSS_INFO *prBssInfo);
 
 u_int8_t rlmUpdateBwByChListForAP(struct ADAPTER *prAdapter,
 		struct BSS_INFO *prBssInfo);
 
-void rlmUpdateParamsForAP(struct ADAPTER *prAdapter,
+u_int8_t rlmUpdateParamsForAP(struct ADAPTER *prAdapter,
 		struct BSS_INFO *prBssInfo, u_int8_t fgUpdateBeacon);
+
+void rlmBssUpdateChannelParams(struct ADAPTER *prAdapter,
+		struct BSS_INFO *prBssInfo);
 
 void rlmFuncInitialChannelList(IN struct ADAPTER *prAdapter);
 
@@ -129,8 +137,16 @@ enum ENUM_CHNL_EXT rlmDecideScoForAP(struct ADAPTER *prAdapter,
 enum ENUM_CHNL_EXT rlmGetScoForAP(struct ADAPTER *prAdapter,
 		struct BSS_INFO *prBssInfo);
 
+enum ENUM_CHNL_EXT rlmGetScoByChnInfo(struct ADAPTER *prAdapter,
+		struct RF_CHANNEL_INFO *prChannelInfo);
+
 uint8_t rlmGetVhtS1ForAP(struct ADAPTER *prAdapter,
 		struct BSS_INFO *prBssInfo);
 
+void rlmGetChnlInfoForCSA(struct ADAPTER *prAdapter,
+	IN enum ENUM_BAND eBand,
+	IN uint8_t ucCh,
+	IN uint8_t ucBssIdx,
+	OUT struct RF_CHANNEL_INFO *prRfChnlInfo);
 
 #endif

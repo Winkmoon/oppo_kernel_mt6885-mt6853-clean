@@ -573,16 +573,6 @@ enum gfp_t {
 /* needed by include/nic/adapter.h
  * for DIRECT_TX implementation in os folder
  */
-struct timer_list {
-	/* TODO: from the comment in linux/timer.h. Its difficult to implement
-	 * All fields that change during normal runtime grouped to the
-	 * same cacheline
-	 */
-};
-
-/* needed by include/nic/adapter.h
- * for DIRECT_TX implementation in os folder
- */
 struct sk_buff_head {
 	/* These two members must be first. */
 	/* struct sk_buff	*next; */
@@ -725,16 +715,6 @@ int kal_hex_dump_to_buffer(const void *buf, size_t len, int rowsize,
  */
 void kal_warn_on(uint8_t condition);
 #define WARN_ON(_condition) kal_warn_on(_condition)
-
-/*
- * kal_do_gettimeofday - Returns the time of day in a timeval
- * @tv: pointer to the timeval to be set
- * needed by
- * common/debug.c
- * mgmt/stats.c
- */
-void kal_do_gettimeofday(struct timeval *tv);
-#define do_gettimeofday(_tv) kal_do_gettimeofday(_tv)
 
 /*
  * needed by: mgmt/wmm.c
@@ -899,6 +879,16 @@ unsigned char *kal_skb_put(struct sk_buff *skb, unsigned int len);
  */
 void *kal_skb_push(struct sk_buff *skb, unsigned int len);
 #define skb_push(_skb, _len) kal_skb_push(_skb, _len)
+
+/*
+ * kal_skb_headroom - bytes at buffer head
+ * @skb: buffer to use
+ * Return the number of bytes of free space at the head of an &sk_buff.
+ *
+ * needed by nic_rx.c
+ */
+uint32_t kal_skb_headroom(struct sk_buff *skb);
+#define skb_headroom(_skb) kal_skb_headroom(_skb)
 
 /*
  * needed by nic_tx.c

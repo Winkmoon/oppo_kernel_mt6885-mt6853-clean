@@ -67,6 +67,22 @@
 	SET_BIT_MASK(&val, data, mask); \
 	CONSYS_REG_WRITE(reg, val); \
 }
+#define CONSYS_REG_READ_BIT(addr, BITVAL) (CONSYS_REG_READ(addr) & ((unsigned int)(BITVAL)))
+#define CONSYS_REG_BIT_POLLING(addr, bit_index, exp_val, loop, delay, success) {\
+	unsigned int polling_count = 0; \
+	unsigned int reg_value = 0; \
+	success = 0; \
+	reg_value = (CONSYS_REG_READ_BIT(addr, (0x1 << bit_index)) >> bit_index); \
+	while (reg_value != exp_val) { \
+		if (polling_count > loop) { \
+			success = -1; \
+			break; \
+		} \
+		reg_value = (CONSYS_REG_READ_BIT(addr, (0x1 << bit_index)) >> bit_index); \
+		udelay(delay); \
+		polling_count++; \
+	} \
+}
 
 /*
  * Write value with value_offset bits of right shift and size bits,
@@ -168,6 +184,27 @@ enum CONSYS_BASE_ADDRESS_INDEX {
 	INFRACFG_REG_BASE_INDEX,
 };
 
+typedef struct reg_map_addr {
+	UINT32 phy_addr;
+	UINT8 *vir_addr;
+	UINT32 size;
+} REG_MAP_ADDR, *P_REG_MAP_ADDR;
+
+enum consys_dump_action {
+	DUMP_ACT_WRITE = 0,
+	DUMP_ACT_READ = 1
+};
+
+struct consys_dump_item {
+	enum consys_dump_action action;
+	UINT32 base_addr;
+	UINT32 offset;
+	UINT32 value;
+	UINT32 mask;
+};
+
+
+
 typedef enum _ENUM_EMI_CTRL_STATE_OFFSET_ {
 	EXP_APMEM_CTRL_STATE = 0x0,
 	EXP_APMEM_CTRL_HOST_SYNC_STATE = 0x4,
@@ -221,9 +258,14 @@ typedef UINT32(*CONSYS_IC_EMI_SET_REMAPPING_REG) (VOID);
 typedef INT32(*IC_BT_WIFI_SHARE_V33_SPIN_LOCK_INIT) (VOID);
 typedef INT32(*CONSYS_IC_CLK_GET_FROM_DTS) (struct platform_device *pdev);
 typedef INT32(*CONSYS_IC_PMIC_GET_FROM_DTS) (struct platform_device *pdev);
+typedef INT32(*CONSYS_IC_PMIC_REGISTER_DEVICE) (VOID);
+typedef INT32(*CONSYS_IC_CLOCK_REGISTER_DEVICE) (VOID);
+typedef PVOID(*CONSYS_IC_CLOCK_GET_REGMAP) (VOID);
 typedef INT32(*CONSYS_IC_READ_IRQ_INFO_FROM_DTS) (struct platform_device *pdev, PINT32 irq_num, PUINT32 irq_flag);
 typedef INT32(*CONSYS_IC_READ_REG_FROM_DTS) (struct platform_device *pdev);
 typedef UINT32(*CONSYS_IC_READ_CPUPCR) (VOID);
+typedef INT32(*CONSYS_IC_POLL_CPUPCR_DUMP) (UINT32 times, UINT32 sleep_ms);
+
 typedef VOID(*IC_FORCE_TRIGGER_ASSERT_DEBUG_PIN) (VOID);
 typedef INT32(*CONSYS_IC_CO_CLOCK_TYPE) (VOID);
 typedef P_CONSYS_EMI_ADDR_INFO(*CONSYS_IC_SOC_GET_EMI_PHY_ADD) (VOID);
@@ -253,15 +295,42 @@ typedef VOID(*CONSYS_IC_EMI_ENTRY_ADDRESS) (VOID);
 typedef VOID(*CONSYS_IC_SET_XO_OSC_CTRL) (VOID);
 typedef VOID(*CONSYS_IC_IDENTIFY_ADIE) (VOID);
 typedef VOID(*CONSYS_IC_WIFI_CTRL_SETTING) (VOID);
+typedef VOID(*CONSYS_IC_WIFI_CTRL_SWITCH_CONN_MODE) (VOID);
 typedef VOID(*CONSYS_IC_BUS_TIMEOUT_CONFIG) (VOID);
+typedef VOID(*CONSYS_IC_SET_MCU_MEM_PDN_DELAY) (VOID);
 typedef VOID(*CONSYS_IC_SET_ACCESS_EMI_HW_MODE) (VOID);
 typedef INT32(*CONSYS_IC_DUMP_GATING_STATE) (P_CONSYS_STATE state);
 typedef INT32(*CONSYS_IC_SLEEP_INFO_ENABLE_CTRL) (UINT32 enable);
 typedef INT32(*CONSYS_IC_SLEEP_INFO_READ_CTRL) (WMT_SLEEP_COUNT_TYPE type, PUINT64 sleep_counter, PUINT64 sleep_timer);
 typedef INT32(*CONSYS_IC_SLEEP_INFO_CLEAR) (VOID);
 typedef UINT64(*CONSYS_IC_GET_OPTIONS) (VOID);
+typedef INT32(*CONSYS_IC_POLLING_GOTO_IDLE) (VOID);
+
+/* timeout debug dump */
+typedef INT32(*CONSYS_IC_CMD_TX_TIMEOUT_DUMP) (VOID);
+typedef INT32(*CONSYS_IC_CMD_RX_TIMEOUT_DUMP) (VOID);
+typedef INT32(*CONSYS_IC_COREDUMP_TIMEOUT_DUMP) (VOID);
+typedef INT32(*CONSYS_IC_ASSERT_TIMEOUT_DUMP) (VOID);
+typedef INT32(*CONSYS_IC_IPI_TIMEOUT_DUMP) (VOID);
+
+typedef INT32(*CONSYS_IC_BEFORE_CHIP_RESET_DUMP) (VOID);
+typedef INT32(*CONSYS_IC_PC_LOG_DUMP) (VOID);
+typedef VOID(*CONSYS_IC_SET_VCN33_1_VOLTAGE) (UINT32 voltage);
+typedef INT32(*CONSYS_IC_CR_REMAPPING) (UINT32 enable);
+typedef UINT32(*CONSYS_IC_WAKEUP_BTIF_IRQ_PULL_LOW) (VOID);
+
+typedef INT32(*CONSYS_IC_JTAG_SET_FOR_MCU) (VOID);
+typedef UINT32(*CONSYS_IC_JTAG_FLAG_CTRL) (UINT32 enable);
+#ifdef CONSYS_WMT_REG_SUSPEND_CB_ENABLE
+typedef UINT32(*CONSYS_IC_HW_OSC_EN_CTRL) (UINT32 enable);
+#endif
+
+typedef PINT32 CONSYS_IC_GET_DEBUG_REG_ARY_SIZE;
+typedef P_REG_MAP_ADDR CONSYS_IC_GET_DEBUG_REG_ARY;
 
 typedef struct _WMT_CONSYS_IC_OPS_ {
+
+	/* POS */
 	CONSYS_IC_CLOCK_BUFFER_CTRL consys_ic_clock_buffer_ctrl;
 	CONSYS_IC_HW_RESET_BIT_SET consys_ic_hw_reset_bit_set;
 	CONSYS_IC_HW_SPM_CLK_GATING_ENABLE consys_ic_hw_spm_clk_gating_enable;
@@ -269,61 +338,122 @@ typedef struct _WMT_CONSYS_IC_OPS_ {
 	CONSYS_IC_AHB_CLOCK_CTRL consys_ic_ahb_clock_ctrl;
 	POLLING_CONSYS_IC_CHIPID polling_consys_ic_chipid;
 	UPDATE_CONSYS_ROM_DESEL_VALUE update_consys_rom_desel_value;
-	CONSYS_HANG_DEBUG consys_hang_debug;
 	CONSYS_IC_ARC_REG_SETTING consys_ic_acr_reg_setting;
+	CONSYS_IC_SET_IF_PINMUX consys_ic_set_if_pinmux;
+	CONSYS_IC_SET_XO_OSC_CTRL consys_ic_set_xo_osc_ctrl;
+	CONSYS_IC_WIFI_CTRL_SETTING consys_ic_wifi_ctrl_setting;
+	CONSYS_IC_WIFI_CTRL_SWITCH_CONN_MODE consys_ic_wifi_ctrl_switch_conn_mode;
+	CONSYS_IC_BUS_TIMEOUT_CONFIG consys_ic_bus_timeout_config;
+	CONSYS_IC_SET_MCU_MEM_PDN_DELAY consys_ic_set_mcu_mem_pdn_delay;
+
+	/* POS - AFE */
 	CONSYS_IC_AFE_REG_SETTING consys_ic_afe_reg_setting;
+
+	/* vcn control */
 	CONSYS_IC_HW_VCN18_CTRL consys_ic_hw_vcn18_ctrl;
 	CONSYS_IC_VCN28_HW_MODE_CTRL consys_ic_vcn28_hw_mode_ctrl;
 	CONSYS_IC_HW_VCN28_CTRL consys_ic_hw_vcn28_ctrl;
 	CONSYS_IC_HW_WIFI_VCN33_CTRL consys_ic_hw_wifi_vcn33_ctrl;
 	CONSYS_IC_HW_BT_VCN33_CTRL consys_ic_hw_bt_vcn33_ctrl;
 	CONSYS_IC_HW_VCN_CTRL_AFTER_IDLE consys_ic_hw_vcn_ctrl_after_idle;
+	IC_BT_WIFI_SHARE_V33_SPIN_LOCK_INIT ic_bt_wifi_share_v33_spin_lock_init;
+
+	/* utility */
 	CONSYS_IC_SOC_CHIPID_GET consys_ic_soc_chipid_get;
 	CONSYS_IC_ADIE_CHIPID_DETECT consys_ic_adie_chipid_detect;
+	CONSYS_IC_READ_CPUPCR consys_ic_read_cpupcr;
+	CONSYS_IC_POLL_CPUPCR_DUMP consys_ic_poll_cpupcr_dump;
+
+	CONSYS_IC_CO_CLOCK_TYPE consys_ic_co_clock_type;
+
+	/* EMI control */
 	CONSYS_IC_EMI_MPU_SET_REGION_PROTECTION consys_ic_emi_mpu_set_region_protection;
 	CONSYS_IC_EMI_SET_REMAPPING_REG consys_ic_emi_set_remapping_reg;
-	IC_BT_WIFI_SHARE_V33_SPIN_LOCK_INIT ic_bt_wifi_share_v33_spin_lock_init;
-	CONSYS_IC_CLK_GET_FROM_DTS consys_ic_clk_get_from_dts;
-	CONSYS_IC_PMIC_GET_FROM_DTS consys_ic_pmic_get_from_dts;
-	CONSYS_IC_READ_IRQ_INFO_FROM_DTS consys_ic_read_irq_info_from_dts;
-	CONSYS_IC_READ_REG_FROM_DTS consys_ic_read_reg_from_dts;
-	CONSYS_IC_READ_CPUPCR consys_ic_read_cpupcr;
-	IC_FORCE_TRIGGER_ASSERT_DEBUG_PIN ic_force_trigger_assert_debug_pin;
-	CONSYS_IC_CO_CLOCK_TYPE consys_ic_co_clock_type;
 	CONSYS_IC_SOC_GET_EMI_PHY_ADD consys_ic_soc_get_emi_phy_add;
+	CONSYS_IC_RESET_EMI_COREDUMP consys_ic_reset_emi_coredump;
+	CONSYS_IC_EMI_COREDUMP_REMAPPING consys_ic_emi_coredump_remapping;
+	CONSYS_IC_SET_MCIF_EMI_MPU_PROTECTION consys_ic_set_mcif_emi_mpu_protection;
+	CONSYS_IC_EMI_ENTRY_ADDRESS consys_ic_emi_entry_address;
+	CONSYS_IC_SET_ACCESS_EMI_HW_MODE consys_ic_set_access_emi_hw_mode;
+
+	/* assert */
+	IC_FORCE_TRIGGER_ASSERT_DEBUG_PIN ic_force_trigger_assert_debug_pin;
+	CONSYS_IC_SET_DL_ROM_PATCH_FLAG consys_ic_set_dl_rom_patch_flag;
+	/* Reset PDMA control */
+	CONSYS_IC_SET_PDMA_AXI_RREADY_FORCE_HIGH consys_ic_set_pdma_axi_rready_force_high;
+
+	/* Kernel - Init */
 	CONSYS_IC_NEED_STORE_PDEV consys_ic_need_store_pdev;
 	CONSYS_IC_STORE_PDEV consys_ic_store_pdev;
 	CONSYS_IC_STORE_RESET_CONTROL consys_ic_store_reset_control;
+	/* DTS - init */
+	CONSYS_IC_CLK_GET_FROM_DTS consys_ic_clk_get_from_dts;
+	CONSYS_IC_PMIC_GET_FROM_DTS consys_ic_pmic_get_from_dts;
+	CONSYS_IC_PMIC_REGISTER_DEVICE consys_ic_pmic_register_device;
+	CONSYS_IC_CLOCK_REGISTER_DEVICE consys_ic_clock_register_device;
+	CONSYS_IC_CLOCK_GET_REGMAP consys_ic_clock_get_regmap;
+	CONSYS_IC_READ_IRQ_INFO_FROM_DTS consys_ic_read_irq_info_from_dts;
+	CONSYS_IC_READ_REG_FROM_DTS consys_ic_read_reg_from_dts;
+
+	/* GPIO contorl */
 	CONSYS_IC_NEED_GPS consys_ic_need_gps;
-	CONSYS_IC_SET_IF_PINMUX consys_ic_set_if_pinmux;
-	CONSYS_IC_SET_DL_ROM_PATCH_FLAG consys_ic_set_dl_rom_patch_flag;
+
+	/* FW log */
 	CONSYS_IC_DEDICATED_LOG_PATH_INIT consys_ic_dedicated_log_path_init;
 	CONSYS_IC_DEDICATED_LOG_PATH_DEINIT consys_ic_dedicated_log_path_deinit;
+
+	/* reg conctrl */
 	CONSYS_IC_CHECK_REG_READABLE consys_ic_check_reg_readable;
-	CONSYS_IC_EMI_COREDUMP_REMAPPING consys_ic_emi_coredump_remapping;
-	CONSYS_IC_RESET_EMI_COREDUMP consys_ic_reset_emi_coredump;
-	CONSYS_IC_CLOCK_FAIL_DUMP consys_ic_clock_fail_dump;
 	CONSYS_IC_IS_CONNSYS_REG consys_ic_is_connsys_reg;
 	CONSYS_IC_IS_HOST_CSR consys_ic_is_host_csr;
-	CONSYS_IC_DUMP_OSC_STATE consys_ic_dump_osc_state;
-	CONSYS_IC_SET_PDMA_AXI_RREADY_FORCE_HIGH consys_ic_set_pdma_axi_rready_force_high;
-	CONSYS_IC_SET_MCIF_EMI_MPU_PROTECTION consys_ic_set_mcif_emi_mpu_protection;
+
+	/* Calibration */
 	CONSYS_IC_CALIBRATION_BACKUP_RESTORE consys_ic_calibration_backup_restore;
+
+	/* debug dump - devapc */
 	CONSYS_IC_REGISTER_DEVAPC_CB consys_ic_register_devapc_cb;
+
+	/* debug dump */
 	CONSYS_IC_INFRA_REG_DUMP consys_ic_infra_reg_dump;
+	CONSYS_IC_DUMP_GATING_STATE consys_ic_dump_gating_state;
+	CONSYS_HANG_DEBUG consys_hang_debug;
+	CONSYS_IC_DUMP_OSC_STATE consys_ic_dump_osc_state;
+	CONSYS_IC_CLOCK_FAIL_DUMP consys_ic_clock_fail_dump;
+
+	CONSYS_IC_CMD_TX_TIMEOUT_DUMP consys_ic_cmd_tx_timeout_dump;
+	CONSYS_IC_CMD_RX_TIMEOUT_DUMP consys_ic_cmd_rx_timeout_dump;
+	CONSYS_IC_COREDUMP_TIMEOUT_DUMP consys_ic_coredump_timeout_dump;
+	CONSYS_IC_ASSERT_TIMEOUT_DUMP consys_ic_assert_timeout_dump;
+	CONSYS_IC_BEFORE_CHIP_RESET_DUMP consys_ic_before_chip_reset_dump;
+	CONSYS_IC_PC_LOG_DUMP consys_ic_pc_log_dump;
+	CONSYS_IC_IPI_TIMEOUT_DUMP consys_ic_ipi_timeout_dump;
+
+	/* ant setting */
 	CONSYS_IC_IS_ANT_SWAP_ENABLE_BY_HWID consys_ic_is_ant_swap_enable_by_hwid;
 	CONSYS_IC_GET_ANT_SEL_CR_ADDR consys_ic_get_ant_sel_cr_addr;
-	CONSYS_IC_EMI_ENTRY_ADDRESS consys_ic_emi_entry_address;
-	CONSYS_IC_SET_XO_OSC_CTRL consys_ic_set_xo_osc_ctrl;
+
+	/* a-die */
 	CONSYS_IC_IDENTIFY_ADIE consys_ic_identify_adie;
-	CONSYS_IC_WIFI_CTRL_SETTING consys_ic_wifi_ctrl_setting;
-	CONSYS_IC_BUS_TIMEOUT_CONFIG consys_ic_bus_timeout_config;
-	CONSYS_IC_SET_ACCESS_EMI_HW_MODE consys_ic_set_access_emi_hw_mode;
-	CONSYS_IC_DUMP_GATING_STATE consys_ic_dump_gating_state;
+
+	/* sleep info */
 	CONSYS_IC_SLEEP_INFO_ENABLE_CTRL consys_ic_sleep_info_enable_ctrl;
 	CONSYS_IC_SLEEP_INFO_READ_CTRL consys_ic_sleep_info_read_ctrl;
 	CONSYS_IC_SLEEP_INFO_CLEAR consys_ic_sleep_info_clear;
+
 	CONSYS_IC_GET_OPTIONS consys_ic_get_options;
+	CONSYS_IC_POLLING_GOTO_IDLE consys_ic_polling_goto_idle;
+	CONSYS_IC_SET_VCN33_1_VOLTAGE consys_ic_set_vcn33_1_voltage;
+	CONSYS_IC_CR_REMAPPING consys_ic_cr_remapping;
+	CONSYS_IC_WAKEUP_BTIF_IRQ_PULL_LOW consys_ic_wakeup_btif_irq_pull_low;
+
+	CONSYS_IC_JTAG_SET_FOR_MCU consys_ic_jtag_set_for_mcu;
+	CONSYS_IC_JTAG_FLAG_CTRL consys_ic_jtag_flag_ctrl;
+#ifdef CONSYS_WMT_REG_SUSPEND_CB_ENABLE
+	CONSYS_IC_HW_OSC_EN_CTRL consys_ic_hw_osc_en_ctrl;
+#endif
+
+	CONSYS_IC_GET_DEBUG_REG_ARY_SIZE consys_ic_get_debug_reg_ary_size;
+	CONSYS_IC_GET_DEBUG_REG_ARY consys_ic_get_debug_reg_ary;
 } WMT_CONSYS_IC_OPS, *P_WMT_CONSYS_IC_OPS;
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -334,8 +464,6 @@ extern void mt_irq_dump_status(int irq);
 #endif
 extern struct CONSYS_BASE_ADDRESS conn_reg;
 extern UINT32 gCoClockFlag;
-extern EMI_CTRL_STATE_OFFSET mtk_wcn_emi_state_off;
-extern CONSYS_EMI_ADDR_INFO mtk_wcn_emi_addr_info;
 
 extern UINT64 gConEmiSize;
 extern phys_addr_t gConEmiPhyBase;
@@ -372,6 +500,7 @@ INT32 mtk_wcn_consys_hw_state_show(VOID);
 PUINT8 mtk_wcn_consys_emi_virt_addr_get(UINT32 ctrl_state_offset);
 P_CONSYS_EMI_ADDR_INFO mtk_wcn_consys_soc_get_emi_phy_add(VOID);
 UINT32 mtk_wcn_consys_read_cpupcr(VOID);
+INT32 mtk_wcn_consys_poll_cpucpr_dump(UINT32 times, UINT32 sleep_ms);
 
 VOID mtk_wcn_force_trigger_assert_debug_pin(VOID);
 INT32 mtk_wcn_consys_read_irq_info_from_dts(PINT32 irq_num, PUINT32 irq_flag);
@@ -414,5 +543,27 @@ INT32 mtk_wcn_consys_sleep_info_read_all_ctrl(P_CONSYS_STATE state);
 INT32 mtk_wcn_consys_sleep_info_clear(VOID);
 INT32 mtk_wcn_consys_sleep_info_restore(VOID);
 UINT64 mtk_wcn_consys_get_options(VOID);
+
+INT32 execute_dump_action(const char *trg_str, const char *dump_prefix, struct consys_dump_item *dump_ary, int ary_sz);
+INT32 mtk_wcn_consys_cmd_tx_timeout_dump(VOID);
+INT32 mtk_wcn_consys_cmd_rx_timeout_dump(VOID);
+INT32 mtk_wcn_consys_coredump_timeout_dump(VOID);
+INT32 mtk_wcn_consys_assert_timeout_dump(VOID);
+INT32 mtk_wnc_consys_before_chip_reset_dump(VOID);
+INT32 mtk_wcn_consys_pc_log_dump(VOID);
+INT32 mtk_wcn_consys_ipi_timeout_dump(VOID);
+
+VOID mtk_wcn_dump_util_init(UINT32 chipid);
+VOID mtk_wcn_dump_util_destroy(VOID);
+
+PVOID mtk_wcn_consys_clock_get_regmap(VOID);
+UINT32 mtk_wcn_consys_wakeup_btif_irq_pull_low(VOID);
+
+VOID mtk_wcn_consys_set_vcn33_1_voltage(UINT32 voltage);
+
+INT32 mtk_wcn_consys_get_debug_reg_ary_size(VOID);
+P_REG_MAP_ADDR mtk_wcn_consys_get_debug_reg_ary(VOID);
+
+struct platform_device *get_consys_device(void);
 #endif /* _MTK_WCN_CONSYS_HW_H_ */
 

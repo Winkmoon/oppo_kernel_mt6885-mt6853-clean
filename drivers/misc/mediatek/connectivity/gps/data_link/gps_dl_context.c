@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 #include "gps_dl_context.h"
 #include "gps_dl_hw_api.h"
@@ -83,6 +76,8 @@ static struct gps_dl_runtime_cfg s_gps_rt_cfg = {
 	.log_level = GPS_DL_LOG_DEF_SETTING_LEVEL,
 	.log_mod_bitmask = GPS_DL_LOG_DEF_SETTING_MODULES,
 	.log_reg_rw_bitmask = GPS_DL_LOG_REG_RW_BITMASK,
+	.opid_enque_timeout = OPID_DURATION_MAX_MS,
+	.opid_opfunc_timeout = OPID_DURATION_MAX_MS,
 };
 
 struct gps_each_link *gps_dl_link_get(enum gps_dl_link_id_enum link_id)
@@ -248,5 +243,33 @@ void gps_dl_log_info_show(void)
 
 	GDL_LOGE("level = %d, bitmask = 0x%08x, rrw = %d",
 		s_gps_rt_cfg.log_level, s_gps_rt_cfg.log_mod_bitmask, show_reg_rw_log);
+}
+
+unsigned long gps_dl_opid_enque_timeout_get(void)
+{
+	return s_gps_rt_cfg.opid_enque_timeout;
+
+}
+
+void gps_dl_opid_enque_timeout_set(unsigned long timeout)
+{
+	s_gps_rt_cfg.opid_enque_timeout = timeout;
+}
+
+unsigned long gps_dl_opid_opfunc_timeout_get(void)
+{
+	return s_gps_rt_cfg.opid_opfunc_timeout;
+
+}
+
+void gps_dl_opid_opfunc_timeout_set(unsigned long timeout)
+{
+	s_gps_rt_cfg.opid_opfunc_timeout = timeout;
+}
+
+void gps_dl_opid_timeout_info_show(void)
+{
+	GDL_LOGE("opid enque timeout = %lu, opfunc timeout = %lu",
+		s_gps_rt_cfg.opid_enque_timeout, s_gps_rt_cfg.opid_opfunc_timeout);
 }
 
