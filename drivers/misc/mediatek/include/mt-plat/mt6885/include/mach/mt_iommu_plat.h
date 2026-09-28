@@ -72,7 +72,7 @@ char *iommu_bank_compatible[MTK_IOMMU_M4U_COUNT][MTK_IOMMU_BANK_NODE_COUNT] = {
 #endif
 
 /* ================ register control ================ */
-#define F_VAL(val, msb, lsb)	(((val)&((1<<(msb-lsb+1))-1))<<lsb)
+#define F_VAL(val, msb, lsb)	(((val)&((1<<(msb-lsb+1))-1))<<(lsb))
 #define F_VAL_L(val, msb, lsb) (((val)&((1L<<(msb-lsb+1))-1))<<lsb)
 #define F_MSK(msb, lsb)	F_VAL(0xffffffff, msb, lsb)
 #define F_MSK_L(msb, lsb)	F_VAL_L(0xffffffffffffffff, msb, lsb)

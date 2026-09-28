@@ -2864,7 +2864,7 @@ void soc3_0_icapDownVcoreClockRate(void)
 }
 
 #if (CFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH == 1)
-#pragma message("SOC3_0::CFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH == 1")
+/*#pragma message("SOC3_0::CFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH == 1")*/
 void soc3_0_ConstructFirmwarePrio(struct GLUE_INFO *prGlueInfo,
 	uint8_t **apucNameTable, uint8_t **apucName,
 	uint8_t *pucNameIdx, uint8_t ucMaxNameIdx)
@@ -3332,7 +3332,7 @@ uint32_t soc3_0_wlanPowerOnDownload(
 		}
 
 #if (CFG_ROM_PATCH_NO_SEM_CTRL == 0)
-#pragma message("ROM code supports SEM-CTRL for ROM patch download")
+/*#pragma message("ROM code supports SEM-CTRL for ROM patch download")*/
 		if (wlanPatchIsDownloaded(prAdapter)) {
 			kalFirmwareImageUnmapping(prAdapter->prGlueInfo, NULL,
 						  prFwBuffer);
@@ -3341,7 +3341,7 @@ uint32_t soc3_0_wlanPowerOnDownload(
 			return WLAN_STATUS_SUCCESS;
 		}
 #else
-#pragma message("ROM code supports no SEM-CTRL for ROM patch download")
+/*#pragma message("ROM code supports no SEM-CTRL for ROM patch download")*/
 #endif
 
 		/* Patch DL */

@@ -24,20 +24,20 @@ inline bool system_overutilized(int cpu);
 
 static inline unsigned long task_util(struct task_struct *p);
 bool is_intra_domain(int prev, int target);
-static int select_max_spare_capacity(struct task_struct *p, int target);
-static int init_cpu_info(void);
-static unsigned int aggressive_idle_pull(int this_cpu);
+static int __maybe_unused select_max_spare_capacity(struct task_struct *p, int target);
+static int __maybe_unused init_cpu_info(void);
+static unsigned int __maybe_unused aggressive_idle_pull(int this_cpu);
 bool idle_lb_enhance(struct task_struct *p, int cpu);
 static int
-___select_idle_sibling(struct task_struct *p, int prev_cpu, int new_cpu);
-static int __find_energy_efficient_cpu(struct sched_domain *sd,
+__maybe_unused ___select_idle_sibling(struct task_struct *p, int prev_cpu, int new_cpu);
+static int __maybe_unused __find_energy_efficient_cpu(struct sched_domain *sd,
 		struct task_struct *p, int cpu, int prev_cpu, int sync);
 extern int find_best_idle_cpu(struct task_struct *p, bool prefer_idle);
 
-static int start_cpu(struct task_struct *p, bool prefer_idle,
+static int __maybe_unused start_cpu(struct task_struct *p, bool prefer_idle,
 				bool boosted);
 static int
-migrate_running_task(int this_cpu, struct task_struct *p, struct rq *target);
+__maybe_unused migrate_running_task(int this_cpu, struct task_struct *p, struct rq *target);
 
 #ifdef CONFIG_UCLAMP_TASK
 static __always_inline
@@ -150,13 +150,13 @@ struct energy_env {
 
 void mtk_update_new_capacity(struct energy_env *eenv);
 
-static void select_task_prefer_cpu_fair(struct task_struct *p, int *result);
+static void __maybe_unused select_task_prefer_cpu_fair(struct task_struct *p, int *result);
 inline int valid_cpu_prefer(int task_prefer);
 inline int hinted_cpu_prefer(int task_prefer);
 int cpu_prefer(struct task_struct *p);
 extern unsigned int hmp_cpu_is_fastest(int cpu);
 
-static int check_freq_turning(void);
+static int __maybe_unused check_freq_turning(void);
 struct rq *__migrate_task(struct rq *rq, struct rq_flags *rf,
 				struct task_struct *p, int dest_cpu);
 

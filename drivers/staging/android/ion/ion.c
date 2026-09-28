@@ -128,7 +128,7 @@ void ion_client_buf_add(struct ion_heap *heap, struct ion_client *client,
 	u64 total_size;
 
 	client->hnd_cnt++;
-	if (heap->type == ION_HEAP_TYPE_MULTIMEDIA_SEC)
+	if (heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA_SEC)
 		total_size =
 		atomic64_add_return(size, &client->total_size[SECURE_HEAP]);
 	else if (heap->type == ION_HEAP_TYPE_SYSTEM)
@@ -168,7 +168,7 @@ void ion_client_buf_sub(struct ion_heap *heap, struct ion_client *client,
 	long long total_size;
 
 	client->hnd_cnt--;
-	if (heap->type == ION_HEAP_TYPE_MULTIMEDIA_SEC) {
+	if (heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA_SEC) {
 		total_size =
 		atomic64_sub_return(size, &client->total_size[SECURE_HEAP]);
 		if (total_size < 0) {
@@ -213,7 +213,7 @@ void ion_client_buf_sub(struct ion_heap *heap, struct ion_client *client,
 u64 ion_client_buf_dump(struct ion_heap *heap, struct ion_client *client)
 {
 #ifdef ION_RECORD_TOTAL_SIZE_SUPPORT
-	if (heap->type == ION_HEAP_TYPE_MULTIMEDIA_SEC)
+	if (heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA_SEC)
 		return (u64)(atomic64_read(&client->total_size[SECURE_HEAP]));
 	else if (heap->type == ION_HEAP_TYPE_SYSTEM)
 		return (u64)(atomic64_read(&client->total_size[SYSTEM_HEAP]));
@@ -374,7 +374,7 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	INIT_LIST_HEAD(&buffer->attachments);
 #endif
 	mutex_init(&buffer->lock);
-	if (heap->type == ION_HEAP_TYPE_MULTIMEDIA_SEC)
+	if (heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA_SEC)
 		goto exit;
 	/*
 	 * this will set up dma addresses for the sglist -- it is not
@@ -724,7 +724,7 @@ static int chg_sched(struct task_struct *tsk, bool enter)
 }
 
 /* TODO use task comm may not safe. */
-inline is_allocator_svc(struct task_struct *tsk)
+inline bool is_allocator_svc(struct task_struct *tsk)
 {
 	return (tsk->tgid == alloc_svc_tgid);
 }
@@ -1577,7 +1577,7 @@ static struct sg_table *ion_map_dma_buf(struct dma_buf_attachment *attachment,
 	struct ion_buffer *buffer;
 	ion_phys_addr_t addr = 0x0;
 	size_t len = 0;
-	int ret = 0, retry = 0;
+	int ret = 0, __maybe_unused retry = 0;
 
 	if (!attachment ||
 	    !attachment->priv ||
@@ -1606,7 +1606,9 @@ static struct sg_table *ion_map_dma_buf(struct dma_buf_attachment *attachment,
 		if (clone_sg_table(buffer->sg_table, table))
 			return ERR_PTR(-EINVAL);
 	} else {
+#ifndef ION_NOT_SUPPORT_RETRY
 retry:
+#endif
 		mutex_lock(&buffer->lock);
 		if (buffer->heap->ops->dma_buf_config) {
 			ret = buffer->heap->ops->dma_buf_config(
@@ -2328,10 +2330,10 @@ static size_t ion_debug_heap_total(struct ion_client *client,
 		type = handle->buffer->heap->type;
 		if (heapid == id ||
 			/* for exception dump ion_mm_heap info */
-		    (id == ION_HEAP_TYPE_MULTIMEDIA &&
+		    (id == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA &&
 		     (type == ION_HEAP_TYPE_SYSTEM ||
-		      type == ION_HEAP_TYPE_MULTIMEDIA ||
-		      type == ION_HEAP_TYPE_MULTIMEDIA_SEC))) {
+		      type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA ||
+		      type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA_SEC))) {
 			client->dbg_hnd_cnt++;
 			size += handle->buffer->size;
 		}
@@ -2417,7 +2419,7 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 						     node);
 
 		if (buffer->heap->id != heap->id) {
-			if (heap->id == ION_HEAP_TYPE_MULTIMEDIA &&
+			if (heap->id == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA &&
 			    buffer->heap->id == cam_id) {
 				cam_heap = buffer->heap;
 				camera_total_size += buffer->size;
@@ -2441,7 +2443,7 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 	seq_printf(s, "%16.s %16zu\n", "total orphaned",
 		   total_orphaned_size);
 	seq_printf(s, "%16.s %16zu\n", "total ", total_size);
-	if (heap->id == ION_HEAP_TYPE_MULTIMEDIA)
+	if (heap->id == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA)
 		seq_printf(s, "%16.s %16zu\n", "cam total",
 			   camera_total_size);
 	if (heap->flags & ION_HEAP_FLAG_DEFER_FREE)

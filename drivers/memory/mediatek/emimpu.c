@@ -24,7 +24,7 @@
 LIST_HEAD(mpucb_list);
 static DEFINE_MUTEX(mpucb_mutex);
 
-static struct emimpu_callbacks {
+struct emimpu_callbacks {
 	struct list_head list;
 	unsigned long owner;
 	irqreturn_t (*debug_dump)(unsigned int emi_id, struct reg_info_t *dump, unsigned int len);
@@ -40,7 +40,7 @@ static void (*post_clear_cb)(unsigned int emi_id);
 static void (*md_handling_cb)(
 	unsigned int emi_id, struct reg_info_t *dump, unsigned int leng);
 
-static unsigned int emimpu_read_protection(
+static __maybe_unused unsigned int emimpu_read_protection(
 	unsigned int reg_type, unsigned int region, unsigned int dgroup)
 {
 	struct arm_smccc_res smc_res;
@@ -974,7 +974,7 @@ int mtk_emimpu_register_callback(
 	if (!mpucb)
 		return -ENOMEM;
 
-	mpucb->owner = __builtin_return_address(0);
+	mpucb->owner = (unsigned long)__builtin_return_address(0);
 	mpucb->debug_dump = debug_dump;
 	mpucb->handled = false;
 

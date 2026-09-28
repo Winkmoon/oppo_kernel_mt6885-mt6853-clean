@@ -8,7 +8,7 @@
 # n - Disable DSPG VT/VE Chip
 # m - Build as module
 config SND_SOC_DBMDX
-	tristate "DSPG Voice Trigger/Enhancement Chip"
+	bool "DSPG Voice Trigger/Enhancement Chip"
 	default y
 	help
 		DSPG Voice Trigger/Enhancement Chip

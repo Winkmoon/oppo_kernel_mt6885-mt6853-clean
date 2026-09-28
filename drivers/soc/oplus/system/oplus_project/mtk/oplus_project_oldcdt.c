@@ -54,7 +54,7 @@ static int __init update_feature(void)
 			proc_symlink(nfc_feature, oplus_info, feature_src);
 		}
 
-		/*#endif /* OPLUS_BUG_STABILITY */
+		/*#endif OPLUS_BUG_STABILITY */
 	}
 
 	set_fs(fs);

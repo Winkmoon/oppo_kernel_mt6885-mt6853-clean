@@ -248,7 +248,7 @@ static void mtk8250_dma_enable(struct uart_8250_port *up)
 {
 	struct uart_8250_dma *dma = up->dma;
 	struct mtk8250_data *data = up->port.private_data;
-	int lcr = serial_in(up, UART_LCR);
+	int __maybe_unused lcr = serial_in(up, UART_LCR);
 
 	if (data->rx_status != DMA_RX_START)
 		return;
@@ -650,6 +650,7 @@ static int mtk8250_probe(struct platform_device *pdev)
 #endif
 
 #ifdef OPLUS_FEATURE_CHG_BASIC
+{
 static struct pinctrl *serial_pinctrl = NULL;
 static struct pinctrl_state *rx_pinctrl_state_diable = NULL;
 static struct pinctrl_state *tx_pinctrl_state_diable = NULL;
@@ -682,6 +683,7 @@ static struct pinctrl_state *tx_pinctrl_state_diable = NULL;
 	} else {
 		pr_err("%s: boot with console true\n", __func__);
 	}
+}
 #endif /*OPLUS_FEATURE_CHG_BASIC*/
 
 	spin_lock_init(&uart.port.lock);

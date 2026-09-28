@@ -47,7 +47,7 @@ endif
 MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
 
     # Do build-in for Makefile checking
-    # export CONFIG_WLAN_DRV_BUILD_IN=y
+    export CONFIG_WLAN_DRV_BUILD_IN=y
         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893"))
             export MTK_COMBO_CHIP=CONNAC2X2_SOC3_0
             PATH_TO_WMT_DRV      = conninfra
@@ -94,6 +94,9 @@ MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
         obj-y += $(PATH_TO_WMT_DRV)/
         obj-y += $(PATH_TO_WLAN_CHR_DRV)/
         obj-y += $(PATH_TO_WLAN_DRV)/
+        # connfem provides connfem_epaelna_get_*() which the built-in BT
+        # driver calls; nothing else pulls the directory into the build.
+        obj-y += connfem/
 
         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885"))
              PATH_TO_BT_DRV       = bt/mt66xx/btif

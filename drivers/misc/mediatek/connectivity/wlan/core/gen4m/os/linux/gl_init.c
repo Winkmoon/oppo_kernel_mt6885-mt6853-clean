@@ -5329,7 +5329,7 @@ static int initWlan(void)
 
 #if (CFG_SUPPORT_CONNINFRA == 1)
 	conninfra_get_phy_addr(
-		(unsigned int *)&gConEmiPhyBaseFinal,
+		(phys_addr_t *)&gConEmiPhyBaseFinal,
 		(unsigned int *)&gConEmiSizeFinal);
 #endif
 

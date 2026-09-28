@@ -280,7 +280,7 @@ static void record_i2c_info(struct mt_i2c *i2c, int tmo)
 		i2c->rec_idx = 0;
 }
 
-static void dump_i2c_info(struct mt_i2c *i2c)
+static void __maybe_unused dump_i2c_info(struct mt_i2c *i2c)
 {
 	int i;
 	int idx = i2c->rec_idx;
@@ -982,13 +982,14 @@ static int mt_i2c_do_transfer(struct mt_i2c *i2c)
 
 	i2c->trans_stop = false;
 	i2c->irq_stat = 0;
-	if ((i2c->total_len > 8 || i2c->msg_aux_len > 8))
+	if ((i2c->total_len > 8 || i2c->msg_aux_len > 8)) {
 		if (!i2c->fifo_only)
 			isDMA = true;
 		else {
 			dev_info(i2c->dev, "i2c does not support dma mode\n");
 			return -EINVAL;
 		}
+	}
 
 	if (i2c->ext_data.isEnable && i2c->ext_data.timing)
 		speed_hz = i2c->ext_data.timing;

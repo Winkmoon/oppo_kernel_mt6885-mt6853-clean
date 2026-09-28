@@ -24,7 +24,7 @@
 #define SMEM_PROJECT    135
 
 #define UINT2Ptr(n)        (uint32_t *)(n)
-#define Ptr2UINT32(p)    (uint32_t)(p)
+#define Ptr2UINT32(p)    (uint32_t)(unsigned long)(p)
 
 #define PROJECT_VERSION            (0x1)
 #define PCB_VERSION                (0x2)
@@ -584,7 +584,7 @@ static void dump_secure_stage(struct seq_file *s)
 	seq_printf(s, "%d", secure_oem_config);
 }
 
-static void update_manifest(struct proc_dir_entry *parent)
+static void __init update_manifest(struct proc_dir_entry *parent)
 {
 	static const char *manifest_src[2] = {
 		"/vendor/odm/etc/vintf/manifest_ssss.xml",
@@ -709,7 +709,7 @@ static int project_read_func(struct seq_file *s, void *v)
 	return 0;
 }
 
-unsigned int get_cdt_version()
+unsigned int get_cdt_version(void)
 {
 	init_project_version();
 

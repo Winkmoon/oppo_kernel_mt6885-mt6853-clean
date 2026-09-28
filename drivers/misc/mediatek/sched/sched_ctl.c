@@ -617,7 +617,7 @@ void __init init_efuse_info(void)
 }
 #endif
 #ifdef CONFIG_MTK_SCHED_BOOST
-extern oplus_task_sched_boost(struct task_struct *p, int *task_prefer);
+extern void oplus_task_sched_boost(struct task_struct *p, int *task_prefer);
 #endif
 int select_task_prefer_cpu(struct task_struct *p, int new_cpu)
 {

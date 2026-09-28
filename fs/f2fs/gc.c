@@ -21,7 +21,7 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-static struct kmem_cache *victim_entry_slab;
+static __maybe_unused struct kmem_cache *victim_entry_slab;
 /* Lingfei.Tang@TECH.Storage.FS.oF2FS
  * 2021/12/17, add code to optimize gc
  */

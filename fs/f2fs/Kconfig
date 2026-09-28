@@ -73,7 +73,7 @@ config F2FS_FS_SECURITY
 
 config OPLUS_F2FS_DEBUG
 	string
-	option env="OPLUS_F2FS_DEBUG"
+	default ""
 
 config F2FS_CHECK_FS
 	bool "F2FS consistency checking feature"

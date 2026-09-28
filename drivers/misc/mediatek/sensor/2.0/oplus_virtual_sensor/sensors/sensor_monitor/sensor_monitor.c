@@ -229,7 +229,7 @@ static void enable_work_callback(struct work_struct *work)
     }
 }
 
-static void enable_timer_callback()
+static void enable_timer_callback(unsigned long data)
 {
     queue_work(enable_wq, &enable_work);
 }

@@ -20,6 +20,9 @@ extern void *memdup_user_nul(const void __user *, size_t);
 
 #ifndef __HAVE_ARCH_STRCPY
 extern char * strcpy(char *,const char *);
+#ifndef __HAVE_ARCH_STPCPY
+extern char *stpcpy(char *__restrict, const char *__restrict);
+#endif
 #endif
 #ifndef __HAVE_ARCH_STRNCPY
 extern char * strncpy(char *,const char *, __kernel_size_t);

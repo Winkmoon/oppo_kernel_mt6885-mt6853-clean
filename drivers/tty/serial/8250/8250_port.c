@@ -712,7 +712,7 @@ EXPORT_SYMBOL_GPL(serial8250_rpm_put_tx);
  */
 static void serial8250_set_sleep(struct uart_8250_port *p, int sleep)
 {
-	unsigned char lcr = 0, efr = 0;
+	unsigned char __maybe_unused lcr = 0, efr = 0;
 	/*
 	 * Exar UARTs have a SLEEP register that enables or disables
 	 * each UART to enter sleep mode separately.  On the XR17V35x the

@@ -4474,7 +4474,7 @@ static int msdc_ops_get_ro(struct mmc_host *mmc)
 {
 	struct msdc_host *host = mmc_priv(mmc);
 	void __iomem *base = host->base;
-	unsigned long flags;
+	unsigned long __maybe_unused flags;
 	int ro = 0;
 
 	if (host->hw->flags & MSDC_WP_PIN_EN)

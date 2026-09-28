@@ -304,7 +304,7 @@ static struct mtk_disp_pwm *g_mdp;
 static int mtk_disp_pwm_probe(struct platform_device *pdev)
 {
 	struct resource *r;
-	struct clk *pwm_src;
+	struct clk *__maybe_unused pwm_src;
 	int ret;
 
 	pr_notice("%s start\n", __func__);

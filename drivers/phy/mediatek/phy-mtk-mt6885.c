@@ -407,7 +407,7 @@ static void usb_phy_tuning(struct mtk_phy_instance *instance)
 {
 	s32 u2_vrt_ref, u2_term_ref, u2_enhance;
 #ifdef OPLUS_FEATURE_CHG_BASIC
-	s32 host_u2_vrt_ref, host_u2_term_ref, host_u2_enhance;
+	s32 __maybe_unused host_u2_vrt_ref, host_u2_term_ref, host_u2_enhance;
 #endif
 	struct device_node *of_node;
 

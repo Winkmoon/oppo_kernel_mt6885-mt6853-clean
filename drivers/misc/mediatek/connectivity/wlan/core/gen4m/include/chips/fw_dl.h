@@ -410,7 +410,7 @@ void fwDlGetReleaseManifest(struct ADAPTER *prAdapter,
 #endif
 
 #if (CFG_SUPPORT_CONNINFRA == 1)
-extern void conninfra_get_phy_addr(unsigned int *addr, unsigned int *size);
+extern void conninfra_get_phy_addr(phys_addr_t *addr, unsigned int *size);
 #endif
 
 #endif /* _FW_DL_H */

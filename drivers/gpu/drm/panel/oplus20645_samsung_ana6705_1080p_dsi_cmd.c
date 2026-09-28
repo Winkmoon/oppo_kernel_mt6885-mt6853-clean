@@ -246,7 +246,7 @@ static struct LCM_setting_table lcm_finger_HBM_on_setting[] = {
 	{REGFLAG_CMD,3, {0xF0,0xA5,0xA5}},
 };
 
-static struct LCM_setting_table lcm_normal_HBM_on_setting[] = {
+static struct LCM_setting_table __maybe_unused lcm_normal_HBM_on_setting[] = {
 	{REGFLAG_CMD,2, {0x53,0xE0}},
 	{REGFLAG_CMD,3, {0x51,0x07,0xFF}},
 };
@@ -997,7 +997,7 @@ static int mode_switch(struct drm_panel *panel, unsigned int cur_mode,
 	return ret;
 }
 
-static int enter_aod(void *handle, int enter)
+static int __maybe_unused enter_aod(void *handle, int enter)
 {
 	/* enter & exit AOD cmd */
 	return 0;
@@ -1016,7 +1016,7 @@ static int panel_ext_reset(struct drm_panel *panel, int on)
 	return 0;
 }
 
-static unsigned long panel_doze_get_mode_flags(struct drm_panel *panel, int doze_en)
+static unsigned long __maybe_unused panel_doze_get_mode_flags(struct drm_panel *panel, int doze_en)
 {
 	unsigned long mode_flags;
 
@@ -1108,7 +1108,7 @@ static struct LCM_setting_table lcm_normal_to_aod_sam[] = {
 					 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
 					 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
 					 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
-					 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+					 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
 	{REGFLAG_CMD,2,{0x9D,0x01}},
 
 	{REGFLAG_CMD,1,{0x11}},
@@ -1274,7 +1274,7 @@ static int panel_doze_enable(struct drm_panel *panel, void *dsi, dcs_write_gce c
 	return 0;
 }
 
-static int panel_doze_enable_start(struct drm_panel *panel, void *dsi, dcs_write_gce cb, void *handle)
+static int __maybe_unused panel_doze_enable_start(struct drm_panel *panel, void *dsi, dcs_write_gce cb, void *handle)
 {
 	int cmd = 0;
 /* #ifdef OPLUS_BUG_STABILITY */
@@ -1290,7 +1290,7 @@ static int panel_doze_enable_start(struct drm_panel *panel, void *dsi, dcs_write
 	return 0;
 }
 
-static int panel_doze_enable_end(struct drm_panel *panel, void *dsi, dcs_write_gce cb, void *handle)
+static int __maybe_unused panel_doze_enable_end(struct drm_panel *panel, void *dsi, dcs_write_gce cb, void *handle)
 {
 	int cmd = 0;
 	int send_buf[3];
@@ -1336,12 +1336,13 @@ static int panel_doze_area_set(void *dsi, dcs_write_gce cb, void *handle)
 #endif
 static int panel_doze_post_disp_on(struct drm_panel *panel, void *dsi, dcs_write_gce cb, void *handle)
 {
-/* #ifdef OPLUS_BUG_STABILITY */
-	pr_err("debug for lcm %s\n", __func__);
-/* #endif */
 	char post_backlight_on0[] = {0x9F, 0x5A,0x5A};
 	char post_backlight_on1[] = {0x29};
 	char post_backlight_on2[] = {0x9F, 0xA5,0xA5};
+
+/* #ifdef OPLUS_BUG_STABILITY */
+	pr_err("debug for lcm %s\n", __func__);
+/* #endif */
 
 	cb(dsi, handle, post_backlight_on0, ARRAY_SIZE(post_backlight_on0));
 	cb(dsi, handle, post_backlight_on1, ARRAY_SIZE(post_backlight_on1));
@@ -1350,7 +1351,7 @@ static int panel_doze_post_disp_on(struct drm_panel *panel, void *dsi, dcs_write
 	return 0;
 }
 
-static int panel_doze_post_disp_off(void *dsi, dcs_write_gce cb, void *handle)
+static int __maybe_unused panel_doze_post_disp_off(void *dsi, dcs_write_gce cb, void *handle)
 {
 
 	int cmd = 0;
@@ -1568,7 +1569,7 @@ static int lcm_panel_poweroff(struct drm_panel *panel)
 	return 0;
 }
 
-static int lcm_panel_disp_off(void *dsi, dcs_write_gce cb, void *handle)
+static int __maybe_unused lcm_panel_disp_off(void *dsi, dcs_write_gce cb, void *handle)
 {
 	int cmd = 0;
 
@@ -1723,7 +1724,7 @@ static bool panel_no_video_cmd_switch_state(struct drm_panel *panel)
 }
 #endif
 
-static int lcm_get_aod_state()
+static int __maybe_unused lcm_get_aod_state(void)
 {
 	return aod_state;
 }

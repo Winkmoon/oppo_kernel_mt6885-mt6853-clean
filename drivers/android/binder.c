@@ -1957,7 +1957,7 @@ void obbinder_thread_check_status(struct binder_proc *proc)
 
 	if (!sysctl_binder_status_record)
 		return;
-	if (!proc == ob_target.ob_proc)
+	if (proc != ob_target.ob_proc)
 		return;
 	for (n = rb_first(&proc->threads); n != NULL; n = rb_next(n)) {
 		thread = rb_entry(n, struct binder_thread, rb_node);

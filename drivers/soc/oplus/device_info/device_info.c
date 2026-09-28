@@ -250,7 +250,7 @@ EXPORT_SYMBOL(register_device_proc);
 static ssize_t fork_para_monitor_read_proc(struct file *file, char __user *buf,
                 size_t count, loff_t *off)
 {
-        char page[256] = {0};
+        char __maybe_unused page[256] = {0};
         int ret = 0;
         /* ret = snprintf(page, 255, " times:%d\n father pid:%d\n child pid:%d\n",
 		happend_times, fork_pid_father, fork_pid_child); 
@@ -263,7 +263,7 @@ struct file_operations fork_para_monitor_proc_fops = {
         .write = NULL,
 };
 
-static void recursive_fork_para_monitor(void)
+static void __maybe_unused recursive_fork_para_monitor(void)
 {
 		struct proc_dir_entry *pentry;
 
@@ -642,7 +642,7 @@ reinit_aboard_id(struct device *dev, struct manufacture_info *info)
 	int i = 0, ret = 0;
 	int id_size = 0;
 	uint32_t *main_val = NULL, *sub_val = NULL, *rf_val = NULL;
-	int active_val = 0, sleep_val = 0, idle_val = 0;
+	int active_val = 0, sleep_val = 0, __maybe_unused idle_val = 0;
 	struct device_info *dev_info = g_dev_info;
 	bool match = false;
 

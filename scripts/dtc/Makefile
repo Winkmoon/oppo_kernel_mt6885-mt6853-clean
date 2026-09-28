@@ -22,7 +22,7 @@ HOSTCFLAGS_srcpos.o := $(HOSTCFLAGS_DTC)
 HOSTCFLAGS_treesource.o := $(HOSTCFLAGS_DTC)
 HOSTCFLAGS_util.o := $(HOSTCFLAGS_DTC)
 
-HOSTCFLAGS_dtc-lexer.lex.o := $(HOSTCFLAGS_DTC)
+HOSTCFLAGS_dtc-lexer.lex.o := $(HOSTCFLAGS_DTC) -Wno-unused-but-set-global
 HOSTCFLAGS_dtc-parser.tab.o := $(HOSTCFLAGS_DTC)
 
 # dependencies on generated files need to be listed explicitly

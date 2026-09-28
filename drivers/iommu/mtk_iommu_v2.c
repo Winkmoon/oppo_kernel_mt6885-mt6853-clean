@@ -205,8 +205,8 @@ static unsigned int mtk_iommu_get_domain_id(
 
 int mtk_iommu_get_port_id(struct device *dev)
 {
-	struct iommu_fwspec *fwspec;
-	unsigned int larbid, portid, domain_id = 0;
+	struct iommu_fwspec *__maybe_unused fwspec;
+	unsigned int __maybe_unused larbid, portid, domain_id = 0;
 
 	if (!dev)
 		return -ENODEV;
@@ -1673,7 +1673,6 @@ irqreturn_t MTK_M4U_isr_sec(int irq, void *dev_id)
 
 	ret = IRQ_HANDLED;
 
-out:
 	spin_lock_irqsave(&data->reg_lock, flags);
 	data->isr_ref--;
 	spin_unlock_irqrestore(&data->reg_lock, flags);

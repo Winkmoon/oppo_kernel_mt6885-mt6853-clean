@@ -1173,15 +1173,15 @@ out:
 #ifdef MTK_ION_MAPPING_PERF_DEBUG
 	end = sched_clock();
 	if (buffer->sg_table &&
-	    (buffer->sg_table->nents > 10 &&
+	    (((buffer->sg_table->nents > 10 &&
 #if BITS_PER_LONG == 32
 	    (div_u64((end - start),
-	     buffer->sg_table->nents > 500000ULL)) ||
+	     buffer->sg_table->nents > 500000ULL))) ||
 #else
 	    ((end - start) /
-	     buffer->sg_table->nents > 500000ULL) ||
+	     buffer->sg_table->nents > 500000ULL)) ||
 #endif
-	    (end - start > 50000000ULL)))
+	    (end - start > 50000000ULL))))
 		IONMSG("warn: p(%d-%d) phys time:%lluns n:%u s:%zu\n",
 		       buffer_info->module_id,
 		       buffer_info->fix_module_id,
@@ -2004,11 +2004,12 @@ struct ion_heap *ion_mm_heap_create(struct ion_platform_heap *unused)
 #ifdef CONFIG_OPLUS_ION_BOOSTPOOL
 	if (unused->id == ION_HEAP_TYPE_MULTIMEDIA_FOR_CAMERA &&
 	    !IS_ERR_OR_NULL(boost_root_dir)) {
+		unsigned long cam_sz = 32 * 256, uncached_sz = 32 * 256;
+
 		if (!kcrit_scene_init())
 			pr_err("%s: init kcrit scene failed!\n",
 			       __func__);
 
-		unsigned long cam_sz = 32 * 256, uncached_sz = 32 * 256;
 		/* on low memory target, we should not set 128Mib on camera pool. */
 		if (totalram_pages > (SZ_4G >> PAGE_SHIFT)) {
 			cam_sz = 128 * 256;
@@ -2338,7 +2339,7 @@ long ion_mm_ioctl(struct ion_client *client, unsigned int cmd,
 			break;
 		}
 
-		if ((int)buffer->heap->type == ION_HEAP_TYPE_MULTIMEDIA) {
+		if ((int)buffer->heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA) {
 			struct ion_mm_buffer_info *buffer_info =
 			    buffer->priv_virt;
 			enum ION_MM_CMDS mm_cmd = param.mm_cmd;
@@ -2488,8 +2489,8 @@ long ion_mm_ioctl(struct ion_client *client, unsigned int cmd,
 			break;
 		}
 
-		if ((int)buffer->heap->type == ION_HEAP_TYPE_MULTIMEDIA) {
-			struct ion_mm_buffer_info *buffer_info =
+		if ((int)buffer->heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA) {
+			struct ion_mm_buffer_info *__maybe_unused buffer_info =
 			    buffer->priv_virt;
 			enum ION_MM_CMDS mm_cmd = param.mm_cmd;
 			ion_phys_addr_t phy_addr;
@@ -2532,7 +2533,7 @@ long ion_mm_ioctl(struct ion_client *client, unsigned int cmd,
 			param.get_phys_param.phy_addr = phy_addr;
 
 			mutex_unlock(&buffer->lock);
-		} else if (buffer_type == ION_HEAP_TYPE_MULTIMEDIA_SEC) {
+		} else if (buffer_type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA_SEC) {
 			struct ion_heap *sec_heap;
 			ion_phys_addr_t phy_addr;
 			size_t len;
@@ -2586,7 +2587,7 @@ long ion_mm_ioctl(struct ion_client *client, unsigned int cmd,
 
 		buffer = ion_handle_buffer(kernel_handle);
 		buffer_type = buffer->heap->type;
-		if ((int)buffer->heap->type == ION_HEAP_TYPE_MULTIMEDIA) {
+		if ((int)buffer->heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA) {
 			struct ion_mm_buffer_info *buffer_info =
 			    buffer->priv_virt;
 
@@ -2637,7 +2638,7 @@ long ion_mm_ioctl(struct ion_client *client, unsigned int cmd,
 		}
 		buffer = ion_handle_buffer(kernel_handle);
 		buffer_type = buffer->heap->type;
-		if ((int)buffer->heap->type == ION_HEAP_TYPE_MULTIMEDIA) {
+		if ((int)buffer->heap->type == (enum ion_heap_type)ION_HEAP_TYPE_MULTIMEDIA) {
 			struct ion_mm_buffer_info *buffer_info =
 			    buffer->priv_virt;
 

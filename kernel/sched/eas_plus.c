@@ -910,8 +910,8 @@ update_sg_util(struct task_struct *p, int dst_cpu,
 		const struct cpumask *sg_mask, struct sg_state *sg_env)
 {
 	int cpu = cpumask_first(sg_mask);
-	struct sched_domain *sd;
-	const struct sched_group *sg;
+	struct sched_domain *__maybe_unused sd;
+	const struct sched_group *__maybe_unused sg;
 	const struct sched_group_energy *sge;
 	unsigned long new_util;
 	int idx, max_idx;

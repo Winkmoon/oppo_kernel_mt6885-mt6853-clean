@@ -1490,7 +1490,7 @@ unlock:
 }
 EXPORT_SYMBOL(drm_fb_helper_ioctl);
 
-static bool drm_fb_pixel_format_equal(const struct fb_var_screeninfo *var_1,
+static bool __maybe_unused drm_fb_pixel_format_equal(const struct fb_var_screeninfo *var_1,
 				      const struct fb_var_screeninfo *var_2)
 {
 	return var_1->bits_per_pixel == var_2->bits_per_pixel &&

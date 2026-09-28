@@ -925,7 +925,7 @@ static int mode_switch(struct drm_panel *panel, unsigned int cur_mode,
 	return ret;
 }
 
-static int enter_aod(void *handle, int enter)
+static __maybe_unused int enter_aod(void *handle, int enter)
 {
 	/* enter & exit AOD cmd */
 	return 0;
@@ -944,7 +944,7 @@ static int panel_ext_reset(struct drm_panel *panel, int on)
 	return 0;
 }
 
-static unsigned long panel_doze_get_mode_flags(struct drm_panel *panel, int doze_en)
+static __maybe_unused unsigned long panel_doze_get_mode_flags(struct drm_panel *panel, int doze_en)
 {
 	unsigned long mode_flags;
 
@@ -1093,7 +1093,7 @@ static int panel_doze_enable(struct drm_panel *panel, void *dsi, dcs_write_gce c
 	return 0;
 }
 
-static int panel_doze_enable_start(void *dsi, dcs_write_gce cb, void *handle)
+static __maybe_unused int panel_doze_enable_start(void *dsi, dcs_write_gce cb, void *handle)
 {
 	int cmd = 0;
 /* #ifdef OPLUS_BUG_STABILITY */
@@ -1108,7 +1108,7 @@ static int panel_doze_enable_start(void *dsi, dcs_write_gce cb, void *handle)
 	return 0;
 }
 
-static int panel_doze_enable_end(void *dsi, dcs_write_gce cb, void *handle)
+static __maybe_unused int panel_doze_enable_end(void *dsi, dcs_write_gce cb, void *handle)
 {
 	int cmd = 0;
 	int send_buf[3];
@@ -1152,7 +1152,7 @@ static int panel_doze_area_set(void *dsi, dcs_write_gce cb, void *handle)
 	return 0;
 }
 #endif
-static int panel_doze_post_disp_on(void *dsi, dcs_write_gce cb, void *handle)
+static __maybe_unused int panel_doze_post_disp_on(void *dsi, dcs_write_gce cb, void *handle)
 {
 
 	int cmd = 0;
@@ -1169,7 +1169,7 @@ static int panel_doze_post_disp_on(void *dsi, dcs_write_gce cb, void *handle)
 }
 
 
-static int panel_doze_post_disp_off(void *dsi, dcs_write_gce cb, void *handle)
+static __maybe_unused int panel_doze_post_disp_off(void *dsi, dcs_write_gce cb, void *handle)
 {
 
 	int cmd = 0;
@@ -1326,7 +1326,7 @@ static int lcm_panel_poweroff(struct drm_panel *panel)
 	return 0;
 }
 
-static int lcm_panel_disp_off(void *dsi, dcs_write_gce cb, void *handle)
+static __maybe_unused int lcm_panel_disp_off(void *dsi, dcs_write_gce cb, void *handle)
 {
 	int cmd = 0;
 
@@ -1368,7 +1368,7 @@ static int lcm_set_hbm(void *dsi, dcs_write_gce cb,
 		void *handle, unsigned int hbm_mode)
 {
 	int i = 0;
-	int level = 0;
+	int __maybe_unused level = 0;
 	if (!cb)
 		return -1;
 
@@ -1463,7 +1463,7 @@ static bool panel_no_video_cmd_switch_state(struct drm_panel *panel)
 }
 #endif
 
-static int lcm_get_aod_state()
+static __maybe_unused int lcm_get_aod_state(void)
 {
 	return aod_state;
 }

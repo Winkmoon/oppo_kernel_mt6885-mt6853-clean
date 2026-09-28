@@ -6104,7 +6104,7 @@ static inline unsigned long cpu_util_rt(int cpu)
 }
 
 #if defined(OPLUS_FEATURE_SCHED_ASSIST) && (CONFIG_SCHED_WALT)
-extern oplus_get_cpu_util_mtk(int cpu ,u64 *walt_cpu_util, int *boosted);
+extern void oplus_get_cpu_util_mtk(int cpu, u64 *walt_cpu_util, int *boosted);
 #endif
 static inline unsigned long cpu_util_freq(int cpu)
 {
@@ -11312,6 +11312,7 @@ more_balance:
 #endif
 
 #ifdef CONFIG_SCHED_HMP
+			{
 			/*
 			 * If cpu_util + new task_util is overutil,
 			 * we don't migrate this task.
@@ -11324,6 +11325,7 @@ more_balance:
 				raw_spin_unlock_irqrestore(&busiest->lock, flags);
 				env.flags |= LBF_ALL_PINNED;
 				goto out_one_pinned;
+			}
 			}
 #endif
 

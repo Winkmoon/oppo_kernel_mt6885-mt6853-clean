@@ -322,7 +322,7 @@ int pseudo_dump_all_port_status(struct seq_file *s);
 int pseudo_dump_iova_reserved_region(struct seq_file *s);
 
 /* =========== register defination =========== */
-#define F_VAL(val, msb, lsb) (((val)&((1<<(msb-lsb+1))-1))<<lsb)
+#define F_VAL(val, msb, lsb) (((val)&((1<<(msb-lsb+1))-1))<<(lsb))
 #define F_VAL_L(val, msb, lsb) (((val)&((1L<<(msb-lsb+1))-1))<<lsb)
 #define F_MSK(msb, lsb)     F_VAL(0xffffffff, msb, lsb)
 #define F_MSK_L(msb, lsb)     F_VAL_L(0xffffffffffffffff, msb, lsb)

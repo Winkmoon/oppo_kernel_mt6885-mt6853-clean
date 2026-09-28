@@ -27,7 +27,7 @@ static inline bool rwsem_owner_is_writer(struct task_struct *owner)
 	return owner && owner != RWSEM_READER_OWNED;
 }
 
-static void rwsem_list_add_ux(struct list_head *entry, struct list_head *head)
+static __maybe_unused void rwsem_list_add_ux(struct list_head *entry, struct list_head *head)
 {
 	struct list_head *pos = NULL;
 	struct list_head *n = NULL;

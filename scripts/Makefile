@@ -20,10 +20,11 @@ hostprogs-$(CONFIG_MODULE_SIG)	 += sign-file
 hostprogs-$(CONFIG_SYSTEM_TRUSTED_KEYRING) += extract-cert
 hostprogs-$(CONFIG_SYSTEM_EXTRA_CERTIFICATE) += insert-sys-cert
 
-HOSTCFLAGS_sortextable.o = -I$(srctree)/tools/include
+HOSTCFLAGS_sortextable.o = -I$(srctree)/tools/include -Wno-unused-but-set-global
 HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
 HOSTLOADLIBES_sign-file = -lcrypto
 HOSTLOADLIBES_extract-cert = -lcrypto
+HOSTCFLAGS_extract-cert.o = -Wno-deprecated-declarations
 
 always		:= $(hostprogs-y) $(hostprogs-m)
 
