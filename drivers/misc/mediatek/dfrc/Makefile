@@ -65,7 +65,7 @@ ifeq ($(CONFIG_TRUSTONIC_TEE_SUPPORT),y)
 ccflags-y += \
 	-I$(srctree)/drivers/misc/mediatek/gud/$(MTK_PLATFORM)/gud/MobiCoreKernelApi/public \
 	-I$(srctree)/drivers/misc/mediatek/gud/$(MTK_PLATFORM)/gud/MobiCoreKernelApi/include \
-	-I$(srctree)/../vendor/trustonic/platform/$(MTK_PLATFORM)/trustlets/tplay/Tltplay/public
+	-I$(srctree)/vendor/trustonic/platform/$(MTK_PLATFORM)/trustlets/tplay/Tltplay/public
 endif
 endif
 

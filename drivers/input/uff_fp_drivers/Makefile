@@ -26,7 +26,7 @@ ccflags-$(CONFIG_DRM_MEDIATEK_V2) += -DCONFIG_DRM_MEDIATEK_V2
 
 ifeq ($(CONFIG_OPLUS_FINGERPRINT_GKI_ENABLE),y)
 #tp for gki
-ccflags-y += -I$(srctree)/../vendor/oplus/kernel/touchpanel/oplus_touchscreen_v2/touchpanel_notify
+ccflags-y += -I$(srctree)/vendor/oplus/kernel/touchpanel/oplus_touchscreen_v2/touchpanel_notify
 endif
 
 obj-$(CONFIG_UFF_FINGERPRINT) += uff_fp_driver.o
