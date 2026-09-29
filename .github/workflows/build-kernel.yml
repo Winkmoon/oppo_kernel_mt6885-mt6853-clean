@@ -1,6 +1,5 @@
 name: 编译内核 (LLVM 23)
 
-# 手动触发；也可以直接往 android12 分支 push 自动触发
 on:
   workflow_dispatch:
     inputs:
@@ -12,20 +11,16 @@ on:
     branches:
       - android12
 
-# 发布 Release 需要写权限
 permissions:
   contents: write
 
 env:
-  # 内嵌进内核版本信息的编译者
   KBUILD_BUILD_USER: "XinRan♡"
   KBUILD_BUILD_HOST: "Bai"
 
-  # LLVM 工具链（官方发布包，Linux-X64 适用于 x86_64 runner）
   LLVM_VERSION: 23.1.2
   LLVM_DIR: LLVM-23.1.2-Linux-X64
 
-  # ccache：后续编译加速
   CCACHE_MAXSIZE: 5G
   CCACHE_COMPILERCHECK: content
   CCACHE_SLOPPINESS: time_macros,file_stat_matches,include_file_ctime,include_file_mtime
@@ -90,17 +85,6 @@ jobs:
           ld.lld --version
           llvm-ar --version | head -1
 
-      # 如果链接阶段报 libicui18n.so.70 之类缺失，说明 runner 上没有 lld 需要的 ICU，
-      # 把下面这段取消注释即可：
-      #
-      # - name: 补齐 lld 运行库
-      #   run: |
-      #     cd "$RUNNER_TEMP"
-      #     wget -q -O libicu70.deb \
-      #       http://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb
-      #     sudo dpkg -i libicu70.deb || sudo apt-get -f install -y
-      #     sudo ldconfig
-
       - name: 恢复 ccache 缓存
         uses: actions/cache@v4
         with:
@@ -136,7 +120,7 @@ jobs:
         run: |
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "subject=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
-          echo "kernel=$(make -s O=out ARCH=arm64 kernelrelease)" >> "$GITHUB_OUTPUT"
+          echo "kernel=$(cat out/include/config/kernel.release 2>/dev/null || echo 4.14.186)" >> "$GITHUB_OUTPUT"
 
       - name: 制作 AnyKernel3 卡刷包
         continue-on-error: true
@@ -160,7 +144,7 @@ jobs:
             echo "内核版本: ${{ steps.commit.outputs.kernel }}"
             echo "配置文件: stock_defconfig"
             echo "工具链: LLVM ${{ env.LLVM_VERSION }} LLVM=1 LLVM_IAS=1"
-            echo "编译者: ${{ env.KBUILD_BUILD_USER }}@${{ env.KBUILD_BUILD_HOST }}"
+            echo "编译者: @Winkmoon"
             echo
             echo "最近 5 个提交:"
             git log -5 --pretty='%h %s'
