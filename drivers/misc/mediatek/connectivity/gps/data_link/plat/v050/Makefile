@@ -1,6 +1,6 @@
 export AUTOCONF_H=$(O)/include/generated/autoconf.h
 
-extra_symbols := $(abspath $(srctree)/vendor/mediatek/kernel_modules/connectivity/conninfra/Module.symvers)
+extra_symbols := $(abspath $(srctree)/drivers/misc/mediatek/kernel_modules/connectivity/conninfra/Module.symvers)
 
 all: PRIVATE_SYSMBOLS := $(extra_symbols)
 all:
