@@ -25,6 +25,7 @@ HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
 HOSTLOADLIBES_sign-file = -lcrypto
 HOSTLOADLIBES_extract-cert = -lcrypto
 HOSTCFLAGS_extract-cert.o = -Wno-deprecated-declarations
+HOSTCFLAGS_sign-file.o = -Wno-deprecated-declarations
 
 always		:= $(hostprogs-y) $(hostprogs-m)
 
