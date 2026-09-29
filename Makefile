@@ -824,9 +824,6 @@ KBUILD_CFLAGS += $(call cc-disable-warning, tautological-compare)
 # typecheck() helper in u64_to_user_ptr() or the alignment of the embedded
 # call_single_data of struct request. These are false positives that cannot be
 # fixed without invasive and pointless churn, so keep the build quiet.
-KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-var-unsafe)
-KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-field-unsafe)
-KBUILD_CFLAGS += $(call cc-disable-warning, align-mismatch)
 # CLANG uses a _MergedGlobals as optimization, but this breaks modpost, as the
 # source of a reference will be _MergedGlobals and not on of the whitelisted names.
 # See modpost pattern 2
