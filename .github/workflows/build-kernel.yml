@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 env:
-  # 内嵌进内核版本信息的编译者（UTS_VERSION / LINUX_COMPILE_BY）
+  # 内嵌进内核版本信息的编译者
   KBUILD_BUILD_USER: "XinRan♡"
   KBUILD_BUILD_HOST: "Bai"
 
@@ -33,10 +33,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 180
 
     env:
-      TOOLCHAIN: ${{ github.workspace }}/toolchain
       CCACHE_DIR: ${{ github.workspace }}/.ccache
 
     steps:
@@ -45,71 +44,73 @@ jobs:
         with:
           fetch-depth: 0
 
-      # runner 只有 ~14G 可用空间，先清掉预装的大件，避免后面解压/编译爆盘
-      - name: 清理磁盘空间
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-                      "$AGENT_TOOLSDIRECTORY" /usr/share/swift 2>/dev/null || true
-          df -h /
-
       - name: 安装编译依赖
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            bc bison build-essential ccache cpio device-tree-compiler flex \
-            git kmod libelf-dev libssl-dev python3 rsync wget xz-utils zip
+          PKGS="build-essential libssl-dev bc flex bison dwarves git zip unzip \
+                curl wget tar xz-utils cpio rsync python3 python3-pip \
+                python-is-python3 make cmake openjdk-17-jdk repo ccache lzop \
+                zstd libncurses-dev libffi-dev libbz2-dev gnupg dnsutils \
+                net-tools lsb-release aria2 pigz jq parallel sudo \
+                binutils-aarch64-linux-gnu binutils-arm-linux-gnueabihf neofetch"
+          sudo apt-get install -y -qq $PKGS || {
+            echo "批量安装失败，改为逐个安装（确实不存在的包会跳过）"
+            for p in $PKGS; do
+              sudo apt-get install -y -qq "$p" || echo "缺少软件包: $p"
+            done
+          }
+
+      # 完整解压后工具链约 12G，优先放到 runner 的大容量 /mnt，放不下再退回工作区
+      - name: 选择工具链目录
+        id: tc
+        run: |
+          avail=$(df -BG --output=avail /mnt 2>/dev/null | tail -1 | tr -dc '0-9')
+          if [ -d /mnt ] && [ -n "$avail" ] && [ "$avail" -gt 20 ]; then
+            echo "dir=/mnt/llvm23" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=$GITHUB_WORKSPACE/toolchain" >> "$GITHUB_OUTPUT"
+          fi
+          df -h / /mnt 2>/dev/null || true
+          cat "$GITHUB_OUTPUT"
 
       - name: 恢复 LLVM 工具链缓存
         id: llvm-cache
         uses: actions/cache@v4
         with:
-          path: ${{ env.TOOLCHAIN }}
+          path: ${{ steps.tc.outputs.dir }}
           key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
 
-      # 官方包解压后约 12G，这里只取内核构建真正需要的部分（约 1.6G）
-      - name: 下载 LLVM ${{ env.LLVM_VERSION }}
+      - name: 下载并解压 LLVM ${{ env.LLVM_VERSION }}
         if: steps.llvm-cache.outputs.cache-hit != 'true'
         run: |
           set -e
           URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_DIR}.tar.xz"
           echo "下载 $URL"
           wget -q --show-progress -O "$RUNNER_TEMP/llvm.tar.xz" "$URL"
-          mkdir -p "$TOOLCHAIN"
-          # 只解压必要的可执行文件 + 动态库 + clang 自带头文件
-          tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "$TOOLCHAIN" --wildcards \
-            "${LLVM_DIR}/bin/clang"   "${LLVM_DIR}/bin/clang++" "${LLVM_DIR}/bin/clang-23" \
-            "${LLVM_DIR}/bin/ld.lld"  "${LLVM_DIR}/bin/lld" \
-            "${LLVM_DIR}/bin/llvm-ar" "${LLVM_DIR}/bin/llvm-ranlib" \
-            "${LLVM_DIR}/bin/llvm-nm" \
-            "${LLVM_DIR}/bin/llvm-objcopy" "${LLVM_DIR}/bin/llvm-strip" \
-            "${LLVM_DIR}/bin/llvm-objdump" \
-            "${LLVM_DIR}/bin/llvm-readobj" "${LLVM_DIR}/bin/llvm-readelf" \
-            "${LLVM_DIR}/lib/*.so*" \
-            "${LLVM_DIR}/lib/clang/*"
+          mkdir -p "${{ steps.tc.outputs.dir }}"
+          tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "${{ steps.tc.outputs.dir }}"
           rm -f "$RUNNER_TEMP/llvm.tar.xz"
-          du -sh "$TOOLCHAIN"
+          du -sh "${{ steps.tc.outputs.dir }}"
 
       - name: 配置工具链到 PATH
-        run: |
-          echo "$TOOLCHAIN/$LLVM_DIR/bin" >> "$GITHUB_PATH"
+        run: echo "${{ steps.tc.outputs.dir }}/${{ env.LLVM_DIR }}/bin" >> "$GITHUB_PATH"
 
-      # LLVM 官方包的 lld 动态链接了 libicu70，而 Ubuntu 24.04 只有 libicu74
-      - name: 补齐 lld 运行库 (libicu70)
+      - name: 检查工具链
         run: |
-          set -e
-          BIN="$TOOLCHAIN/$LLVM_DIR/bin"
-          if ldd "$BIN/ld.lld" | grep -q "not found"; then
-            echo "检测到缺失依赖，安装 libicu70"
-            cd "$RUNNER_TEMP"
-            wget -q -O libicu70.deb \
-              http://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb
-            sudo dpkg -i libicu70.deb || sudo apt-get -f install -y
-            sudo ldconfig
-          fi
-          ldd "$BIN/ld.lld" | grep "not found" && { echo "仍有缺失依赖"; exit 1; } || true
-          "$BIN/clang" --version
-          "$BIN/ld.lld" --version
+          clang --version
+          ld.lld --version
+          llvm-ar --version | head -1
+
+      # 如果链接阶段报 libicui18n.so.70 之类缺失，说明 runner 上没有 lld 需要的 ICU，
+      # 把下面这段取消注释即可：
+      #
+      # - name: 补齐 lld 运行库
+      #   run: |
+      #     cd "$RUNNER_TEMP"
+      #     wget -q -O libicu70.deb \
+      #       http://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb
+      #     sudo dpkg -i libicu70.deb || sudo apt-get -f install -y
+      #     sudo ldconfig
 
       - name: 恢复 ccache 缓存
         uses: actions/cache@v4
@@ -120,12 +121,12 @@ jobs:
             ccache-${{ runner.os }}-llvm${{ env.LLVM_VERSION }}-
 
       - name: ccache 状态（编译前）
-        run: ccache -s -v || true
+        run: ccache -s || true
 
       - name: 生成 stock_defconfig
         run: make -s -j"$(nproc --all)" O=out ARCH=arm64 stock_defconfig
 
-      - name: 编译内核 (LLVM=1 + LLVM_IAS=1)
+      - name: 编译内核
         run: |
           set -o pipefail
           make -j"$(nproc --all)" LLVM=1 LLVM_IAS=1 ARCH=arm64 \
@@ -134,14 +135,14 @@ jobs:
 
       - name: ccache 状态（编译后）
         if: always()
-        run: ccache -s -v || true
+        run: ccache -s || true
 
       - name: 检查产物
         run: |
           ls -l out/arch/arm64/boot/Image.gz-dtb
           ls -l out/System.map
 
-      - name: 读取 commit 信息
+      - name: 读取提交信息
         id: commit
         run: |
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
@@ -149,7 +150,6 @@ jobs:
           echo "kernel=$(make -s O=out ARCH=arm64 kernelrelease)" >> "$GITHUB_OUTPUT"
 
       - name: 制作 AnyKernel3 卡刷包
-        id: ak3
         continue-on-error: true
         run: |
           set -e
@@ -165,20 +165,16 @@ jobs:
       - name: 生成 Release 说明
         run: |
           {
-            echo "## \`${{ steps.commit.outputs.sha }}\` ${{ steps.commit.outputs.subject }}"
+            echo "提交: ${{ steps.commit.outputs.sha }}"
+            echo "标题: ${{ steps.commit.outputs.subject }}"
             echo
-            echo '~~~'
-            git log -1 --pretty='commit  %H%nauthor  %an <%ae>%ndate    %ad%n%n%B'
-            echo '~~~'
+            echo "内核版本: ${{ steps.commit.outputs.kernel }}"
+            echo "配置文件: stock_defconfig"
+            echo "工具链: LLVM ${{ env.LLVM_VERSION }} LLVM=1 LLVM_IAS=1"
+            echo "编译者: ${{ env.KBUILD_BUILD_USER }}@${{ env.KBUILD_BUILD_HOST }}"
             echo
-            echo "| 项目 | 值 |"
-            echo "| --- | --- |"
-            echo "| 内核版本 | \`${{ steps.commit.outputs.kernel }}\` |"
-            echo "| 配置文件 | \`stock_defconfig\` |"
-            echo "| 工具链 | LLVM ${{ env.LLVM_VERSION }}（\`LLVM=1 LLVM_IAS=1\`，集成汇编器） |"
-            echo "| 编译者 | \`${{ env.KBUILD_BUILD_USER }}@${{ env.KBUILD_BUILD_HOST }}\` |"
-            echo
-            echo "刷机用 \`AnyKernel3-*.zip\`（卡刷包），或直接用 \`Image.gz-dtb\` 替换 boot 镜像。"
+            echo "最近 5 个提交:"
+            git log -5 --pretty='%h %s'
           } > "$RUNNER_TEMP/release-body.md"
           cat "$RUNNER_TEMP/release-body.md"
 
@@ -186,9 +182,8 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.make_release }}
         uses: softprops/action-gh-release@v2
         with:
-          # tag 用提交短哈希，release 标题用「哈希 + 提交标题」
           tag_name: ${{ steps.commit.outputs.sha }}
-          name: "${{ steps.commit.outputs.sha }} + ${{ steps.commit.outputs.subject }}"
+          name: "${{ steps.commit.outputs.sha }} ${{ steps.commit.outputs.subject }}"
           body_path: ${{ runner.temp }}/release-body.md
           files: |
             out/arch/arm64/boot/Image.gz-dtb
