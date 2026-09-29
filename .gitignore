@@ -128,3 +128,6 @@ kernel/configs/android-*.cfg
 
 # kernel build output
 /out/
+
+# 工作流目录需要纳入版本管理（上面的 .* 规则会把它忽略掉）
+!.github/
