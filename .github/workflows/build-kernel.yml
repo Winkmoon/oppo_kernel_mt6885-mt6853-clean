@@ -136,7 +136,12 @@ jobs:
         run: |
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "subject=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
-          echo "kernel=$(make -s O=out ARCH=arm64 kernelrelease)" >> "$GITHUB_OUTPUT"
+          # 不要在这里调 make：那会重新触发一次配置和主机工具构建，
+          # 既会打印 OplusKernelEnvConfig.mk 那一串 myfeature，
+          # 又会去要 aarch64-linux-android-gcc/ld，
+          # 还会用系统 gcc 重编 scripts/kconfig 并带出 -Wdangling-pointer 警告。
+          # 直接读构建阶段已经生成的版本文件即可。
+          echo "kernel=$(cat out/include/config/kernel.release 2>/dev/null || echo 4.14.186)" >> "$GITHUB_OUTPUT"
 
       - name: 制作 AnyKernel3 卡刷包
         continue-on-error: true
