@@ -69,7 +69,7 @@ function handle_alt_replacement_reloc()
 
 function is_executable_section()
 {
-    objdump -hwj ${section} ${obj} | grep -q CODE
+    objdump -hwj ${section} ${obj} | grep -c CODE >/dev/null
     return $?
 }
 
