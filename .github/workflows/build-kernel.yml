@@ -36,6 +36,7 @@ jobs:
     timeout-minutes: 180
 
     env:
+      TOOLCHAIN: ${{ github.workspace }}/toolchain
       CCACHE_DIR: ${{ github.workspace }}/.ccache
 
     steps:
@@ -60,24 +61,11 @@ jobs:
             done
           }
 
-      # 完整解压后工具链约 12G，优先放到 runner 的大容量 /mnt，放不下再退回工作区
-      - name: 选择工具链目录
-        id: tc
-        run: |
-          avail=$(df -BG --output=avail /mnt 2>/dev/null | tail -1 | tr -dc '0-9')
-          if [ -d /mnt ] && [ -n "$avail" ] && [ "$avail" -gt 20 ]; then
-            echo "dir=/mnt/llvm23" >> "$GITHUB_OUTPUT"
-          else
-            echo "dir=$GITHUB_WORKSPACE/toolchain" >> "$GITHUB_OUTPUT"
-          fi
-          df -h / /mnt 2>/dev/null || true
-          cat "$GITHUB_OUTPUT"
-
       - name: 恢复 LLVM 工具链缓存
         id: llvm-cache
         uses: actions/cache@v4
         with:
-          path: ${{ steps.tc.outputs.dir }}
+          path: ${{ env.TOOLCHAIN }}
           key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
 
       - name: 下载并解压 LLVM ${{ env.LLVM_VERSION }}
@@ -87,13 +75,14 @@ jobs:
           URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_DIR}.tar.xz"
           echo "下载 $URL"
           wget -q --show-progress -O "$RUNNER_TEMP/llvm.tar.xz" "$URL"
-          mkdir -p "${{ steps.tc.outputs.dir }}"
-          tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "${{ steps.tc.outputs.dir }}"
+          mkdir -p "${{ env.TOOLCHAIN }}"
+          tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "${{ env.TOOLCHAIN }}"
           rm -f "$RUNNER_TEMP/llvm.tar.xz"
-          du -sh "${{ steps.tc.outputs.dir }}"
+          du -sh "${{ env.TOOLCHAIN }}"
+          df -h "${{ env.TOOLCHAIN }}"
 
       - name: 配置工具链到 PATH
-        run: echo "${{ steps.tc.outputs.dir }}/${{ env.LLVM_DIR }}/bin" >> "$GITHUB_PATH"
+        run: echo "${{ env.TOOLCHAIN }}/${{ env.LLVM_DIR }}/bin" >> "$GITHUB_PATH"
 
       - name: 检查工具链
         run: |
