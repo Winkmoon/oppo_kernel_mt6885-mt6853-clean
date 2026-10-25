@@ -221,6 +221,9 @@ int sspm_reserve_memory_init(struct platform_device *pdev)
 		}
 	}
 
+	/* recompute from scratch, the sum above is only a probe */
+	accumlate_memory_size = 0;
+
 	for (id = 0; id < NUMS_MEM_ID; id++) {
 		sspm_reserve_mblock[id].start_virt = sspm_mem_base_virt +
 							accumlate_memory_size;
