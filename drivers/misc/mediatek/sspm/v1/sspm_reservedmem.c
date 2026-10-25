@@ -198,6 +198,29 @@ int sspm_reserve_memory_init(struct platform_device *pdev)
 				(unsigned long long)sspm_mem_size,
 			(unsigned long long)sspm_mem_size);
 
+	/*
+	 * The size of the reserved region comes from the device tree, which
+	 * may have been built for a different platform or with a different
+	 * MET allocation setting (e.g. booting with the stock boot image's
+	 * MT6853 DTB while this kernel is built for MT6885).  The MET block
+	 * is by far the largest entry and is only used by met_drv, so drop
+	 * it instead of panicking when the region cannot hold the full table.
+	 */
+	accumlate_memory_size = 0;
+	for (id = 0; id < NUMS_MEM_ID; id++)
+		accumlate_memory_size += sspm_reserve_mblock[id].size;
+	if (accumlate_memory_size > sspm_mem_size) {
+		for (id = 0; id < NUMS_MEM_ID; id++) {
+			if (sspm_reserve_mblock[id].num == MET_MEM_ID) {
+				pr_info("[SSPM] DT reserves 0x%llx, table needs 0x%llx, dropping the MET block\n",
+					(unsigned long long)sspm_mem_size,
+					(unsigned long long)accumlate_memory_size);
+				sspm_reserve_mblock[id].size = 0;
+				break;
+			}
+		}
+	}
+
 	for (id = 0; id < NUMS_MEM_ID; id++) {
 		sspm_reserve_mblock[id].start_virt = sspm_mem_base_virt +
 							accumlate_memory_size;
